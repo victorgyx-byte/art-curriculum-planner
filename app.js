@@ -731,6 +731,7 @@ function initCloudSync() {
     cloud.available = true;
     cloud.auth = window.firebase.auth();
     cloud.db = window.firebase.firestore();
+    cloud.db.settings({ ignoreUndefinedProperties: true });
     renderLoginGate("Checking sign-in...", true);
     renderCloudStatus("Checking sign-in...", "Sign in", true);
     cloud.auth.onAuthStateChanged(handleCloudUser);
@@ -817,17 +818,22 @@ function scheduleCloudSave() {
 async function saveCloudStateNow() {
   if (!cloud.available || !cloud.user || !cloud.db) return;
   try {
+    const cleanState = cleanCloudState(state);
     await cloudPlanRef().set({
       title: "Main 2YIP",
       ownerId: cloud.user.uid,
-      state,
+      state: cleanState,
       updatedAt: window.firebase.firestore.FieldValue.serverTimestamp(),
     }, { merge: true });
     renderCloudStatus(`Cloud saved: ${cloud.user.displayName || cloud.user.email || "signed in"}`, "Sign out");
   } catch (error) {
     console.warn("Cloud save failed", error);
-    renderCloudStatus("Cloud save failed. Local save active.", "Sign out");
+    renderCloudStatus(`Cloud save failed: ${error.code || error.message || "check rules"}`, "Sign out");
   }
+}
+
+function cleanCloudState(value) {
+  return JSON.parse(JSON.stringify(value));
 }
 
 function cloudPlanRef() {
