@@ -3018,7 +3018,13 @@ function renderHealth() {
   });
 
   const bigIdeas = new Set(timelineUnits.flatMap((unit) => overviewValues(unit, "bigIdeas")));
-  const los = new Set(timelineUnits.flatMap((unit) => overviewValues(unit, "learningOutcomes").map((lo) => lo.slice(0, 3))));
+  const los = new Set(
+    timelineUnits.flatMap((unit) =>
+      (unit.lessons || [])
+        .flatMap((lesson) => incidenceValuesForLesson(lesson, "learningOutcomes"))
+        .map((lo) => lo.slice(0, 3)),
+    ),
+  );
 
   const pills = [
     `${coveredWeeks.size}/${WEEK_COUNT} weeks planned`,
@@ -3042,17 +3048,18 @@ function renderHealth() {
       </div>
       <div class="analysis-grid">
         ${renderIncidenceGroup("Big Ideas", timelineUnits, "bigIdeas", libraryItemsByType("bigIdeas"))}
-        ${renderIncidenceGroup("Learning Outcomes", timelineUnits, "learningOutcomes", libraryItemsByType("learningOutcomes"))}
-        ${renderIncidenceGroup("21CC Emphasis", timelineUnits, "cc21", libraryItemsByType("cc21"))}
-        ${renderIncidenceGroup("Core Learning Experiences", timelineUnits, "coreExperiences", libraryItemsByType("coreExperiences"))}
+        ${renderIncidenceGroup("Learning Outcomes", timelineUnits, "learningOutcomes", libraryItemsByType("learningOutcomes"), { source: "lesson" })}
+        ${renderIncidenceGroup("21CC Emphasis", timelineUnits, "cc21", libraryItemsByType("cc21"), { source: "lesson" })}
+        ${renderIncidenceGroup("Core Learning Experiences", timelineUnits, "coreExperiences", libraryItemsByType("coreExperiences"), { source: "lesson" })}
         ${renderPedagogyGroup(timelineUnits)}
       </div>
     </section>
   `;
 }
 
-function renderIncidenceGroup(title, units, type, expectedValues = []) {
-  const rows = incidenceRows(units, type, expectedValues);
+function renderIncidenceGroup(title, units, type, expectedValues = [], options = {}) {
+  const lessonBased = options.source === "lesson";
+  const rows = lessonBased ? lessonIncidenceRows(units, type, expectedValues) : incidenceRows(units, type, expectedValues);
   if (!rows.length) {
     return `
       <article class="analysis-card">
@@ -3061,7 +3068,7 @@ function renderIncidenceGroup(title, units, type, expectedValues = []) {
       </article>
     `;
   }
-  const maxWeeks = Math.max(1, ...rows.map((row) => row.weeks));
+  const maxTotal = Math.max(1, ...rows.map((row) => lessonBased ? row.lessonCount : row.weeks));
   return `
     <article class="analysis-card">
       <h4>${escapeHtml(title)}</h4>
@@ -3070,16 +3077,24 @@ function renderIncidenceGroup(title, units, type, expectedValues = []) {
           <div class="analysis-row ${row.unitCount ? "" : "empty"}">
             <div class="analysis-row-main">
               <span>${escapeHtml(row.label)}</span>
-              <small>${row.unitCount ? `${row.unitCount} ${row.unitCount === 1 ? "unit" : "units"} · ${row.weeks} ${row.weeks === 1 ? "week" : "weeks"}` : "Not yet planned"}</small>
+              <small>${incidenceRowMeta(row, lessonBased)}</small>
             </div>
             <div class="analysis-bar" aria-hidden="true">
-              <span style="width: ${row.unitCount ? Math.max(8, (row.weeks / maxWeeks) * 100) : 0}%"></span>
+              <span style="width: ${row.unitCount ? Math.max(8, ((lessonBased ? row.lessonCount : row.weeks) / maxTotal) * 100) : 0}%"></span>
             </div>
           </div>
         `).join("")}
       </div>
     </article>
   `;
+}
+
+function incidenceRowMeta(row, lessonBased) {
+  if (!row.unitCount) return "Not yet planned";
+  if (!lessonBased) {
+    return `${row.unitCount} ${row.unitCount === 1 ? "unit" : "units"} · ${row.weeks} ${row.weeks === 1 ? "week" : "weeks"}`;
+  }
+  return `${row.lessonCount} ${row.lessonCount === 1 ? "lesson" : "lessons"} · ${row.unitCount} ${row.unitCount === 1 ? "unit" : "units"}`;
 }
 
 function renderPedagogyGroup(units) {
@@ -3133,6 +3148,38 @@ function incidenceRows(units, type, expectedValues = []) {
 
 function incidenceValuesForUnit(unit, type) {
   return overviewValues(unit, type).map((value) => canonicalIncidenceLabel(value, type));
+}
+
+function lessonIncidenceRows(units, type, expectedValues = []) {
+  const lessonEntries = units.flatMap((unit) =>
+    (unit.lessons || []).map((lesson) => ({
+      unit,
+      lesson,
+      values: incidenceValuesForLesson(lesson, type),
+    })),
+  );
+  const labels = uniqueReadableValues([
+    ...expectedValues.map((value) => canonicalIncidenceLabel(value, type)),
+    ...lessonEntries.flatMap((entry) => entry.values),
+  ]);
+  return labels.map((label) => {
+    const matchingEntries = lessonEntries.filter((entry) => entry.values.includes(label));
+    const matchingUnitIds = new Set(matchingEntries.map((entry) => entry.unit.id));
+    return {
+      label,
+      unitCount: matchingUnitIds.size,
+      lessonCount: matchingEntries.length,
+      weeks: matchingEntries.length,
+    };
+  });
+}
+
+function incidenceValuesForLesson(lesson, type) {
+  return uniqueReadableValues(
+    (lesson.boardCards || [])
+      .filter((card) => card.type === type)
+      .map((card) => canonicalIncidenceLabel(card.label, type)),
+  );
 }
 
 function canonicalIncidenceLabel(value, type) {
