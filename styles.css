@@ -45,23 +45,22 @@ button:disabled {
 }
 
 .login-gate {
+  position: relative;
   display: grid;
+  overflow: hidden;
   min-height: 100vh;
   padding: 24px;
   place-items: center;
   background:
-    linear-gradient(115deg, rgba(47, 111, 115, 0.12), transparent 36%),
-    linear-gradient(245deg, rgba(181, 73, 58, 0.1), transparent 34%),
     linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(255, 253, 250, 0.42)),
     var(--bg);
 }
 
 .login-layout {
+  position: relative;
+  z-index: 1;
   display: grid;
-  grid-template-columns: minmax(320px, 0.72fr) minmax(420px, 1fr);
-  gap: 22px;
-  align-items: stretch;
-  width: min(100%, 1120px);
+  width: min(100%, 560px);
 }
 
 .login-panel {
@@ -72,37 +71,14 @@ button:disabled {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   padding: clamp(26px, 5vw, 44px);
-  background: rgba(255, 253, 250, 0.94);
+  background: rgba(255, 253, 250, 0.9);
+  backdrop-filter: blur(10px);
   box-shadow: var(--shadow);
-}
-
-.login-brand-mark {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 6px;
-}
-
-.login-brand-mark span {
-  display: block;
-  width: 38px;
-  height: 8px;
-  border-radius: 999px;
-  background: var(--accent);
-}
-
-.login-brand-mark span:nth-child(2) {
-  width: 24px;
-  background: var(--accent-3);
-}
-
-.login-brand-mark span:nth-child(3) {
-  width: 16px;
-  background: var(--accent-2);
 }
 
 .login-panel h1 {
   margin: 0;
-  max-width: 9ch;
+  max-width: 10ch;
   font-size: clamp(42px, 8vw, 78px);
   line-height: 0.92;
 }
@@ -137,49 +113,152 @@ button:disabled {
   font-size: 12px;
 }
 
-.login-preview {
-  display: grid;
-  align-content: stretch;
-  gap: 10px;
-  min-width: 0;
-  margin: 0;
-  border: 1px solid var(--line);
+.login-card-pattern {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.login-card-pattern::before {
+  position: absolute;
+  inset: 28px;
+  content: "";
+  border: 1px solid rgba(216, 208, 194, 0.55);
+  border-radius: 18px;
+  opacity: 0.48;
+}
+
+.login-pattern-card {
+  position: absolute;
+  width: var(--card-width, 150px);
+  border: 1px solid rgba(216, 208, 194, 0.9);
+  border-left: 6px solid var(--accent);
   border-radius: var(--radius);
-  padding: 10px;
-  background: rgba(255, 253, 250, 0.78);
-  box-shadow: var(--shadow);
-}
-
-.login-preview img {
-  display: block;
-  width: 100%;
-  aspect-ratio: 16 / 10;
-  height: auto;
-  min-height: 0;
-  border: 1px solid rgba(216, 208, 194, 0.78);
-  border-radius: calc(var(--radius) - 2px);
-  object-fit: cover;
-  object-position: left bottom;
-}
-
-.login-preview figcaption {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.login-preview figcaption span {
-  display: inline-flex;
-  align-items: center;
-  min-height: 28px;
-  border: 1px solid rgba(47, 111, 115, 0.2);
-  border-radius: 999px;
-  padding: 6px 9px;
-  background: rgba(219, 238, 237, 0.74);
-  color: var(--accent);
-  font-size: 12px;
+  padding: var(--card-padding, 12px 14px);
+  background: rgba(255, 253, 250, 0.66);
+  box-shadow: 0 16px 36px rgba(42, 37, 29, 0.1);
+  color: rgba(35, 35, 35, 0.62);
+  font-size: var(--card-font-size, 13px);
   font-weight: 900;
-  line-height: 1;
+  line-height: 1.2;
+  transform: rotate(var(--card-tilt, 0deg)) scale(var(--card-scale, 1));
+  transform-origin: center;
+  animation: loginCardFade 9s ease-in-out infinite;
+  opacity: var(--card-opacity, 0.42);
+}
+
+.card-a {
+  --card-tilt: -9deg;
+  --card-scale: 2.35;
+  --card-width: 380px;
+  --card-font-size: 16px;
+  --card-padding: 18px 22px;
+  --card-opacity: 0.2;
+  top: 8%;
+  left: -4%;
+}
+
+.card-b {
+  --card-tilt: 4deg;
+  --card-scale: 1.28;
+  --card-width: 360px;
+  --card-font-size: 12.5px;
+  --card-padding: 14px 17px;
+  --card-opacity: 0.6;
+  top: 13%;
+  right: 5%;
+  border-left-color: var(--accent-2);
+  animation-delay: -3s;
+}
+
+.card-c {
+  --card-tilt: 3deg;
+  --card-scale: 1.42;
+  --card-width: 210px;
+  --card-font-size: 14px;
+  --card-opacity: 0.52;
+  top: 42%;
+  left: -2%;
+  border-left-color: var(--accent-3);
+  animation-delay: -5s;
+}
+
+.card-d {
+  --card-tilt: -4deg;
+  --card-scale: 1.85;
+  --card-width: 220px;
+  --card-font-size: 15px;
+  --card-padding: 16px 18px;
+  --card-opacity: 0.42;
+  right: -4%;
+  bottom: 23%;
+  border-left-color: #4d5f91;
+  animation-delay: -1.5s;
+}
+
+.card-e {
+  --card-tilt: 5deg;
+  --card-scale: 0.92;
+  --card-width: 174px;
+  --card-opacity: 0.28;
+  left: 15%;
+  bottom: 8%;
+  border-left-color: var(--accent);
+  animation-delay: -6.5s;
+}
+
+.card-f {
+  --card-tilt: -2deg;
+  --card-scale: 0.54;
+  --card-width: 112px;
+  --card-opacity: 0.18;
+  top: 58%;
+  right: 22%;
+  border-left-color: var(--accent-3);
+  animation-delay: -7.5s;
+}
+
+.card-g {
+  --card-tilt: 2deg;
+  --card-scale: 0.78;
+  --card-width: 178px;
+  --card-opacity: 0.34;
+  top: 7%;
+  left: 45%;
+  border-left-color: #4d5f91;
+  animation-delay: -4.2s;
+}
+
+.card-h {
+  --card-tilt: -3deg;
+  --card-scale: 0.66;
+  --card-width: 132px;
+  --card-opacity: 0.3;
+  right: 33%;
+  bottom: 5%;
+  border-left-color: var(--accent-2);
+  animation-delay: -2.4s;
+}
+
+@keyframes loginCardFade {
+  0%,
+  100% {
+    opacity: calc(var(--card-opacity, 0.42) * 0.55);
+    translate: 0 0;
+  }
+
+  45% {
+    opacity: var(--card-opacity, 0.42);
+    translate: 0 -8px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-pattern-card {
+    animation: none;
+    opacity: 0.42;
+  }
 }
 
 .app-shell {
@@ -2491,8 +2570,19 @@ button:disabled {
     max-width: 12ch;
   }
 
-  .login-preview img {
-    max-height: 430px;
+  .card-a {
+    --card-scale: 1.75;
+    left: -18%;
+  }
+
+  .card-b {
+    --card-scale: 1.02;
+    right: -10%;
+  }
+
+  .card-c,
+  .card-f {
+    display: none;
   }
 
   .workspace {
@@ -2577,12 +2667,37 @@ button:disabled {
     width: 100%;
   }
 
-  .login-preview {
-    padding: 8px;
+  .login-card-pattern::before {
+    inset: 12px;
   }
 
-  .login-preview img {
-    max-height: 280px;
+  .login-pattern-card {
+    width: min(var(--card-width, 130px), 44vw);
+    padding: 9px 10px;
+    font-size: 11px;
+  }
+
+  .card-b,
+  .card-d,
+  .card-g {
+    display: none;
+  }
+
+  .card-a {
+    --card-scale: 1.45;
+    width: 260px;
+    top: 5%;
+    left: -32%;
+  }
+
+  .card-e {
+    left: 8%;
+    bottom: 7%;
+  }
+
+  .card-h {
+    right: 5%;
+    bottom: 16%;
   }
 
   .app-shell {
