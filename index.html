@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Art Curriculum Planner</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Lower Secondary Art</p>
+          <h1>Art Curriculum Planner</h1>
+        </div>
+        <div class="topbar-actions">
+          <div class="mode-switch" aria-label="Editor mode">
+            <button class="mode-button active" data-screen="timeline" type="button">2YIP Timeline</button>
+            <button class="mode-button" data-screen="board" type="button">Unit Board</button>
+            <button class="mode-button" data-screen="lesson" type="button">Lesson Board</button>
+          </div>
+          <button id="reset-demo" class="ghost-button" type="button" title="Reset demo data">Reset</button>
+          <button id="add-unit" class="primary-button" type="button">Add Unit</button>
+        </div>
+      </header>
+
+      <main class="workspace">
+        <section class="library-panel" aria-label="Planning library">
+          <section class="unit-list-panel" aria-label="Saved units">
+            <div class="panel-heading compact-heading">
+              <p class="eyebrow">Units</p>
+              <h2>Units</h2>
+            </div>
+            <div id="unit-list" class="unit-list"></div>
+          </section>
+
+          <section id="lesson-nav-panel" class="lesson-nav-panel hidden" aria-label="Lessons in selected unit">
+            <div class="panel-heading compact-heading">
+              <p class="eyebrow">Lessons</p>
+              <h2>Within Unit</h2>
+            </div>
+            <div id="lesson-nav-list" class="lesson-picker-list"></div>
+          </section>
+
+          <section class="card-library-panel" aria-label="Planning cards">
+            <div class="panel-heading">
+              <p id="library-eyebrow" class="eyebrow">Cards</p>
+              <h2 id="library-title">Drag Into Units</h2>
+            </div>
+            <div id="library"></div>
+          </section>
+        </section>
+
+        <div class="editor-stage">
+          <section id="timeline-screen" class="timeline-panel screen-panel" aria-label="2YIP timeline">
+            <div class="panel-heading timeline-heading">
+              <div>
+                <p class="eyebrow">2YIP Curriculum Map</p>
+                <h2>Sec 1 And Sec 2 Sequence</h2>
+              </div>
+              <p class="timeline-note">Drag units from the left into Sec 1 or Sec 2. Unit length follows lesson count: 1 lesson = 1 week.</p>
+            </div>
+
+            <div class="timeline-scroll">
+              <div id="timeline" class="timeline" aria-label="Two-year curriculum timeline">
+                <div id="timeline-grid" class="timeline-grid"></div>
+                <div id="unit-layer" class="unit-layer"></div>
+              </div>
+            </div>
+
+            <div id="timeline-health" class="timeline-health" aria-live="polite"></div>
+          </section>
+
+          <section id="board-screen" class="board-panel screen-panel hidden" aria-label="Unit drawing board">
+            <div class="panel-heading board-heading">
+              <div class="board-title-fields">
+                <p class="eyebrow">Unit Board</p>
+                <div class="board-committed-field" data-board-field="title">
+                  <div class="board-field-label">Unit Title</div>
+                  <div class="board-field-row">
+                    <div id="board-title-display" class="board-title-display">Untitled Unit</div>
+                    <button id="edit-board-title" class="icon-button" type="button" title="Edit unit title" aria-label="Edit unit title">✎</button>
+                  </div>
+                  <div id="board-title-editor" class="board-field-editor hidden">
+                    <input id="board-title" class="text-input board-title-input" type="text" />
+                    <button id="confirm-board-title" class="board-field-confirm" type="button">Confirm</button>
+                  </div>
+                </div>
+                <div class="board-committed-field" data-board-field="performance-task">
+                  <div class="board-field-label">Performance Task / Evidence of Learning</div>
+                  <div class="board-field-row">
+                    <div id="board-performance-task-display" class="board-task-display">Not set</div>
+                    <button id="edit-board-performance-task" class="icon-button" type="button" title="Edit performance task" aria-label="Edit performance task">✎</button>
+                  </div>
+                  <div id="board-performance-task-editor" class="board-field-editor hidden">
+                    <textarea id="board-performance-task" class="text-area board-performance-task" rows="2"></textarea>
+                    <button id="confirm-board-performance-task" class="board-field-confirm" type="button">Confirm</button>
+                  </div>
+                </div>
+              </div>
+              <div class="board-actions">
+                <button id="save-unit" class="primary-button" type="button">Save Unit</button>
+                <button id="arrange-board" class="ghost-button" type="button">Overview</button>
+                <button id="clear-board" class="ghost-button" type="button">Clear Board</button>
+                <span id="save-status" class="save-status" aria-live="polite"></span>
+              </div>
+            </div>
+
+            <div id="unit-board" class="unit-board" aria-label="Freeform unit planning board">
+              <div class="board-zone meaning-zone" data-zone="meaning">
+                <span>Meaning Core</span>
+                <small>Big Idea, Guiding Question, Theme</small>
+                <div class="zone-cards"></div>
+              </div>
+              <div class="board-zone alignment-zone" data-zone="alignment">
+                <span>CPA Alignment</span>
+                <small>Learning Outcomes, Pedagogy, Assessment, 21CC</small>
+                <div class="zone-cards"></div>
+              </div>
+              <div class="board-zone content-zone" data-zone="content">
+                <span>Learning Content</span>
+                <small>Media and art forms</small>
+                <div class="zone-cards"></div>
+              </div>
+              <div class="board-zone core-zone" data-zone="core">
+                <span>Core Learning Experience</span>
+                <small>Drawing and portfolio habits</small>
+                <div class="zone-cards"></div>
+              </div>
+            </div>
+
+            <section id="unit-overview" class="unit-overview hidden" aria-label="Unit plan overview"></section>
+
+            <section class="lesson-board" aria-label="Lessons in this unit">
+              <div class="lesson-board-heading">
+                <div>
+                  <p class="eyebrow">Lessons</p>
+                  <h2>Lesson Sequence</h2>
+                </div>
+                <button id="add-lesson" class="primary-button" type="button">Add Lesson</button>
+              </div>
+              <div id="lesson-list" class="lesson-list"></div>
+            </section>
+          </section>
+
+          <section id="lesson-screen" class="lesson-screen screen-panel hidden" aria-label="Lesson activity board">
+            <div id="lesson-board-shell" class="lesson-board-shell">
+              <section class="lesson-main-panel">
+                <div id="lesson-landing" class="lesson-landing">
+                  <p class="eyebrow">Lesson Board</p>
+                  <h2>Choose A Saved Board And Lesson</h2>
+                  <p>Select a unit on the right, then choose or add a lesson to open its lesson activity plan.</p>
+                </div>
+
+                <div id="lesson-editor" class="lesson-editor hidden">
+                  <div class="lesson-editor-heading">
+                    <div>
+                      <p class="eyebrow">Lesson Board</p>
+                      <h2 id="lesson-editor-title">Lesson Activity Plan</h2>
+                    </div>
+                    <div class="lesson-editor-actions">
+                      <button id="confirm-lesson-board" class="primary-button" type="button">Save Lesson</button>
+                      <button id="edit-lesson-board" class="ghost-button" type="button">Overview</button>
+                    </div>
+                  </div>
+
+                  <div id="lesson-confirmed-view" class="lesson-confirmed-view hidden"></div>
+
+                  <div id="lesson-edit-view" class="lesson-edit-view">
+                    <section class="lesson-brief-board" aria-label="Lesson brief">
+                      <div class="lesson-brief-left">
+                        <label class="lesson-brief-card lesson-title-card">
+                          <span class="board-field-label">Lesson Title</span>
+                          <input id="lesson-title" class="text-input lesson-title-input" type="text" />
+                          <span class="lesson-edit-dot" aria-hidden="true">✎</span>
+                        </label>
+                        <div class="lesson-brief-card lesson-duration-card">
+                          <span class="board-field-label">Lesson Duration</span>
+                          <div id="lesson-duration" class="lesson-duration-display" aria-live="polite">0 minutes</div>
+                        </div>
+                        <label class="lesson-brief-card">
+                          <span class="board-field-label">Lesson Description</span>
+                          <textarea id="lesson-description" class="text-area lesson-brief-textarea" rows="3"></textarea>
+                          <span class="lesson-edit-dot" aria-hidden="true">✎</span>
+                        </label>
+                        <label class="lesson-brief-card">
+                          <span class="board-field-label">Lesson Objectives</span>
+                          <textarea id="lesson-objectives" class="text-area lesson-brief-textarea" rows="3"></textarea>
+                          <span class="lesson-edit-dot" aria-hidden="true">✎</span>
+                        </label>
+                      </div>
+
+                      <div class="lesson-brief-card lesson-reference-card">
+                        <div class="board-field-label">Artwork / Art Process Reference</div>
+                        <div id="lesson-image-preview" class="lesson-image-preview"></div>
+                        <input id="lesson-image-upload" class="hidden" type="file" accept="image/*" />
+                        <div class="lesson-image-actions">
+                          <button id="choose-lesson-image" class="ghost-button" type="button">Upload Image</button>
+                          <button id="remove-lesson-image" class="ghost-button" type="button">Remove Image</button>
+                        </div>
+                      </div>
+                    </section>
+
+                    <section class="lap-section">
+                      <div class="section-title">Lesson Planning Board</div>
+                      <div id="lesson-planning-board" class="lesson-planning-board" aria-label="Lesson planning card board">
+                        <div class="lesson-zone curricular-zone" data-lesson-zone="curricular">
+                          <span>Curricular Goals</span>
+                          <small>Learning outcomes and 21CC emphasis</small>
+                          <div class="zone-cards"></div>
+                        </div>
+                        <div class="lesson-zone pedagogy-zone" data-lesson-zone="pedagogy">
+                          <span>Pedagogy and Teaching Actions</span>
+                          <small>Teaching approach, facilitation moves and lesson actions</small>
+                          <div class="zone-cards"></div>
+                        </div>
+                        <div class="lesson-zone assessment-zone" data-lesson-zone="assessment">
+                          <span>Assessment</span>
+                          <small>Evidence, feedback and checks for learning</small>
+                          <div class="zone-cards"></div>
+                        </div>
+                        <div class="lesson-zone content-zone" data-lesson-zone="content">
+                          <span>Learning Content</span>
+                          <small>Media, artistic process and visual qualities</small>
+                          <div class="zone-cards"></div>
+                        </div>
+                        <div class="lesson-zone core-zone" data-lesson-zone="core">
+                          <span>Core Learning Experience</span>
+                          <small>Drawing and portfolio habits</small>
+                          <div class="zone-cards"></div>
+                        </div>
+                      </div>
+                    </section>
+
+                    <section class="lap-section activity-sequence-section">
+                      <div class="section-title">Sequence Of Activities</div>
+                      <div class="sequence-grid">
+                        <div class="lesson-structure-block">
+                          <div class="sequence-subtitle">Lesson Structure</div>
+                          <div id="lesson-board-structures" class="lesson-structure-options"></div>
+                        </div>
+                        <div class="learning-activities-block">
+                          <div class="sequence-subtitle">Learning Activities</div>
+                          <div id="lesson-steps" class="lesson-steps"></div>
+                          <button id="add-lesson-step" class="ghost-button" type="button">Add Activity</button>
+                        </div>
+                      </div>
+                    </section>
+                    <div class="lesson-bottom-actions">
+                      <button id="save-lesson-bottom" class="primary-button" type="button">Save Lesson</button>
+                      <span id="lesson-save-status" class="save-status" aria-live="polite"></span>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <aside class="lesson-picker-panel" aria-label="Lesson selector">
+                <div class="panel-heading compact-heading">
+                  <p class="eyebrow">Choose</p>
+                  <h2>Unit</h2>
+                </div>
+                <div id="lesson-unit-picker" class="unit-list"></div>
+
+                <div class="panel-heading compact-heading lesson-picker-heading">
+                  <p class="eyebrow">Lessons</p>
+                  <h2>Within Unit</h2>
+                </div>
+                <div id="lesson-picker-list" class="lesson-picker-list"></div>
+                <button id="add-lesson-from-board" class="primary-button" type="button">Add Lesson</button>
+              </aside>
+            </div>
+          </section>
+        </div>
+
+        <aside class="inspector-panel hidden" aria-label="Selected unit editor">
+          <div id="empty-state" class="empty-state">
+            <p class="eyebrow">Unit Editor</p>
+            <h2>Select A Unit</h2>
+            <p>Tap a timeline block to open its nested sequence, add activity clips, and refine export-ready details.</p>
+          </div>
+
+          <div id="unit-editor" class="unit-editor hidden">
+            <div class="panel-heading">
+              <p class="eyebrow">Nested Sequence</p>
+              <h2 id="editor-title">Unit</h2>
+            </div>
+
+            <label class="field-label" for="unit-title">Unit Title</label>
+            <input id="unit-title" class="text-input" type="text" />
+
+            <label class="field-label" for="unit-art-task">Art Task</label>
+            <textarea id="unit-art-task" class="text-area" rows="3"></textarea>
+
+            <div class="field-grid">
+              <label>
+                <span class="field-label">Start Week</span>
+                <input id="unit-start" class="text-input" type="number" min="1" max="80" />
+              </label>
+              <label>
+                <span class="field-label">Duration</span>
+                <input id="unit-duration" class="text-input" type="number" min="1" max="12" />
+              </label>
+            </div>
+
+            <div class="tag-section">
+              <div class="section-title">Curriculum Tags</div>
+              <div id="unit-tags" class="tag-groups"></div>
+            </div>
+
+            <div class="tag-section">
+              <div class="section-title">2YIP Context</div>
+              <label class="field-label" for="unit-student-development">Student Development</label>
+              <textarea id="unit-student-development" class="text-area" rows="2"></textarea>
+
+              <label class="field-label" for="unit-teaching-focus">Teaching & Learning Focus</label>
+              <textarea id="unit-teaching-focus" class="text-area" rows="2"></textarea>
+            </div>
+
+            <div class="tag-section">
+              <div class="section-title">Learning Content</div>
+              <label class="field-label" for="unit-context">Context / Theme / Stimulus</label>
+              <textarea id="unit-context" class="text-area" rows="2"></textarea>
+
+              <label class="field-label" for="unit-processes">Artistic Processes</label>
+              <textarea id="unit-processes" class="text-area" rows="2"></textarea>
+
+              <label class="field-label" for="unit-visual-qualities">Visual Qualities</label>
+              <textarea id="unit-visual-qualities" class="text-area" rows="2"></textarea>
+            </div>
+
+            <div class="sequence-heading">
+              <div>
+                <div class="section-title">Lesson / Activity Clips</div>
+                <p>Drop teaching moves, assessments, media, or core experiences into a week.</p>
+              </div>
+              <button id="add-activity" class="ghost-button" type="button">Add Clip</button>
+            </div>
+            <div id="activity-sequence" class="activity-sequence"></div>
+
+            <label class="field-label" for="unit-notes">Notes</label>
+            <textarea id="unit-notes" class="text-area" rows="4"></textarea>
+
+            <section class="export-preview">
+              <div class="section-title">Export Preview</div>
+              <dl id="export-preview"></dl>
+            </section>
+          </div>
+        </aside>
+      </main>
+    </div>
+
+    <script src="app.js?v=20260531-hod-analysis"></script>
+  </body>
+</html>
