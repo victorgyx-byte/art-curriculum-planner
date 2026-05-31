@@ -568,6 +568,20 @@ button:disabled {
   min-height: 0;
 }
 
+.unit-list-panel {
+  display: flex;
+  flex-direction: column;
+  max-height: min(38vh, 380px);
+  min-height: 0;
+}
+
+.unit-list-panel .unit-list {
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding-right: 4px;
+}
+
 .lesson-nav-panel {
   display: flex;
   flex-direction: column;
