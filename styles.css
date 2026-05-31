@@ -568,6 +568,20 @@ button:disabled {
   min-height: 0;
 }
 
+.lesson-nav-panel {
+  display: flex;
+  flex-direction: column;
+  max-height: min(42vh, 420px);
+  min-height: 0;
+}
+
+.lesson-nav-panel .lesson-picker-list {
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding-right: 4px;
+}
+
 .mobile-zone-tabs,
 .mobile-card-picker {
   display: none;
