@@ -3,6 +3,8 @@ const TERM_WEEK_COUNT = 10;
 const YEAR_COUNT = 2;
 const WEEK_COUNT = YEAR_WEEK_COUNT * YEAR_COUNT;
 const BOARD_SNAP = 28;
+const TIMELINE_HEADER_HEIGHT = 76;
+const TIMELINE_LANE_HEIGHT = 150;
 const STORAGE_KEY = "art-curriculum-editor-v1";
 const CLOUD_WORKSPACE_PREFIX = "teacher-workspace";
 const CLOUD_PLAN_ID = "main-planner-state";
@@ -1223,8 +1225,6 @@ function renderUnits() {
     .forEach((unit) => {
       const year = timelineYearForStart(unit.start);
       unit.start = clampUnitStartInYear(unit, year);
-      const lane = els.timelineGrid.querySelector(`.timeline-lane-row[data-year="${year}"]`);
-      if (!lane) return;
       const block = document.createElement("article");
       block.className = "unit-block";
       if (unitTimelineDuration(unit) <= 2) block.classList.add("compact");
@@ -1233,10 +1233,10 @@ function renderUnits() {
       block.setAttribute("draggable", "true");
       block.dataset.unitId = unit.id;
       block.title = `${unit.title || "Untitled Unit"} · Sec ${year} · ${timelineWeekRangeLabel(unit)}`;
-      block.style.left = `${lane.offsetLeft + (timelineLocalWeek(unit.start) - 1) * width + 4}px`;
+      block.style.left = `${timelineLaneLabelWidth() + (timelineLocalWeek(unit.start) - 1) * width + 4}px`;
       block.style.width = `${unitTimelineDuration(unit) * width - 8}px`;
-      block.style.top = `${lane.offsetTop + 10}px`;
-      block.style.height = `${Math.max(82, lane.offsetHeight - 20)}px`;
+      block.style.top = `${TIMELINE_HEADER_HEIGHT + (year - 1) * TIMELINE_LANE_HEIGHT + 10}px`;
+      block.style.height = `${TIMELINE_LANE_HEIGHT - 20}px`;
       block.innerHTML = `
         <button class="unit-block-delete" data-unit-id="${escapeAttr(unit.id)}" type="button" title="Remove from 2YIP" aria-label="Remove ${escapeAttr(unit.title || "unit")} from 2YIP">×</button>
         <span class="unit-short-code">${escapeHtml(unitTimelineDuration(unit))}L</span>
