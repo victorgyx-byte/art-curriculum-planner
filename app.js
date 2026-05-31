@@ -349,6 +349,7 @@ let timelineDrag = null;
 let boardHeaderEditing = { title: false, performanceTask: false };
 let cloudSaveTimer = null;
 let cloudSyncPaused = false;
+let historySyncPaused = false;
 let cloud = {
   available: false,
   auth: null,
@@ -356,6 +357,12 @@ let cloud = {
   user: null,
   loaded: false,
   status: "Local save",
+};
+
+const screenHashes = {
+  timeline: "#timeline",
+  board: "#unit",
+  lesson: "#lesson",
 };
 
 const els = {
@@ -450,9 +457,13 @@ const els = {
 function loadState() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
-    return saved && Array.isArray(saved.units) ? normalizeState(saved) : structuredClone(defaultState);
+    const loaded = saved && Array.isArray(saved.units) ? normalizeState(saved) : structuredClone(defaultState);
+    loaded.currentScreen = screenFromLocation();
+    return loaded;
   } catch {
-    return structuredClone(defaultState);
+    const fallback = structuredClone(defaultState);
+    fallback.currentScreen = screenFromLocation();
+    return fallback;
   }
 }
 
@@ -678,6 +689,27 @@ function showSaveStatus(message) {
   window.setTimeout(() => {
     els.saveStatus.textContent = "";
   }, 1600);
+}
+
+function screenFromLocation() {
+  const hash = window.location.hash.replace("#", "");
+  if (hash === "unit" || hash === "board") return "board";
+  if (hash === "lesson") return "lesson";
+  return "timeline";
+}
+
+function applyLocationToState() {
+  const nextScreen = screenFromLocation();
+  state.currentScreen = nextScreen;
+  if (nextScreen === "lesson") state.lessonOverviewOpen = false;
+}
+
+function syncHistoryToScreen(options = {}) {
+  if (historySyncPaused) return;
+  const hash = screenHashes[state.currentScreen] || screenHashes.timeline;
+  if (window.location.hash === hash) return;
+  const method = options.replace ? "replaceState" : "pushState";
+  window.history[method]({ screen: state.currentScreen }, "", hash);
 }
 
 function initCloudSync() {
@@ -919,6 +951,7 @@ function packAllTimelineYears() {
 }
 
 function render() {
+  syncHistoryToScreen();
   renderScreens();
   renderUnitList();
   renderLibrary();
@@ -3899,10 +3932,17 @@ els.addActivity.addEventListener("click", () => {
 els.cloudAuth.addEventListener("click", toggleCloudAuth);
 
 window.addEventListener("beforeunload", saveStateSafely);
+window.addEventListener("popstate", () => {
+  historySyncPaused = true;
+  applyLocationToState();
+  render();
+  historySyncPaused = false;
+});
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "hidden") saveStateSafely();
 });
 window.setInterval(saveStateSafely, 2000);
 
+syncHistoryToScreen({ replace: true });
 render();
 initCloudSync();
