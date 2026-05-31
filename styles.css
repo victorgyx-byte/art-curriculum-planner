@@ -278,6 +278,11 @@ button:disabled {
 .unit-list {
   display: grid;
   gap: 7px;
+  margin-bottom: 10px;
+}
+
+.add-unit-list-button {
+  width: 100%;
 }
 
 .unit-list-item {
@@ -322,6 +327,63 @@ button:disabled {
   color: var(--muted);
   font-size: 12px;
   font-weight: 750;
+}
+
+.modal-backdrop {
+  position: fixed;
+  z-index: 50;
+  inset: 0;
+  display: grid;
+  padding: 18px;
+  background: rgba(35, 35, 35, 0.28);
+  place-items: center;
+}
+
+.unit-setup-modal {
+  display: grid;
+  gap: 12px;
+  width: min(100%, 520px);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 18px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.unit-setup-modal h2 {
+  margin: 0;
+  font-size: 24px;
+}
+
+.setup-checkbox-list {
+  display: grid;
+  gap: 8px;
+}
+
+.setup-checkbox {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 9px 10px;
+  background: #fff;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.3;
+}
+
+.setup-checkbox input {
+  margin-top: 2px;
+}
+
+.unit-setup-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
 }
 
 .unit-block-delete {

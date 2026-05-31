@@ -349,6 +349,7 @@ let state = loadState();
 let dragPayload = null;
 let timelineDrag = null;
 let boardHeaderEditing = { title: false, performanceTask: false };
+let unitSetupOpen = false;
 let cloudSaveTimer = null;
 let cloudSyncPaused = false;
 let historySyncPaused = false;
@@ -437,6 +438,13 @@ const els = {
   lessonList: document.querySelector("#lesson-list"),
   addLesson: document.querySelector("#add-lesson"),
   addUnit: document.querySelector("#add-unit"),
+  unitSetupModal: document.querySelector("#unit-setup-modal"),
+  newUnitName: document.querySelector("#new-unit-name"),
+  newUnitBigIdeas: document.querySelector("#new-unit-big-ideas"),
+  newUnitLessons: document.querySelector("#new-unit-lessons"),
+  cancelUnitSetup: document.querySelector("#cancel-unit-setup"),
+  createUnitTimeline: document.querySelector("#create-unit-timeline"),
+  createUnitBoard: document.querySelector("#create-unit-board"),
   cloudPanel: document.querySelector("#cloud-panel"),
   cloudStatus: document.querySelector("#cloud-status"),
   cloudAuth: document.querySelector("#cloud-auth"),
@@ -982,6 +990,7 @@ function render() {
   syncHistoryToScreen();
   renderScreens();
   renderUnitList();
+  renderUnitSetup();
   renderLibrary();
   renderTimelineGrid();
   renderUnits();
@@ -1060,6 +1069,20 @@ function renderUnitList() {
       });
       els.unitList.append(item);
     });
+}
+
+function renderUnitSetup() {
+  if (!els.unitSetupModal) return;
+  els.unitSetupModal.classList.toggle("hidden", !unitSetupOpen);
+  if (!unitSetupOpen) return;
+  els.newUnitBigIdeas.innerHTML = libraryItemsByType("bigIdeas")
+    .map((idea, index) => `
+      <label class="setup-checkbox">
+        <input type="checkbox" name="new-unit-big-idea" value="${escapeAttr(idea)}" ${index === 0 ? "checked" : ""} />
+        <span>${escapeHtml(idea)}</span>
+      </label>
+    `)
+    .join("");
 }
 
 function renderLibrary() {
@@ -3425,13 +3448,13 @@ function escapeAttr(value = "") {
   return escapeHtml(value).replaceAll("`", "&#096;");
 }
 
-els.addUnit.addEventListener("click", () => {
+function blankUnit(overrides = {}) {
   const nextStart = clamp(
     Math.max(1, ...state.units.map((unit) => unit.start + unitTimelineDuration(unit) + 1)),
     1,
     WEEK_COUNT,
   );
-  const unit = {
+  return {
     id: uid("unit"),
     inTimeline: true,
     title: "New Unit",
@@ -3464,9 +3487,60 @@ els.addUnit.addEventListener("click", () => {
     dismissedSuggestions: [],
     suggestionVersion: SUGGESTION_VERSION,
     activities: [],
+    ...overrides,
   };
+}
+
+function createUnitFromSetup(destination) {
+  const title = els.newUnitName.value.trim() || "New Unit";
+  const lessonCount = clamp(Number.parseInt(els.newUnitLessons.value, 10) || 1, 1, 40);
+  const selectedIdeas = [...els.newUnitBigIdeas.querySelectorAll("input:checked")].map((input) => input.value);
+  const unit = blankUnit({
+    title,
+    duration: lessonCount,
+    bigIdeas: selectedIdeas,
+  });
+  selectedIdeas.forEach((idea) => {
+    unit.boardCards.push({
+      id: uid("card"),
+      type: "bigIdeas",
+      label: idea,
+      zone: "meaning",
+      order: nextBoardOrder(unit, "meaning"),
+      value: "",
+      confirmed: false,
+      purpose: defaultPurpose({ type: "bigIdeas", label: idea }),
+    });
+  });
+  unit.lessons = Array.from({ length: lessonCount }, () => createLesson(unit));
   state.units.push(unit);
   state.selectedUnitId = unit.id;
+  state.selectedLessonId = unit.lessons[0]?.id || "";
+  unitSetupOpen = false;
+  state.currentScreen = destination === "board" ? "board" : "timeline";
+  render();
+}
+
+els.addUnit.addEventListener("click", () => {
+  unitSetupOpen = true;
+  els.newUnitName.value = "";
+  els.newUnitLessons.value = "4";
+  render();
+  window.setTimeout(() => els.newUnitName.focus(), 0);
+});
+
+els.cancelUnitSetup.addEventListener("click", () => {
+  unitSetupOpen = false;
+  render();
+});
+
+els.createUnitTimeline.addEventListener("click", () => createUnitFromSetup("timeline"));
+
+els.createUnitBoard.addEventListener("click", () => createUnitFromSetup("board"));
+
+els.unitSetupModal.addEventListener("click", (event) => {
+  if (event.target !== els.unitSetupModal) return;
+  unitSetupOpen = false;
   render();
 });
 

@@ -30,7 +30,6 @@
             <button class="mode-button" data-screen="lesson" type="button">Lesson Board</button>
           </div>
           <button id="reset-demo" class="ghost-button" type="button" title="Reset demo data">Reset</button>
-          <button id="add-unit" class="primary-button" type="button">Add Unit</button>
           <div id="cloud-panel" class="cloud-panel" aria-live="polite">
             <span id="cloud-status">Online save</span>
             <button id="cloud-auth" class="ghost-button" type="button">Sign in</button>
@@ -43,9 +42,10 @@
           <section class="unit-list-panel" aria-label="Saved units">
             <div class="panel-heading compact-heading">
               <p class="eyebrow">Units</p>
-              <h2>Units</h2>
+              <h2>Saved Units</h2>
             </div>
             <div id="unit-list" class="unit-list"></div>
+            <button id="add-unit" class="primary-button add-unit-list-button" type="button">Add Unit</button>
           </section>
 
           <section id="lesson-nav-panel" class="lesson-nav-panel hidden" aria-label="Lessons in selected unit">
@@ -361,6 +361,30 @@
           </div>
         </aside>
       </main>
+    </div>
+
+    <div id="unit-setup-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="unit-setup-title">
+      <section class="unit-setup-modal">
+        <div>
+          <p class="eyebrow">New Unit</p>
+          <h2 id="unit-setup-title">Set Up Unit</h2>
+        </div>
+
+        <label class="field-label" for="new-unit-name">Unit Name</label>
+        <input id="new-unit-name" class="text-input" type="text" placeholder="e.g. Stories In Objects" />
+
+        <div class="field-label">Big Idea</div>
+        <div id="new-unit-big-ideas" class="setup-checkbox-list"></div>
+
+        <label class="field-label" for="new-unit-lessons">Number of Lessons (Estimated)</label>
+        <input id="new-unit-lessons" class="text-input" type="number" min="1" max="40" value="4" />
+
+        <div class="unit-setup-actions">
+          <button id="cancel-unit-setup" class="ghost-button" type="button">Cancel</button>
+          <button id="create-unit-timeline" class="ghost-button" type="button">Back to Timeline</button>
+          <button id="create-unit-board" class="primary-button" type="button">Proceed to Unit Board</button>
+        </div>
+      </section>
     </div>
 
     <script src="firebase-config.js"></script>
