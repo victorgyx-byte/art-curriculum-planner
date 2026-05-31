@@ -39,6 +39,47 @@ button {
   cursor: pointer;
 }
 
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+.login-gate {
+  display: grid;
+  min-height: 100vh;
+  padding: 18px;
+  place-items: center;
+}
+
+.login-panel {
+  display: grid;
+  gap: 14px;
+  width: min(100%, 460px);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 28px;
+  background: rgba(255, 253, 250, 0.94);
+  box-shadow: var(--shadow);
+}
+
+.login-panel h1 {
+  margin: 0;
+  font-size: clamp(30px, 7vw, 54px);
+  line-height: 0.96;
+}
+
+.login-panel p {
+  margin: 0;
+  color: var(--muted);
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.login-status {
+  min-height: 20px;
+  font-size: 12px;
+}
+
 .app-shell {
   min-height: 100vh;
   padding: 16px;

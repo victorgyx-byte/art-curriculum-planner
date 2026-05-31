@@ -367,6 +367,10 @@ const screenHashes = {
 
 const els = {
   library: document.querySelector("#library"),
+  appShell: document.querySelector("#app-shell"),
+  loginGate: document.querySelector("#login-gate"),
+  loginGoogle: document.querySelector("#login-google"),
+  loginStatus: document.querySelector("#login-status"),
   libraryEyebrow: document.querySelector("#library-eyebrow"),
   libraryTitle: document.querySelector("#library-title"),
   unitList: document.querySelector("#unit-list"),
@@ -717,7 +721,8 @@ function initCloudSync() {
   const hasConfig = Boolean(config.apiKey && config.authDomain && config.projectId && config.appId);
   if (!hasConfig || !window.firebase?.initializeApp) {
     cloud.available = false;
-    renderCloudStatus("Local save", "Sign in", true);
+    renderLoginGate("Online sign-in is not configured yet.", true);
+    renderCloudStatus("Online unavailable", "Sign in", true);
     return;
   }
 
@@ -726,12 +731,14 @@ function initCloudSync() {
     cloud.available = true;
     cloud.auth = window.firebase.auth();
     cloud.db = window.firebase.firestore();
+    renderLoginGate("Checking sign-in...", true);
     renderCloudStatus("Checking sign-in...", "Sign in", true);
     cloud.auth.onAuthStateChanged(handleCloudUser);
   } catch (error) {
     console.warn("Firebase setup failed", error);
     cloud.available = false;
-    renderCloudStatus("Local save", "Sign in", true);
+    renderLoginGate("Online sign-in failed to initialise.", true);
+    renderCloudStatus("Online unavailable", "Sign in", true);
   }
 }
 
@@ -739,19 +746,26 @@ async function handleCloudUser(user) {
   cloud.user = user;
   cloud.loaded = false;
   if (!user) {
-    renderCloudStatus(cloud.available ? "Not signed in" : "Local save", "Sign in");
+    els.appShell.classList.add("hidden");
+    els.loginGate.classList.remove("hidden");
+    renderLoginGate("Sign in to open your planner.", false);
+    renderCloudStatus("Not signed in", "Sign in");
     return;
   }
 
+  renderLoginGate("Loading your planner...", true);
   renderCloudStatus("Loading cloud save...", "Sign out", true);
   try {
     await ensureCloudWorkspace(user);
     await loadCloudState();
     cloud.loaded = true;
+    els.loginGate.classList.add("hidden");
+    els.appShell.classList.remove("hidden");
     renderCloudStatus(`Cloud save: ${user.displayName || user.email || "signed in"}`, "Sign out");
   } catch (error) {
     console.warn("Cloud load failed", error);
-    renderCloudStatus("Cloud unavailable. Local save active.", "Sign out");
+    renderLoginGate("Could not load your online planner. Try signing in again.", false);
+    renderCloudStatus("Cloud unavailable", "Sign out");
   }
 }
 
@@ -835,6 +849,12 @@ function renderCloudStatus(status, buttonLabel, disabled = false) {
   els.cloudAuth.textContent = buttonLabel;
   els.cloudAuth.disabled = disabled && buttonLabel !== "Sign in";
   els.cloudPanel.classList.toggle("online", Boolean(cloud.user));
+}
+
+function renderLoginGate(message, disabled = false) {
+  if (!els.loginGate) return;
+  els.loginStatus.textContent = message;
+  els.loginGoogle.disabled = disabled;
 }
 
 async function toggleCloudAuth() {
@@ -3930,6 +3950,7 @@ els.addActivity.addEventListener("click", () => {
 });
 
 els.cloudAuth.addEventListener("click", toggleCloudAuth);
+els.loginGoogle.addEventListener("click", toggleCloudAuth);
 
 window.addEventListener("beforeunload", saveStateSafely);
 window.addEventListener("popstate", () => {
