@@ -148,6 +148,16 @@ button:disabled {
   opacity: var(--card-opacity, 0.42);
 }
 
+.login-pattern-card::after {
+  display: block;
+  width: 42%;
+  height: 6px;
+  margin-top: 9px;
+  border-radius: 999px;
+  content: "";
+  background: rgba(111, 106, 97, 0.13);
+}
+
 .card-a {
   --card-tilt: -9deg;
   --card-scale: 2.35;
@@ -239,6 +249,108 @@ button:disabled {
   bottom: 5%;
   border-left-color: var(--accent-2);
   animation-delay: -2.4s;
+}
+
+.card-i {
+  --card-tilt: 5deg;
+  --card-scale: 1.14;
+  --card-width: 190px;
+  --card-opacity: 0.45;
+  top: 30%;
+  left: 21%;
+  border-left-color: var(--accent);
+  animation-delay: -5.8s;
+}
+
+.card-j {
+  --card-tilt: -6deg;
+  --card-scale: 1.04;
+  --card-width: 180px;
+  --card-opacity: 0.4;
+  top: 69%;
+  left: 28%;
+  border-left-color: var(--accent-3);
+  animation-delay: -1.1s;
+}
+
+.card-k {
+  --card-tilt: -3deg;
+  --card-scale: 1.22;
+  --card-width: 330px;
+  --card-font-size: 12px;
+  --card-opacity: 0.5;
+  top: 58%;
+  right: 9%;
+  border-left-color: var(--accent-2);
+  animation-delay: -6.2s;
+}
+
+.card-l {
+  --card-tilt: 7deg;
+  --card-scale: 0.8;
+  --card-width: 118px;
+  --card-opacity: 0.32;
+  top: 31%;
+  right: 31%;
+  border-left-color: #4d5f91;
+  animation-delay: -8.1s;
+}
+
+.card-m {
+  --card-tilt: -5deg;
+  --card-scale: 1.48;
+  --card-width: 210px;
+  --card-font-size: 14px;
+  --card-opacity: 0.34;
+  left: 4%;
+  bottom: 22%;
+  border-left-color: #4d5f91;
+  animation-delay: -3.6s;
+}
+
+.card-n {
+  --card-tilt: 4deg;
+  --card-scale: 0.7;
+  --card-width: 150px;
+  --card-opacity: 0.22;
+  right: 25%;
+  bottom: 34%;
+  border-left-color: var(--accent);
+  animation-delay: -4.9s;
+}
+
+.card-o {
+  --card-tilt: -7deg;
+  --card-scale: 1.02;
+  --card-width: 150px;
+  --card-opacity: 0.36;
+  top: 23%;
+  left: 32%;
+  border-left-color: #4d5f91;
+  animation-delay: -2.9s;
+}
+
+.card-p {
+  --card-tilt: 8deg;
+  --card-scale: 1.34;
+  --card-width: 136px;
+  --card-font-size: 15px;
+  --card-opacity: 0.3;
+  right: 28%;
+  bottom: 21%;
+  border-left-color: var(--accent-3);
+  animation-delay: -7.2s;
+}
+
+.card-q {
+  --card-tilt: -4deg;
+  --card-scale: 0.88;
+  --card-width: 142px;
+  --card-opacity: 0.33;
+  top: 48%;
+  right: 19%;
+  border-left-color: var(--accent);
+  animation-delay: -5.4s;
 }
 
 @keyframes loginCardFade {
@@ -2581,8 +2693,22 @@ button:disabled {
   }
 
   .card-c,
-  .card-f {
+  .card-f,
+  .card-n,
+  .card-q {
     display: none;
+  }
+
+  .card-i {
+    left: 12%;
+  }
+
+  .card-o {
+    left: 24%;
+  }
+
+  .card-k {
+    right: -14%;
   }
 
   .workspace {
@@ -2679,7 +2805,11 @@ button:disabled {
 
   .card-b,
   .card-d,
-  .card-g {
+  .card-g,
+  .card-k,
+  .card-m,
+  .card-o,
+  .card-q {
     display: none;
   }
 
@@ -2698,6 +2828,26 @@ button:disabled {
   .card-h {
     right: 5%;
     bottom: 16%;
+  }
+
+  .card-i {
+    top: 28%;
+    left: -9%;
+  }
+
+  .card-j {
+    left: 16%;
+    bottom: 9%;
+  }
+
+  .card-l {
+    top: 19%;
+    right: 3%;
+  }
+
+  .card-n {
+    right: -8%;
+    bottom: 31%;
   }
 
   .app-shell {
