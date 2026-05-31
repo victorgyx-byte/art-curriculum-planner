@@ -439,7 +439,7 @@ const els = {
   addLesson: document.querySelector("#add-lesson"),
   addUnit: document.querySelector("#add-unit"),
   unitSetupModal: document.querySelector("#unit-setup-modal"),
-  newUnitName: document.querySelector("#new-unit-name"),
+  newUnitTitle: document.querySelector("#new-unit-name"),
   newUnitBigIdeas: document.querySelector("#new-unit-big-ideas"),
   newUnitLessons: document.querySelector("#new-unit-lessons"),
   cancelUnitSetup: document.querySelector("#cancel-unit-setup"),
@@ -3457,7 +3457,7 @@ function blankUnit(overrides = {}) {
   return {
     id: uid("unit"),
     inTimeline: true,
-    title: "New Unit",
+    title: "Untitled Unit",
     artTask: "",
     start: nextStart,
     duration: 1,
@@ -3492,7 +3492,7 @@ function blankUnit(overrides = {}) {
 }
 
 function createUnitFromSetup(destination) {
-  const title = els.newUnitName.value.trim() || "New Unit";
+  const title = els.newUnitTitle.value.trim() || "Untitled Unit";
   const lessonCount = clamp(Number.parseInt(els.newUnitLessons.value, 10) || 1, 1, 40);
   const selectedIdeas = [...els.newUnitBigIdeas.querySelectorAll("input:checked")].map((input) => input.value);
   const unit = blankUnit({
@@ -3517,16 +3517,19 @@ function createUnitFromSetup(destination) {
   state.selectedUnitId = unit.id;
   state.selectedLessonId = unit.lessons[0]?.id || "";
   unitSetupOpen = false;
+  boardHeaderEditing = { title: false, performanceTask: false };
+  state.unitOverviewOpen = false;
+  state.lessonOverviewOpen = false;
   state.currentScreen = destination === "board" ? "board" : "timeline";
   render();
 }
 
 els.addUnit.addEventListener("click", () => {
   unitSetupOpen = true;
-  els.newUnitName.value = "";
+  els.newUnitTitle.value = "";
   els.newUnitLessons.value = "4";
   render();
-  window.setTimeout(() => els.newUnitName.focus(), 0);
+  window.setTimeout(() => els.newUnitTitle.focus(), 0);
 });
 
 els.cancelUnitSetup.addEventListener("click", () => {
