@@ -275,6 +275,11 @@ button:disabled {
   min-height: 0;
 }
 
+.mobile-zone-tabs,
+.mobile-card-picker {
+  display: none;
+}
+
 .unit-list {
   display: grid;
   gap: 7px;
@@ -2451,6 +2456,10 @@ button:disabled {
     grid-template-columns: 1fr;
   }
 
+  .workspace:not(.timeline-mode) .card-library-panel {
+    display: none;
+  }
+
   .library-panel {
     max-height: none;
     overflow: visible;
@@ -2474,7 +2483,115 @@ button:disabled {
 
   .unit-board {
     grid-template-columns: 1fr;
-    min-height: 680px;
+    min-height: 0;
+    margin-top: 8px;
+  }
+
+  .mobile-zone-tabs {
+    position: sticky;
+    top: 8px;
+    z-index: 8;
+    display: flex;
+    gap: 7px;
+    margin: 10px 14px 0;
+    overflow-x: auto;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 7px;
+    background: rgba(255, 253, 250, 0.96);
+    box-shadow: 0 10px 24px rgba(42, 37, 29, 0.12);
+    scrollbar-width: none;
+  }
+
+  .mobile-zone-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .mobile-zone-tab {
+    flex: 0 0 auto;
+    min-height: 34px;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    padding: 7px 10px;
+    background: transparent;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 900;
+    white-space: nowrap;
+  }
+
+  .mobile-zone-tab.active {
+    border-color: rgba(47, 111, 115, 0.28);
+    background: rgba(219, 238, 237, 0.9);
+    color: var(--accent);
+  }
+
+  .mobile-card-picker {
+    display: grid;
+    gap: 9px;
+    margin: 0 14px 14px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 10px;
+    background: rgba(255, 253, 250, 0.94);
+  }
+
+  .mobile-zone-tabs.hidden,
+  .mobile-card-picker.hidden {
+    display: none;
+  }
+
+  .mobile-card-picker-category {
+    border: 1px solid rgba(216, 208, 194, 0.9);
+    border-radius: var(--radius);
+    background: #fff;
+    overflow: hidden;
+  }
+
+  .mobile-card-picker-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    width: 100%;
+    border: 0;
+    padding: 9px 10px;
+    background: #fbf6ec;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 950;
+    text-align: left;
+    text-transform: uppercase;
+  }
+
+  .mobile-card-picker-content {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 7px;
+    padding: 8px;
+  }
+
+  .mobile-card-picker-category.collapsed .mobile-card-picker-content {
+    display: none;
+  }
+
+  .mobile-card-option {
+    width: 100%;
+    min-height: 42px;
+    border: 1px solid var(--line);
+    border-left: 5px solid var(--accent);
+    border-radius: var(--radius);
+    padding: 9px 10px;
+    background: #fff;
+    color: var(--ink);
+    font-size: 14px;
+    font-weight: 850;
+    line-height: 1.25;
+    text-align: left;
+  }
+
+  .mobile-card-option:active {
+    transform: translateY(1px);
   }
 
   .unit-document {
@@ -2501,6 +2618,10 @@ button:disabled {
     min-height: 180px;
   }
 
+  .unit-board .board-zone:not(.selected-zone) {
+    display: none;
+  }
+
   .lesson-board-heading {
     flex-direction: column;
   }
@@ -2512,6 +2633,7 @@ button:disabled {
   .lesson-planning-board {
     grid-template-columns: 1fr;
     min-height: 0;
+    margin-top: 8px;
   }
 
   .lesson-brief-left {
@@ -2529,6 +2651,10 @@ button:disabled {
 
   .lesson-zone {
     min-height: 170px;
+  }
+
+  .lesson-planning-board .lesson-zone:not(.selected-zone) {
+    display: none;
   }
 
   .lesson-activity-grid {

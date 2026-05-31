@@ -405,6 +405,8 @@ const els = {
   removeLessonImage: document.querySelector("#remove-lesson-image"),
   lessonInheritedChips: document.querySelector("#lesson-inherited-chips"),
   lessonPlanningBoard: document.querySelector("#lesson-planning-board"),
+  mobileLessonTabs: document.querySelector("#mobile-lesson-tabs"),
+  mobileLessonCardPicker: document.querySelector("#mobile-lesson-card-picker"),
   lessonBoardZones: document.querySelectorAll(".lesson-zone"),
   lessonBoardStructures: document.querySelector("#lesson-board-structures"),
   lessonSteps: document.querySelector("#lesson-steps"),
@@ -428,6 +430,8 @@ const els = {
   editBoardPerformanceTask: document.querySelector("#edit-board-performance-task"),
   confirmBoardPerformanceTask: document.querySelector("#confirm-board-performance-task"),
   unitBoard: document.querySelector("#unit-board"),
+  mobileBoardTabs: document.querySelector("#mobile-board-tabs"),
+  mobileUnitCardPicker: document.querySelector("#mobile-unit-card-picker"),
   unitOverview: document.querySelector("#unit-overview"),
   boardZones: document.querySelectorAll(".board-zone"),
   saveUnit: document.querySelector("#save-unit"),
@@ -1177,13 +1181,16 @@ function createLibraryCategory(title, key) {
 }
 
 function boardZoneLabel(zone) {
-  const labels = {
-    meaning: "Meaning Core",
-    alignment: "CPA Alignment",
-    content: "Learning Content",
-    core: "Core Learning Experience",
-  };
-  return labels[zone] || "Selected Window";
+  return boardZoneDefinitions().find((definition) => definition.key === zone)?.label || "Selected Window";
+}
+
+function boardZoneDefinitions() {
+  return [
+    { key: "meaning", label: "Meaning Core" },
+    { key: "content", label: "Learning Content" },
+    { key: "core", label: "Core Learning Experience" },
+    { key: "alignment", label: "Curricular Goals / CPA Alignment" },
+  ];
 }
 
 function renderTimelineGrid() {
@@ -1338,6 +1345,8 @@ function renderBoard() {
   const showOverview = Boolean(state.unitOverviewOpen);
   els.boardHeading.classList.toggle("hidden", showOverview);
   els.unitBoard.classList.toggle("hidden", showOverview);
+  els.mobileBoardTabs.classList.toggle("hidden", showOverview);
+  els.mobileUnitCardPicker.classList.toggle("hidden", showOverview);
   els.lessonBoard.classList.toggle("hidden", showOverview);
   els.unitOverview.classList.toggle("hidden", !showOverview);
   els.clearBoard.classList.toggle("hidden", showOverview);
@@ -1435,6 +1444,8 @@ function renderBoard() {
   });
   renderSuggestions(unit);
   renderLessons(unit);
+  renderMobileBoardTabs();
+  renderMobileUnitCardPicker(unit);
 }
 
 function renderSuggestions(unit) {
@@ -1900,7 +1911,11 @@ function renderLessonBoard() {
   const hasSelection = Boolean(unit && lesson);
   els.lessonLanding.classList.toggle("hidden", hasSelection);
   els.lessonEditor.classList.toggle("hidden", !hasSelection);
-  if (!hasSelection) return;
+  if (!hasSelection) {
+    renderMobileLessonTabs();
+    renderMobileLessonCardPicker(unit, lesson);
+    return;
+  }
 
   els.lessonEditorTitle.textContent = `${unit.title || "Untitled Unit"} · ${lessonNumber(unit, lesson)}`;
   const showOverview = Boolean(state.lessonOverviewOpen);
@@ -1920,6 +1935,8 @@ function renderLessonBoard() {
   if (document.activeElement !== els.lessonObjectives) els.lessonObjectives.value = lesson.objectives || "";
   renderLessonImage(lesson);
   renderLessonPlanningBoard(lesson);
+  renderMobileLessonTabs();
+  renderMobileLessonCardPicker(unit, lesson);
   renderLessonBoardStructures(lesson);
   renderLessonSteps(lesson);
 }
@@ -2034,6 +2051,113 @@ function renderLessonCardLibrary(unit, lesson) {
 
     els.library.append(category);
   });
+}
+
+function renderMobileBoardTabs() {
+  renderMobileZoneTabs(els.mobileBoardTabs, boardZoneDefinitions(), state.selectedBoardZone, (zone) => {
+    state.selectedBoardZone = zone;
+    render();
+  });
+}
+
+function renderMobileLessonTabs() {
+  renderMobileZoneTabs(els.mobileLessonTabs, lessonZoneDefinitions(), state.selectedLessonZone, (zone) => {
+    state.selectedLessonZone = zone;
+    render();
+  });
+}
+
+function renderMobileZoneTabs(container, definitions, selectedKey, onSelect) {
+  if (!container) return;
+  container.innerHTML = "";
+  definitions.forEach((definition) => {
+    const button = document.createElement("button");
+    button.className = "mobile-zone-tab";
+    if (definition.key === selectedKey) button.classList.add("active");
+    button.type = "button";
+    button.textContent = definition.label;
+    button.setAttribute("aria-pressed", String(definition.key === selectedKey));
+    button.addEventListener("click", () => onSelect(definition.key));
+    container.append(button);
+  });
+}
+
+function renderMobileUnitCardPicker(unit) {
+  if (!els.mobileUnitCardPicker) return;
+  if (!unit) {
+    els.mobileUnitCardPicker.innerHTML = "";
+    return;
+  }
+  const activeZone = state.selectedBoardZone;
+  const sections = library
+    .map((category) => {
+      const items = category.items
+        .map((entry) => normalizeLibraryEntry(category, entry))
+        .filter((entry) => entry.type !== "teachingMoves")
+        .filter((entry) => zoneAllowsType(activeZone, entry.type));
+      return { title: category.title, key: `mobile-unit:${activeZone}:${category.title}`, items };
+    })
+    .filter((section) => section.items.length);
+  renderMobileCardPicker(els.mobileUnitCardPicker, sections, ({ type, label }) => {
+    addBoardCard(unit, { type, label }, { zone: activeZone });
+  });
+}
+
+function renderMobileLessonCardPicker(unit, lesson) {
+  if (!els.mobileLessonCardPicker) return;
+  if (!unit || !lesson) {
+    els.mobileLessonCardPicker.innerHTML = "";
+    return;
+  }
+  const sections = lessonLibrarySections(unit, state.selectedLessonZone)
+    .map((section) => ({
+      ...section,
+      key: `mobile-lesson:${state.selectedLessonZone}:${section.title}`,
+    }));
+  renderMobileCardPicker(els.mobileLessonCardPicker, sections, ({ type, label }) => {
+    addLessonBoardCard(unit, lesson, { type, label }, { zone: state.selectedLessonZone });
+  });
+}
+
+function renderMobileCardPicker(container, sections, onAdd) {
+  container.innerHTML = "";
+  if (!sections.length) {
+    container.innerHTML = `<p class="library-empty">No cards available for this planning area.</p>`;
+    return;
+  }
+  sections.forEach((section) => {
+    const category = createMobileCardPickerCategory(section.title, section.key);
+    section.items.forEach((item) => {
+      const button = document.createElement("button");
+      button.className = "mobile-card-option";
+      button.type = "button";
+      button.textContent = item.label;
+      button.dataset.type = item.type;
+      button.dataset.label = item.label;
+      button.addEventListener("click", () => onAdd(item));
+      category.querySelector(".mobile-card-picker-content").append(button);
+    });
+    container.append(category);
+  });
+}
+
+function createMobileCardPickerCategory(title, key) {
+  const collapsed = Boolean(state.collapsedCategories[key]);
+  const wrapper = document.createElement("section");
+  wrapper.className = "mobile-card-picker-category";
+  if (collapsed) wrapper.classList.add("collapsed");
+  wrapper.innerHTML = `
+    <button class="mobile-card-picker-toggle" type="button" aria-expanded="${String(!collapsed)}">
+      <span>${escapeHtml(title)}</span>
+      <span class="library-category-icon" aria-hidden="true">${collapsed ? "+" : "-"}</span>
+    </button>
+    <div class="mobile-card-picker-content"></div>
+  `;
+  wrapper.querySelector(".mobile-card-picker-toggle").addEventListener("click", () => {
+    state.collapsedCategories[key] = !state.collapsedCategories[key];
+    render();
+  });
+  return wrapper;
 }
 
 function lessonLibrarySections(unit, zone = null) {
