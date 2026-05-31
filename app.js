@@ -4,6 +4,8 @@ const YEAR_COUNT = 2;
 const WEEK_COUNT = YEAR_WEEK_COUNT * YEAR_COUNT;
 const BOARD_SNAP = 28;
 const STORAGE_KEY = "art-curriculum-editor-v1";
+const CLOUD_WORKSPACE_PREFIX = "teacher-workspace";
+const CLOUD_PLAN_ID = "main-planner-state";
 const SUGGESTION_VERSION = 2;
 const hiddenPlanningCards = new Set(["Communication, Collaboration and Information Skills"]);
 
@@ -345,6 +347,16 @@ let state = loadState();
 let dragPayload = null;
 let timelineDrag = null;
 let boardHeaderEditing = { title: false, performanceTask: false };
+let cloudSaveTimer = null;
+let cloudSyncPaused = false;
+let cloud = {
+  available: false,
+  auth: null,
+  db: null,
+  user: null,
+  loaded: false,
+  status: "Local save",
+};
 
 const els = {
   library: document.querySelector("#library"),
@@ -412,6 +424,9 @@ const els = {
   lessonList: document.querySelector("#lesson-list"),
   addLesson: document.querySelector("#add-lesson"),
   addUnit: document.querySelector("#add-unit"),
+  cloudPanel: document.querySelector("#cloud-panel"),
+  cloudStatus: document.querySelector("#cloud-status"),
+  cloudAuth: document.querySelector("#cloud-auth"),
   resetDemo: document.querySelector("#reset-demo"),
   emptyState: document.querySelector("#empty-state"),
   unitEditor: document.querySelector("#unit-editor"),
@@ -647,6 +662,7 @@ function syncLessonDescription(lesson, value) {
 
 function saveState() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  scheduleCloudSave();
 }
 
 function saveStateSafely() {
@@ -662,6 +678,149 @@ function showSaveStatus(message) {
   window.setTimeout(() => {
     els.saveStatus.textContent = "";
   }, 1600);
+}
+
+function initCloudSync() {
+  const config = window.__FIREBASE_CONFIG__ || {};
+  const hasConfig = Boolean(config.apiKey && config.authDomain && config.projectId && config.appId);
+  if (!hasConfig || !window.firebase?.initializeApp) {
+    cloud.available = false;
+    renderCloudStatus("Local save", "Sign in", true);
+    return;
+  }
+
+  try {
+    window.firebase.initializeApp(config);
+    cloud.available = true;
+    cloud.auth = window.firebase.auth();
+    cloud.db = window.firebase.firestore();
+    renderCloudStatus("Checking sign-in...", "Sign in", true);
+    cloud.auth.onAuthStateChanged(handleCloudUser);
+  } catch (error) {
+    console.warn("Firebase setup failed", error);
+    cloud.available = false;
+    renderCloudStatus("Local save", "Sign in", true);
+  }
+}
+
+async function handleCloudUser(user) {
+  cloud.user = user;
+  cloud.loaded = false;
+  if (!user) {
+    renderCloudStatus(cloud.available ? "Not signed in" : "Local save", "Sign in");
+    return;
+  }
+
+  renderCloudStatus("Loading cloud save...", "Sign out", true);
+  try {
+    await ensureCloudWorkspace(user);
+    await loadCloudState();
+    cloud.loaded = true;
+    renderCloudStatus(`Cloud save: ${user.displayName || user.email || "signed in"}`, "Sign out");
+  } catch (error) {
+    console.warn("Cloud load failed", error);
+    renderCloudStatus("Cloud unavailable. Local save active.", "Sign out");
+  }
+}
+
+async function ensureCloudWorkspace(user) {
+  const workspaceRef = cloud.db.collection("workspaces").doc(cloudWorkspaceId());
+  const memberRef = workspaceRef.collection("members").doc(user.uid);
+  const userRef = cloud.db.collection("users").doc(user.uid);
+  await workspaceRef.set({
+    name: "Art Curriculum Planner",
+    schoolName: "",
+    createdBy: user.uid,
+    updatedAt: window.firebase.firestore.FieldValue.serverTimestamp(),
+  }, { merge: true });
+  await memberRef.set({
+    role: "owner",
+    email: user.email || "",
+    displayName: user.displayName || "",
+    updatedAt: window.firebase.firestore.FieldValue.serverTimestamp(),
+  }, { merge: true });
+  await userRef.set({
+    email: user.email || "",
+    displayName: user.displayName || "",
+    lastWorkspaceId: cloudWorkspaceId(),
+    updatedAt: window.firebase.firestore.FieldValue.serverTimestamp(),
+  }, { merge: true });
+}
+
+async function loadCloudState() {
+  const planRef = cloudPlanRef();
+  const snapshot = await planRef.get();
+  const remoteState = snapshot.exists ? snapshot.data()?.state : null;
+  if (remoteState && Array.isArray(remoteState.units)) {
+    cloudSyncPaused = true;
+    state = normalizeState(remoteState);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    cloudSyncPaused = false;
+    render();
+    return;
+  }
+  await saveCloudStateNow();
+}
+
+function scheduleCloudSave() {
+  if (cloudSyncPaused || !cloud.available || !cloud.user || !cloud.loaded || !cloud.db) return;
+  window.clearTimeout(cloudSaveTimer);
+  cloudSaveTimer = window.setTimeout(saveCloudStateNow, 900);
+}
+
+async function saveCloudStateNow() {
+  if (!cloud.available || !cloud.user || !cloud.db) return;
+  try {
+    await cloudPlanRef().set({
+      title: "Main 2YIP",
+      ownerId: cloud.user.uid,
+      state,
+      updatedAt: window.firebase.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+    renderCloudStatus(`Cloud saved: ${cloud.user.displayName || cloud.user.email || "signed in"}`, "Sign out");
+  } catch (error) {
+    console.warn("Cloud save failed", error);
+    renderCloudStatus("Cloud save failed. Local save active.", "Sign out");
+  }
+}
+
+function cloudPlanRef() {
+  return cloud.db
+    .collection("workspaces")
+    .doc(cloudWorkspaceId())
+    .collection("plans")
+    .doc(CLOUD_PLAN_ID);
+}
+
+function cloudWorkspaceId() {
+  return `${CLOUD_WORKSPACE_PREFIX}-${cloud.user?.uid || "local"}`;
+}
+
+function renderCloudStatus(status, buttonLabel, disabled = false) {
+  if (!els.cloudPanel) return;
+  cloud.status = status;
+  els.cloudStatus.textContent = status;
+  els.cloudAuth.textContent = buttonLabel;
+  els.cloudAuth.disabled = disabled && buttonLabel !== "Sign in";
+  els.cloudPanel.classList.toggle("online", Boolean(cloud.user));
+}
+
+async function toggleCloudAuth() {
+  if (!cloud.available || !cloud.auth) {
+    renderCloudStatus("Firebase not connected yet", "Sign in");
+    return;
+  }
+  if (cloud.user) {
+    await cloud.auth.signOut();
+    return;
+  }
+  const provider = new window.firebase.auth.GoogleAuthProvider();
+  try {
+    await cloud.auth.signInWithPopup(provider);
+  } catch (error) {
+    console.warn("Popup sign-in failed; trying redirect", error);
+    await cloud.auth.signInWithRedirect(provider);
+  }
 }
 
 function uid(prefix) {
@@ -3737,6 +3896,8 @@ els.addActivity.addEventListener("click", () => {
   render();
 });
 
+els.cloudAuth.addEventListener("click", toggleCloudAuth);
+
 window.addEventListener("beforeunload", saveStateSafely);
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "hidden") saveStateSafely();
@@ -3744,3 +3905,4 @@ document.addEventListener("visibilitychange", () => {
 window.setInterval(saveStateSafely, 2000);
 
 render();
+initCloudSync();

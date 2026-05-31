@@ -21,6 +21,10 @@
           </div>
           <button id="reset-demo" class="ghost-button" type="button" title="Reset demo data">Reset</button>
           <button id="add-unit" class="primary-button" type="button">Add Unit</button>
+          <div id="cloud-panel" class="cloud-panel" aria-live="polite">
+            <span id="cloud-status">Local save</span>
+            <button id="cloud-auth" class="ghost-button" type="button">Sign in</button>
+          </div>
         </div>
       </header>
 
@@ -349,6 +353,10 @@
       </main>
     </div>
 
-    <script src="app.js?v=20260531-hod-analysis"></script>
+    <script src="firebase-config.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+    <script src="app.js?v=20260531-firebase-sync"></script>
   </body>
 </html>

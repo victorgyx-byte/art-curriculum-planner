@@ -27,7 +27,10 @@ service cloud.firestore {
 
       match /members/{memberId} {
         allow read: if isWorkspaceMember(workspaceId);
-        allow create, update, delete: if isWorkspaceOwner(workspaceId);
+        allow create: if signedIn()
+          && memberId == request.auth.uid
+          && get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.createdBy == request.auth.uid;
+        allow update, delete: if isWorkspaceOwner(workspaceId);
       }
 
       match /plans/{planId} {

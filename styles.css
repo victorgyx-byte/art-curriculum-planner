@@ -76,9 +76,42 @@ button {
 
 .topbar-actions {
   display: flex;
+  align-items: center;
   gap: 8px;
   flex-wrap: wrap;
   justify-content: flex-end;
+}
+
+.cloud-panel {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 4px 5px 4px 10px;
+  background: rgba(255, 253, 250, 0.82);
+}
+
+.cloud-panel.online {
+  border-color: rgba(47, 111, 115, 0.35);
+  background: rgba(219, 238, 237, 0.58);
+}
+
+#cloud-status {
+  max-width: 220px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#cloud-auth {
+  min-height: 28px;
+  padding: 4px 8px;
+  font-size: 12px;
 }
 
 .mode-switch {
