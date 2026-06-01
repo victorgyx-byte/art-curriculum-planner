@@ -1003,6 +1003,11 @@ button:disabled {
   color: #fff;
 }
 
+.big-idea-preview.purple {
+  --big-idea-soft: #ece6f6;
+  --big-idea-strong: #6f5a98;
+}
+
 .big-idea-detail-heading {
   display: grid;
   gap: 12px;
@@ -1252,6 +1257,18 @@ button:disabled {
 
 .library-item[data-type="cc21"] {
   border-left-color: #9c6b2f;
+}
+
+.library-item[data-type="cc21Goals"] {
+  border-left-color: #6f5a98;
+}
+
+.library-item.library-action,
+.mobile-card-option.library-action {
+  border-left-color: var(--accent);
+  background: rgba(47, 127, 128, 0.08);
+  color: var(--accent);
+  font-weight: 900;
 }
 
 .timeline-scroll {

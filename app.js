@@ -22,6 +22,15 @@ const SUGGESTION_VERSION = 3;
 const SNAPSHOT_INTERVAL_MS = 5 * 60 * 1000;
 const SHARED_CARD_TYPES = new Set(["cc21"]);
 const hiddenPlanningCards = new Set(["Communication, Collaboration and Information Skills"]);
+const lessonOnlyCardTypes = new Set(["teachingMoves", "cc21Goals"]);
+const deprecatedArtisticProcessCards = new Set([
+  "Observe, record and reflect",
+  "Gather and research",
+  "Generate visual possibilities",
+  "Experiment with materials and methods",
+  "Create artworks to communicate ideas",
+  "Evaluate and give feedback",
+]);
 
 const defaultCardLibrary = [
   {
@@ -322,6 +331,192 @@ const loProcessSuggestions = [
   },
 ];
 
+const cc21LessonGoalGroups = [
+  {
+    domain: "Critical, Adaptive and Inventive Thinking",
+    competencies: [
+      {
+        competency: "Critical Thinking",
+        emphasis: "Critical Thinking",
+        goals: [
+          {
+            code: "CAIT 1",
+            title: "Exercises sound reasoning and decision-making",
+            milestone: "Students can use evidence and adopt different viewpoints to explain their reasoning and decisions.",
+          },
+          {
+            code: "CAIT 2",
+            title: "Uses metacognition to enhance, monitor and regulate thinking",
+            milestone: "Students can reflect on their thoughts, attitudes, behaviour, actions and draw on relevant cognitive strategies to determine and act on the modifications required.",
+          },
+        ],
+      },
+      {
+        competency: "Adaptive Thinking",
+        emphasis: "Adaptive Thinking",
+        goals: [
+          {
+            code: "CAIT 3",
+            title: "Assesses different contexts and situations to make connections and draw new insights",
+            milestone: "Students can understand the similarities and differences between different contexts or situations and how this might affect their perspective or approach.",
+          },
+          {
+            code: "CAIT 4",
+            title: "Manages complexities and ambiguities by adjusting perspective and strategies",
+            milestone: "Students can draw on different perspectives and strategies to adjust their approach when required, applying learnt knowledge and skills in unfamiliar contexts.",
+          },
+        ],
+      },
+      {
+        competency: "Inventive Thinking",
+        emphasis: "Inventive Thinking",
+        goals: [
+          {
+            code: "CAIT 5",
+            title: "Explores possibilities and generates novel and useful ideas",
+            milestone: "Students can generate ideas that may involve modifying existing ones and explore different pathways that are appropriate to respond to an issue or challenge.",
+          },
+          {
+            code: "CAIT 6",
+            title: "Evaluates and refines ideas to formulate novel and useful solutions",
+            milestone: "Students can evaluate and refine their ideas using relevant strategies and based on a set of criteria that is appropriate for the task or context.",
+          },
+        ],
+      },
+    ],
+  },
+  {
+    domain: "Communication, Collaboration and Information Skills",
+    competencies: [
+      {
+        competency: "Communication",
+        emphasis: "Communication Skills",
+        goals: [
+          {
+            code: "CCI 1",
+            title: "Effectively communicates information and co-constructs meaning",
+            milestone: "Students can convey and evaluate knowledge to co-construct new understandings and ideas coherently, while considering the specific purpose and context of communication.",
+          },
+          {
+            code: "CCI 2",
+            title: "Engages empathetically with diverse perspectives",
+            milestone: "Students can respond with respect and empathy. Students are sensitive to the diverse backgrounds that influence different perspectives while interacting with others.",
+          },
+        ],
+      },
+      {
+        competency: "Collaboration",
+        emphasis: "Collaboration Skills",
+        goals: [
+          {
+            code: "CCI 3",
+            title: "Interacts and works effectively in group settings to contribute to shared goals",
+            milestone: "Students can manage disagreements with group members and take in suggestions, while contributing to the completion of a task to meet the shared goals.",
+          },
+          {
+            code: "CCI 4",
+            title: "Collectively defines and negotiates roles and tasks to achieve group goals",
+            milestone: "Students can determine and effectively assume the role they will play by considering the dynamics of the group.",
+          },
+        ],
+      },
+      {
+        competency: "Information Skills",
+        emphasis: "Information Skills",
+        goals: [
+          {
+            code: "CCI 5",
+            title: "Locates and evaluates digital and non-digital information and resources",
+            milestone: "Students can select, organise and synthesise information from multiple sources and verify the accuracy, credibility and currency of information by cross-referencing multiple sources.",
+          },
+          {
+            code: "CCI 6",
+            title: "Creates and shares information ethically and responsibly",
+            milestone: "Students can consider the impact of what they share and create, maintain positive relationships with others, and acknowledge sources of information.",
+          },
+        ],
+      },
+    ],
+  },
+  {
+    domain: "Civic, Global and Cross-Cultural Literacy",
+    competencies: [
+      {
+        competency: "Civic Literacy",
+        emphasis: "Civic Literacy",
+        goals: [
+          {
+            code: "CGC 1",
+            title: "Demonstrates understanding of values, ideals and issues of significance",
+            milestone: "Students can describe and explain issues that affect the culture, social and economic development, governance, future and identity of Singapore, and understand multiple perspectives on them.",
+          },
+          {
+            code: "CGC 2",
+            title: "Plays active and constructive roles to improve the school, community and nation",
+            milestone: "Students can plan and organise programmes with others that contribute to school and community, with support. Students can differentiate the civic roles played by individuals, groups and organisations in contributing to the community and nation.",
+          },
+        ],
+      },
+      {
+        competency: "Global Literacy",
+        emphasis: "Global Literacy",
+        goals: [
+          {
+            code: "CGC 3",
+            title: "Aware of global issues, interconnections and trends, and forms informed perspectives",
+            milestone: "Students can demonstrate awareness of global issues, explain their impact and describe Singapore's role in addressing issues in the global community.",
+          },
+          {
+            code: "CGC 4",
+            title: "Interacts confidently with people from Singapore and beyond on global issues",
+            milestone: "Students can interact respectfully with people from Singapore and other countries to understand each other better and/or discuss global issues and reach relevant conclusions.",
+          },
+        ],
+      },
+      {
+        competency: "Cross-Cultural Literacy",
+        emphasis: "Cross-cultural Literacy",
+        goals: [
+          {
+            code: "CGC 5",
+            title: "Aware of and appreciates the cultural background and identity of self and others",
+            milestone: "Students can appreciate the value of a diversity of cultural and religious communities' heritage, customs, and perspectives, and their contributions to Singapore and the world.",
+          },
+          {
+            code: "CGC 6",
+            title: "Shows sensitivity and openness in interactions with diverse communities",
+            milestone: "Students can demonstrate empathy, awareness of their own biases, and appropriate behaviour towards the lived experiences of people from different social, cultural and religious backgrounds within and beyond Singapore.",
+          },
+        ],
+      },
+    ],
+  },
+];
+
+const cc21LessonGoals = cc21LessonGoalGroups.flatMap((domain) =>
+  domain.competencies.flatMap((competency) =>
+    competency.goals.map((goal) => ({
+      ...goal,
+      domain: domain.domain,
+      competency: competency.competency,
+      emphasis: competency.emphasis,
+      label: `${goal.code}: ${goal.title}`,
+    })),
+  ),
+);
+
+cc21LessonGoals.forEach((goal) => {
+  libraryCardDetails[goal.label] = {
+    tone: "purple",
+    title: goal.label,
+    detailLabel: "",
+    context: [
+      `${goal.competency} | ${goal.domain}`,
+      `Lower Secondary milestone: ${goal.milestone}`,
+    ],
+  };
+});
+
 const defaultState = {
   plan: {
     id: CLOUD_PLAN_ID,
@@ -338,6 +533,7 @@ const defaultState = {
   selectedLessonZone: "curricular",
   lessonOverviewOpen: false,
   unitOverviewOpen: false,
+  showAll21ccLessonGoals: false,
   collapsedCategories: {},
   overlays: {
     bigIdeas: true,
@@ -697,6 +893,7 @@ function normalizeState(candidate) {
   normalized.selectedLessonId = normalized.selectedLessonId || "";
   normalized.lessonOverviewOpen = false;
   normalized.unitOverviewOpen = Boolean(normalized.unitOverviewOpen);
+  normalized.showAll21ccLessonGoals = Boolean(normalized.showAll21ccLessonGoals);
   normalized.selectedBoardZone = ["meaning", "alignment", "content", "core"].includes(normalized.selectedBoardZone)
     ? normalized.selectedBoardZone
     : "meaning";
@@ -823,7 +1020,7 @@ function normalizeCardLibrary(cardLibrary, options = {}) {
   const includeShared = Boolean(options.includeShared);
   const fallback = includeShared ? cloneDefaultWorkspaceCardLibrary() : cloneDefaultPlanCardLibrary();
   if (!Array.isArray(cardLibrary) || !cardLibrary.length) return fallback;
-  return cardLibrary
+  const saved = cardLibrary
     .map((category) => ({
       title: category.title || "Cards",
       type: category.type || "",
@@ -831,6 +1028,46 @@ function normalizeCardLibrary(cardLibrary, options = {}) {
     }))
     .filter((category) => includeShared ? SHARED_CARD_TYPES.has(category.type) : !SHARED_CARD_TYPES.has(category.type))
     .filter((category) => category.title && category.items.length);
+  const merged = fallback.map((defaultCategory) => {
+    const savedCategory = saved.find((category) => category.type === defaultCategory.type && category.title === defaultCategory.title)
+      || saved.find((category) => category.type === defaultCategory.type);
+    if (!savedCategory) return defaultCategory;
+    return {
+      ...defaultCategory,
+      items: mergeLibraryItems(defaultCategory, savedCategory.items),
+    };
+  });
+  saved
+    .filter((category) => !merged.some((candidate) => candidate.type === category.type || candidate.title === category.title))
+    .forEach((category) => merged.push(category));
+  return merged.filter((category) => category.items.length);
+}
+
+function mergeLibraryItems(defaultCategory, savedItems) {
+  const normalizedDefaults = defaultCategory.items
+    .map((entry) => normalizeLibraryEntry(defaultCategory, entry))
+    .filter((entry) => isCurrentLibraryEntry(entry));
+  const seen = new Set(normalizedDefaults.map(libraryEntryKey));
+  const customItems = savedItems
+    .map((entry) => normalizeLibraryEntry(defaultCategory, entry))
+    .filter((entry) => isCurrentLibraryEntry(entry))
+    .filter((entry) => {
+      const key = libraryEntryKey(entry);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .map((entry) => entry.type === defaultCategory.type ? entry.label : { label: entry.label, type: entry.type });
+  return [...defaultCategory.items, ...customItems];
+}
+
+function libraryEntryKey(entry) {
+  return `${entry.type}:${entry.label}`;
+}
+
+function isCurrentLibraryEntry(entry) {
+  if (entry.type === "artisticProcesses" && deprecatedArtisticProcessCards.has(entry.label)) return false;
+  return !hiddenPlanningCards.has(entry.label);
 }
 
 function cloneDefaultCardLibrary() {
@@ -2898,7 +3135,7 @@ function renderWorkspaceSetup() {
 }
 
 function cardDetailFor(payload) {
-  if (!payload || !["bigIdeas", "meaningText", "coreExperiences", "artisticProcesses"].includes(payload.type)) return null;
+  if (!payload || !["bigIdeas", "meaningText", "coreExperiences", "artisticProcesses", "cc21Goals"].includes(payload.type)) return null;
   return libraryCardDetails[payload.label] || null;
 }
 
@@ -4022,18 +4259,21 @@ function renderLessonCardLibrary(unit, lesson) {
     return;
   }
 
-  lessonLibrarySections(unit, state.selectedLessonZone).forEach((section) => {
+  lessonLibrarySections(unit, state.selectedLessonZone, lesson).forEach((section) => {
     const category = createLibraryCategory(section.title, `lesson:${state.selectedLessonZone}:${section.title}`);
 
     section.items.forEach((item) => {
+      const isAction = Boolean(item.action);
       const button = document.createElement("button");
       button.className = "library-item";
+      if (isAction) button.classList.add("library-action");
       button.type = "button";
       button.textContent = item.label;
-      button.draggable = true;
-      button.dataset.type = item.type;
+      button.draggable = !isAction;
+      button.dataset.type = item.type || "libraryAction";
       button.dataset.label = item.label;
       button.addEventListener("dragstart", (event) => {
+        if (isAction) return;
         dragPayload = { type: item.type, label: item.label };
         event.dataTransfer.setData("text/plain", JSON.stringify(dragPayload));
         event.dataTransfer.setData("application/json", JSON.stringify(dragPayload));
@@ -4043,6 +4283,7 @@ function renderLessonCardLibrary(unit, lesson) {
         dragPayload = null;
       });
       button.addEventListener("click", () => {
+        if (handleLibraryAction(item)) return;
         handleLibraryCardClick({ type: item.type, label: item.label }, () => {
           addLessonBoardCard(unit, lesson, { type: item.type, label: item.label });
         });
@@ -4110,7 +4351,7 @@ function renderMobileLessonCardPicker(unit, lesson) {
     els.mobileLessonCardPicker.innerHTML = "";
     return;
   }
-  const sections = lessonLibrarySections(unit, state.selectedLessonZone)
+  const sections = lessonLibrarySections(unit, state.selectedLessonZone, lesson)
     .map((section) => ({
       ...section,
       key: `mobile-lesson:${state.selectedLessonZone}:${section.title}`,
@@ -4131,11 +4372,15 @@ function renderMobileCardPicker(container, sections, onAdd) {
     section.items.forEach((item) => {
       const button = document.createElement("button");
       button.className = "mobile-card-option";
+      if (item.action) button.classList.add("library-action");
       button.type = "button";
       button.textContent = item.label;
-      button.dataset.type = item.type;
+      button.dataset.type = item.type || "libraryAction";
       button.dataset.label = item.label;
-      button.addEventListener("click", () => handleLibraryCardClick(item, () => onAdd(item)));
+      button.addEventListener("click", () => {
+        if (handleLibraryAction(item)) return;
+        handleLibraryCardClick(item, () => onAdd(item));
+      });
       category.querySelector(".mobile-card-picker-content").append(button);
     });
     container.append(category);
@@ -4161,8 +4406,19 @@ function createMobileCardPickerCategory(title, key) {
   return wrapper;
 }
 
-function lessonLibrarySections(unit, zone = null) {
-  return [
+function handleLibraryAction(item) {
+  if (!item?.action) return false;
+  if (item.action === "toggleAll21ccGoals") {
+    state.showAll21ccLessonGoals = !state.showAll21ccLessonGoals;
+    render();
+    saveState();
+    return true;
+  }
+  return false;
+}
+
+function lessonLibrarySections(unit, zone = null, lesson = null) {
+  const sections = [
     {
       title: "Learning Outcomes",
       zone: "curricular",
@@ -4180,6 +4436,7 @@ function lessonLibrarySections(unit, zone = null) {
         ...libraryItemsByType("cc21"),
       ])),
     },
+    ...cc21LessonGoalLibrarySections(unit, lesson),
     {
       title: "Pedagogy",
       zone: "pedagogy",
@@ -4221,7 +4478,7 @@ function lessonLibrarySections(unit, zone = null) {
       title: "Artistic Processes",
       zone: "content",
       items: lessonItemsFromValues("artisticProcesses", [
-        ...(unit.learningContent?.artisticProcessCards || []),
+        ...currentArtisticProcessValues(unit.learningContent?.artisticProcessCards || []),
         ...libraryItemsByType("artisticProcesses"),
       ]),
     },
@@ -4241,14 +4498,75 @@ function lessonLibrarySections(unit, zone = null) {
         ...libraryItemsByType("coreExperiences"),
       ]),
     },
-  ]
+  ];
+  return sections
     .filter((section) => !zone || section.zone === zone)
     .map((section) => ({ ...section, items: uniqueLessonLibraryItems(section.items) }))
     .filter((section) => section.items.length);
 }
 
+function cc21LessonGoalLibrarySections(unit, lesson) {
+  const sections = [];
+  const suggestedGoals = cc21GoalsForEmphases(selected21ccEmphases(unit, lesson));
+  if (suggestedGoals.length) {
+    sections.push({
+      title: "Suggested 21CC Lesson Goals",
+      zone: "curricular",
+      items: suggestedGoals.map(cc21GoalLibraryItem),
+    });
+  }
+  sections.push({
+    title: "Browse All 21CC Goals",
+    zone: "curricular",
+    items: [{
+      type: "libraryAction",
+      label: state.showAll21ccLessonGoals ? "Hide full 21CC map" : "Browse all 21CC goals",
+      action: "toggleAll21ccGoals",
+    }],
+  });
+  if (!state.showAll21ccLessonGoals) return sections;
+  cc21LessonGoalGroups.forEach((domain) => {
+    domain.competencies.forEach((competency) => {
+      sections.push({
+        title: `${competency.competency} (${domain.domain})`,
+        zone: "curricular",
+        items: competency.goals.map((goal) => cc21GoalLibraryItem({
+          ...goal,
+          domain: domain.domain,
+          competency: competency.competency,
+          emphasis: competency.emphasis,
+          label: `${goal.code}: ${goal.title}`,
+        })),
+      });
+    });
+  });
+  return sections;
+}
+
+function cc21GoalLibraryItem(goal) {
+  return { type: "cc21Goals", label: goal.label };
+}
+
+function selected21ccEmphases(unit, lesson) {
+  return visibleValues([
+    ...(unit?.cc21 || []),
+    ...(unit?.boardCards || []).filter((card) => card.type === "cc21").map((card) => card.label),
+    ...(lesson?.boardCards || []).filter((card) => card.type === "cc21").map((card) => card.label),
+  ]);
+}
+
+function cc21GoalsForEmphases(emphases) {
+  const selected = new Set(emphases);
+  if (!selected.size) return [];
+  return cc21LessonGoals.filter((goal) => selected.has(goal.emphasis) || selected.has(goal.domain));
+}
+
 function lessonItemsFromValues(type, values) {
   return values.filter(Boolean).map((label) => ({ type, label }));
+}
+
+function currentArtisticProcessValues(values) {
+  return visibleValues(values).filter((value) => !deprecatedArtisticProcessCards.has(value));
 }
 
 function libraryItemsByType(type) {
@@ -4697,9 +5015,9 @@ function selectedLearningOutcomeCodes(unit) {
 
 function selectedArtisticProcesses(unit) {
   return new Set([
-    ...(unit.learningContent?.artisticProcessCards || []),
+    ...currentArtisticProcessValues(unit.learningContent?.artisticProcessCards || []),
     ...(unit.boardCards || []).filter((card) => card.type === "artisticProcesses").map((card) => card.label),
-  ]);
+  ].filter((value) => !deprecatedArtisticProcessCards.has(value)));
 }
 
 function learningOutcomeByCode(code) {
@@ -4733,6 +5051,7 @@ function cardTypeLabel(type, card = {}) {
     assessment: "Assessment",
     pedagogy: "Pedagogy",
     cc21: "21CC",
+    cc21Goals: "21CC Lesson Goal",
   };
   return labels[type] || "Card";
 }
@@ -4797,7 +5116,8 @@ function addLessonBoardCard(unit, lesson, payload, options = {}) {
   if (!lesson || !payload) return;
   const requestedZone = options.zone || lessonZoneForType(payload.type);
   const zone = lessonZoneAllowsType(requestedZone, payload.type) ? requestedZone : lessonZoneForType(payload.type);
-  const unitCard = ensureUnitHasCard(unit, payload, { source: "lesson", sourceLessonId: lesson.id });
+  const syncToUnit = !lessonOnlyCardTypes.has(payload.type);
+  const unitCard = syncToUnit ? ensureUnitHasCard(unit, payload, { source: "lesson", sourceLessonId: lesson.id }) : null;
   const inheritedFromUnit = Boolean(unitCard && !unitCard.lessonOrigin);
   const existing = lesson.boardCards.find((card) => card.type === payload.type && card.label === payload.label);
   if (existing && !allowsDuplicateBoardCard(payload.type, payload.label)) {
@@ -4948,6 +5268,7 @@ function lessonZoneForType(type) {
   const zones = {
     learningOutcomes: "curricular",
     cc21: "curricular",
+    cc21Goals: "curricular",
     pedagogy: "pedagogy",
     teachingMoves: "pedagogy",
     assessment: "assessment",
@@ -4988,7 +5309,7 @@ function zoneAllowsType(zone, type) {
 
 function lessonZoneAllowsType(zone, type) {
   const allowed = {
-    curricular: ["learningOutcomes", "cc21"],
+    curricular: ["learningOutcomes", "cc21", "cc21Goals"],
     pedagogy: ["pedagogy", "teachingMoves"],
     assessment: ["assessment"],
     content: ["meaningText", "media", "context", "artisticProcesses", "visualQualities", "visualQualityText"],
