@@ -195,7 +195,7 @@ const libraryCardDetails = {
   "Guiding Question": {
     tone: "orange",
     title: "Guiding Question",
-    detailLabel: "Elaboration",
+    detailLabel: "",
     context: [
       "Beginning with questions helps to ground the lesson unit in inquiry-led approaches.",
     ],
@@ -2860,9 +2860,12 @@ function openCardDetail(payload, onInsert) {
   }
 
   cardDetailInsertAction = onInsert;
-  els.cardDetailPreview.className = `big-idea-preview ${detail.tone}`;
+  els.cardDetailPreview.className = `big-idea-preview ${detail.tone} no-label`;
   els.cardDetailTitle.textContent = detail.title;
-  if (els.cardDetailLabel) els.cardDetailLabel.textContent = detail.detailLabel || "Context";
+  if (els.cardDetailLabel) {
+    els.cardDetailLabel.textContent = "";
+    els.cardDetailLabel.classList.add("hidden");
+  }
   els.cardDetailContext.innerHTML = detail.context.map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`).join("");
   els.cardDetailModal.classList.remove("hidden");
 }
