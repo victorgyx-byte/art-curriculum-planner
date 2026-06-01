@@ -975,6 +975,11 @@ button:disabled {
   --big-idea-strong: #c5ddf0;
 }
 
+.big-idea-preview.orange {
+  --big-idea-soft: #fff0dd;
+  --big-idea-strong: #f39a14;
+}
+
 .big-idea-detail-heading {
   display: grid;
   grid-template-columns: 86px minmax(0, 1fr);

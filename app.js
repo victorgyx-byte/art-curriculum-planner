@@ -165,10 +165,11 @@ const defaultCardLibrary = [
   },
 ];
 
-const bigIdeaDetails = {
+const libraryCardDetails = {
   "Art helps us to see in new ways.": {
     tone: "yellow",
     title: "Art helps us to see in new ways.",
+    detailLabel: "Context",
     context: [
       "Artists use a variety of means such as sketching and photography to record what they see in the world around them. Each method of recording has its unique features and helps us to focus on different aspects and visual qualities of what we see.",
       "Artists also change the visual attributes of what they see to draw attention to the world around us.",
@@ -177,6 +178,7 @@ const bigIdeaDetails = {
   "Art tells stories about our world.": {
     tone: "pink",
     title: "Art tells stories about our world.",
+    detailLabel: "Context",
     context: [
       "Artworks often present a different perspective to events depicted, and provide a glimpse into the lives and concerns of artists and the people they portray.",
       "We can learn about community, and aspects of how people live, and relate to one another by understanding the events depicted; and why and how people are depicted together in artworks.",
@@ -185,8 +187,17 @@ const bigIdeaDetails = {
   "Art influences the way we live.": {
     tone: "blue",
     title: "Art influences the way we live.",
+    detailLabel: "Context",
     context: [
       "Art is inseparable from daily life. Almost everything around us had been put together using visual principles. Art is present as part of our daily living, from the design and ergonomics of things we use, to advertisements we see around us, to the design of everyday spaces we navigate through. Over time, many of these unique images, artefacts and dwelling spaces have come to represent the cultures from which they originate. Artists use their knowledge of how images work to communicate certain ideas and persuade people to take actions.",
+    ],
+  },
+  "Guiding Question": {
+    tone: "orange",
+    title: "Guiding Question",
+    detailLabel: "Elaboration",
+    context: [
+      "Beginning with questions helps to ground the lesson unit in inquiry-led approaches.",
     ],
   },
 };
@@ -457,6 +468,7 @@ const els = {
   cardDetailModal: document.querySelector("#card-detail-modal"),
   cardDetailPreview: document.querySelector("#card-detail-preview"),
   cardDetailTitle: document.querySelector("#card-detail-title"),
+  cardDetailLabel: document.querySelector("#card-detail-label"),
   cardDetailContext: document.querySelector("#card-detail-context"),
   cardDetailCancel: document.querySelector("#card-detail-cancel"),
   cardDetailInsert: document.querySelector("#card-detail-insert"),
@@ -2811,13 +2823,13 @@ function renderWorkspaceSetup() {
   els.workspaceSetupModal.classList.toggle("hidden", !workspaceSetupOpen);
 }
 
-function bigIdeaDetailFor(payload) {
-  if (!payload || payload.type !== "bigIdeas") return null;
-  return bigIdeaDetails[payload.label] || null;
+function cardDetailFor(payload) {
+  if (!payload || !["bigIdeas", "meaningText"].includes(payload.type)) return null;
+  return libraryCardDetails[payload.label] || null;
 }
 
-function openBigIdeaDetail(payload, onInsert) {
-  const detail = bigIdeaDetailFor(payload);
+function openCardDetail(payload, onInsert) {
+  const detail = cardDetailFor(payload);
   if (!detail || !els.cardDetailModal) {
     onInsert();
     return;
@@ -2826,6 +2838,7 @@ function openBigIdeaDetail(payload, onInsert) {
   cardDetailInsertAction = onInsert;
   els.cardDetailPreview.className = `big-idea-preview ${detail.tone}`;
   els.cardDetailTitle.textContent = detail.title;
+  if (els.cardDetailLabel) els.cardDetailLabel.textContent = detail.detailLabel || "Context";
   els.cardDetailContext.innerHTML = detail.context.map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`).join("");
   els.cardDetailModal.classList.remove("hidden");
 }
@@ -2836,8 +2849,8 @@ function closeCardDetail() {
 }
 
 function handleLibraryCardClick(payload, onInsert) {
-  if (bigIdeaDetailFor(payload)) {
-    openBigIdeaDetail(payload, onInsert);
+  if (cardDetailFor(payload)) {
+    openCardDetail(payload, onInsert);
     return;
   }
   onInsert();
