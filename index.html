@@ -54,7 +54,6 @@
             <button class="mode-button" data-screen="board" type="button">Unit Board</button>
             <button class="mode-button" data-screen="lesson" type="button">Lesson Board</button>
           </div>
-          <button id="reset-demo" class="ghost-button" type="button" title="Reset demo data">Reset</button>
           <div id="cloud-panel" class="cloud-panel" aria-live="polite">
             <span id="cloud-status">Online save</span>
             <button id="cloud-auth" class="ghost-button" type="button">Sign in</button>
@@ -69,6 +68,7 @@
             <h2>Choose A Planning Workspace</h2>
           </div>
           <p>Pick a team, open a 2YIP plan, or create a new one.</p>
+          <button id="recovery-trash" class="ghost-button" type="button">Trash</button>
         </div>
 
         <div id="workspace-card-grid" class="workspace-card-grid"></div>
@@ -510,6 +510,19 @@
       </section>
     </div>
 
+    <div id="recovery-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="recovery-title">
+      <section class="unit-setup-modal recovery-modal">
+        <div>
+          <p class="eyebrow">Recovery</p>
+          <h2 id="recovery-title">Recovery</h2>
+        </div>
+        <div id="recovery-body" class="recovery-body"></div>
+        <div class="unit-setup-actions">
+          <button id="recovery-close" class="ghost-button" type="button">Close</button>
+        </div>
+      </section>
+    </div>
+
     <script>
       window.__ART_APP_BOOTED__ = false;
       window.addEventListener("error", (event) => {
@@ -527,6 +540,6 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-    <script src="app.js?v=20260601-delete-reliability"></script>
+    <script src="app.js?v=20260601-anti-disappearance"></script>
   </body>
 </html>

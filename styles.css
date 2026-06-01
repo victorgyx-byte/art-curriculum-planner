@@ -655,6 +655,42 @@ button:disabled {
   font-weight: 900;
 }
 
+.recovery-body {
+  display: grid;
+  gap: 12px;
+  max-height: min(64vh, 620px);
+  overflow: auto;
+}
+
+.recovery-list {
+  display: grid;
+  gap: 8px;
+}
+
+.recovery-item {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px;
+  background: rgba(255, 253, 250, 0.94);
+}
+
+.recovery-item strong {
+  font-size: 18px;
+}
+
+.recovery-item small {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.muted-copy {
+  margin: 0;
+  color: var(--muted);
+  font-weight: 750;
+}
+
 .workspace-home-section,
 .team-management-panel {
   display: grid;

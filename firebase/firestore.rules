@@ -102,6 +102,11 @@ service cloud.firestore {
               && request.resource.data.email == request.auth.token.email);
           allow delete: if isWorkspaceOwner(workspaceId) || isWorkspaceCreator(workspaceId);
         }
+
+        match /snapshots/{snapshotId} {
+          allow read, create: if canReadWritePlan(workspaceId, planId) || isWorkspaceCreator(workspaceId);
+          allow update, delete: if false;
+        }
       }
     }
   }
