@@ -608,6 +608,7 @@ function learningOutcomeNumber(value) {
 function lessonCardsFromUnit(unit, removedKeys = []) {
   const removed = new Set(removedKeys);
   return (unit.boardCards || [])
+    .filter((card) => !card.lessonOrigin)
     .filter((card) => lessonZoneAllowsType(lessonZoneForType(card.type), card.type))
     .filter((card) => !removed.has(cardKey(card)))
     .map((card, index) => ({
@@ -2730,6 +2731,8 @@ function addBoardCard(unit, payload, point) {
   const zone = zoneAllowsType(requestedZone, payload.type) ? requestedZone : zoneForType(payload.type);
   if (!allowsDuplicateBoardCard(payload.type, payload.label) && unit.boardCards.some((card) => card.type === payload.type && card.label === payload.label)) {
     const existing = unit.boardCards.find((card) => card.type === payload.type && card.label === payload.label);
+    existing.lessonOrigin = false;
+    existing.sourceLessonIds = [];
     existing.zone = zone;
     existing.order = nextBoardOrder(unit, zone);
     syncUnitCardToLessons(unit, existing);
@@ -2783,12 +2786,13 @@ function addLessonBoardCard(unit, lesson, payload, options = {}) {
   if (!lesson || !payload) return;
   const requestedZone = options.zone || lessonZoneForType(payload.type);
   const zone = lessonZoneAllowsType(requestedZone, payload.type) ? requestedZone : lessonZoneForType(payload.type);
-  const unitCard = ensureUnitHasCard(unit, payload);
+  const unitCard = ensureUnitHasCard(unit, payload, { source: "lesson", sourceLessonId: lesson.id });
+  const inheritedFromUnit = Boolean(unitCard && !unitCard.lessonOrigin);
   const existing = lesson.boardCards.find((card) => card.type === payload.type && card.label === payload.label);
   if (existing && !allowsDuplicateBoardCard(payload.type, payload.label)) {
     existing.zone = zone;
-    existing.inherited = Boolean(unitCard);
-    existing.unitCardKey = unitCard ? cardKey(unitCard) : existing.unitCardKey;
+    existing.inherited = inheritedFromUnit;
+    existing.unitCardKey = inheritedFromUnit ? cardKey(unitCard) : "";
     existing.order = nextLessonCardOrder(lesson, zone);
     render();
     return;
@@ -2799,16 +2803,22 @@ function addLessonBoardCard(unit, lesson, payload, options = {}) {
     label: payload.label,
     zone,
     order: nextLessonCardOrder(lesson, zone),
-    inherited: Boolean(unitCard),
-    unitCardKey: unitCard ? cardKey(unitCard) : "",
+    inherited: inheritedFromUnit,
+    unitCardKey: inheritedFromUnit ? cardKey(unitCard) : "",
   });
   render();
 }
 
-function ensureUnitHasCard(unit, payload) {
+function ensureUnitHasCard(unit, payload, options = {}) {
   if (!unit || !payload) return null;
   const existing = unit.boardCards.find((card) => card.type === payload.type && card.label === payload.label);
-  if (existing && !allowsDuplicateBoardCard(payload.type, payload.label)) return existing;
+  if (existing && !allowsDuplicateBoardCard(payload.type, payload.label)) {
+    if (options.source === "lesson" && existing.lessonOrigin && options.sourceLessonId) {
+      existing.sourceLessonIds = existing.sourceLessonIds || [];
+      addUnique(existing.sourceLessonIds, options.sourceLessonId);
+    }
+    return existing;
+  }
   const zone = zoneForType(payload.type);
   const card = {
     id: uid("card"),
@@ -2819,21 +2829,28 @@ function ensureUnitHasCard(unit, payload) {
     value: defaultTextCardValue(unit, payload),
     confirmed: Boolean(defaultTextCardValue(unit, payload)),
     purpose: defaultPurpose(payload),
+    lessonOrigin: options.source === "lesson",
+    sourceLessonIds: options.sourceLessonId ? [options.sourceLessonId] : [],
   };
   unit.boardCards.push(card);
   addLibraryItemToUnit(unit, payload, { silent: true });
-  syncUnitCardToLessons(unit, card);
+  if (!card.lessonOrigin) syncUnitCardToLessons(unit, card);
   return card;
 }
 
 function syncUnitCardToLessons(unit, unitCard) {
   if (!unit || !unitCard) return;
+  if (unitCard.lessonOrigin) return;
   unit.lessons?.forEach((lesson) => {
     lesson.removedUnitCardKeys = lesson.removedUnitCardKeys || [];
     if (lesson.removedUnitCardKeys.includes(cardKey(unitCard))) return;
-    const exists = lesson.boardCards?.some((card) => (card.unitCardKey || cardKey(card)) === cardKey(unitCard));
-    if (exists) return;
     lesson.boardCards = lesson.boardCards || [];
+    const existing = lesson.boardCards.find((card) => (card.unitCardKey || cardKey(card)) === cardKey(unitCard));
+    if (existing) {
+      existing.inherited = true;
+      existing.unitCardKey = cardKey(unitCard);
+      return;
+    }
     lesson.boardCards.push({
       id: uid("lesson-card"),
       type: unitCard.type,
