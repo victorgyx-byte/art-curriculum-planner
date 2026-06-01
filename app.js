@@ -5061,11 +5061,18 @@ function addBoardCard(unit, payload, point) {
   const zone = zoneAllowsType(requestedZone, payload.type) ? requestedZone : zoneForType(payload.type);
   if (!allowsDuplicateBoardCard(payload.type, payload.label) && unit.boardCards.some((card) => card.type === payload.type && card.label === payload.label)) {
     const existing = unit.boardCards.find((card) => card.type === payload.type && card.label === payload.label);
+    if (payload.type === "coreExperiences") {
+      addLibraryItemToUnit(unit, payload, { silent: true });
+      saveState();
+      render();
+      return;
+    }
     existing.lessonOrigin = false;
     existing.sourceLessonIds = [];
     existing.zone = zone;
     existing.order = nextBoardOrder(unit, zone);
     syncUnitCardToLessons(unit, existing);
+    saveState();
     render();
     return;
   }
@@ -5082,6 +5089,7 @@ function addBoardCard(unit, payload, point) {
   unit.boardCards.push(card);
   addLibraryItemToUnit(unit, payload, { silent: true });
   syncUnitCardToLessons(unit, card);
+  saveState();
   render();
 }
 
@@ -5110,6 +5118,7 @@ function removeBoardCard(unit, card) {
     removeValueAtPath(unit, "learningContent.visualQualityCards", value);
   }
   syncMeaningTextCardsToUnit(unit);
+  saveState();
 }
 
 function addLessonBoardCard(unit, lesson, payload, options = {}) {
