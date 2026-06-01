@@ -1311,6 +1311,8 @@ async function ensureCloudWorkspace(user) {
   const workspaceRef = cloud.db.collection("workspaces").doc(workspaceId);
   const memberRef = workspaceRef.collection("members").doc(user.uid);
   const userRef = cloud.db.collection("users").doc(user.uid);
+  const userSnapshot = await userRef.get();
+  const existingUserData = userSnapshot.exists ? userSnapshot.data() || {} : {};
   await workspaceRef.set({
     name: "My Planner",
     schoolName: "",
@@ -1327,7 +1329,7 @@ async function ensureCloudWorkspace(user) {
   await userRef.set({
     email: user.email || "",
     displayName: user.displayName || "",
-    lastWorkspaceId: workspaceId,
+    lastWorkspaceId: existingUserData.lastWorkspaceId || workspaceId,
     workspaces: {
       [workspaceId]: {
         id: workspaceId,
@@ -1461,25 +1463,43 @@ async function saveCloudWorkspaceLibrary() {
 }
 
 async function loadCloudPlanCatalog() {
-  planCatalog = planCatalog.filter((plan) => plan.workspaceId !== cloudWorkspaceId());
+  const workspaceId = cloudWorkspaceId();
+  const loadedPlans = [];
   const plansRef = cloud.db.collection("workspaces").doc(cloudWorkspaceId()).collection("plans");
   if (canManageActiveWorkspace()) {
     const snapshot = await plansRef.get();
-    snapshot.forEach((doc) => mergeCloudPlanIntoCatalog(doc.id, { ...doc.data(), role: "owner" }));
+    snapshot.forEach((doc) => {
+      loadedPlans.push(normalizePlanMetadata({
+        id: doc.id,
+        title: doc.data()?.title || doc.data()?.state?.plan?.title || "Untitled Plan",
+        subject: doc.data()?.subject || doc.data()?.state?.plan?.subject || "Art",
+        teamId: doc.data()?.teamId || doc.data()?.state?.plan?.teamId || "",
+        teamName: doc.data()?.teamName || doc.data()?.state?.plan?.teamName || "",
+        workspaceId,
+        role: "owner",
+      }));
+    });
   } else {
     const sharedPlans = userAccessiblePlans.filter((plan) => plan.workspaceId === cloudWorkspaceId());
     for (const sharedPlan of sharedPlans) {
       const snapshot = await plansRef.doc(sharedPlan.planId).get();
       if (snapshot.exists) {
-        mergeCloudPlanIntoCatalog(snapshot.id, {
-          ...snapshot.data(),
+        loadedPlans.push(normalizePlanMetadata({
+          id: snapshot.id,
           title: snapshot.data()?.title || sharedPlan.planTitle,
           subject: snapshot.data()?.subject || sharedPlan.subject,
+          teamId: snapshot.data()?.teamId || snapshot.data()?.state?.plan?.teamId || "",
+          teamName: snapshot.data()?.teamName || snapshot.data()?.state?.plan?.teamName || "",
+          workspaceId,
           role: sharedPlan.role || "editor",
-        });
+        }));
       }
     }
   }
+  planCatalog = [
+    ...planCatalog.filter((plan) => plan.workspaceId !== workspaceId),
+    ...loadedPlans,
+  ];
   savePlanCatalog();
   const nextPlan = firstPlanForActiveWorkspace();
   if (nextPlan && !plansForActiveWorkspace().some((plan) => plan.id === activePlanId())) {
