@@ -949,6 +949,114 @@ button:disabled {
   justify-content: flex-end;
 }
 
+.card-detail-modal {
+  width: min(100%, 760px);
+}
+
+.big-idea-preview {
+  --big-idea-soft: #f8d3d5;
+  --big-idea-strong: #efc2c7;
+  display: grid;
+  gap: 14px;
+}
+
+.big-idea-preview.yellow {
+  --big-idea-soft: #ffe680;
+  --big-idea-strong: #ffdc55;
+}
+
+.big-idea-preview.pink {
+  --big-idea-soft: #f6d0d2;
+  --big-idea-strong: #efc2c7;
+}
+
+.big-idea-preview.blue {
+  --big-idea-soft: #d8eafa;
+  --big-idea-strong: #c5ddf0;
+}
+
+.big-idea-detail-heading {
+  display: grid;
+  grid-template-columns: 86px minmax(0, 1fr);
+  gap: 10px;
+  align-items: end;
+}
+
+.big-idea-detail-heading h2 {
+  margin: 0 0 8px;
+  border-radius: 8px;
+  padding: 10px 16px;
+  background: var(--big-idea-soft);
+  color: #3d4146;
+  font-size: clamp(24px, 4vw, 36px);
+  font-weight: 800;
+  line-height: 1.08;
+  text-align: center;
+}
+
+.big-idea-mark {
+  position: relative;
+  display: block;
+  width: 74px;
+  height: 80px;
+}
+
+.big-idea-mark-piece {
+  position: absolute;
+  display: block;
+  width: 0;
+  height: 0;
+}
+
+.mark-top {
+  top: 0;
+  left: 31px;
+  border-right: 25px solid transparent;
+  border-bottom: 50px solid #ffe84f;
+  border-left: 25px solid transparent;
+  transform: rotate(1deg);
+}
+
+.mark-left {
+  bottom: 0;
+  left: 0;
+  border-right: 37px solid transparent;
+  border-bottom: 57px solid #65bde8;
+}
+
+.mark-right {
+  right: 0;
+  bottom: 0;
+  border-bottom: 57px solid #ee4f70;
+  border-left: 37px solid transparent;
+}
+
+.big-idea-context-label {
+  padding: 12px 14px;
+  background: var(--big-idea-strong);
+  color: #3d4146;
+  font-size: 24px;
+  font-weight: 800;
+  line-height: 1;
+  text-align: center;
+}
+
+.big-idea-context {
+  display: grid;
+  gap: 14px;
+  border: 3px solid var(--big-idea-strong);
+  border-top: 0;
+  padding: 18px 22px;
+  background: #fff;
+  color: #2b3b4d;
+  font-size: 18px;
+  line-height: 1.35;
+}
+
+.big-idea-context p {
+  margin: 0;
+}
+
 .unit-block-delete {
   display: inline-grid;
   place-items: center;

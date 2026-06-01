@@ -165,6 +165,32 @@ const defaultCardLibrary = [
   },
 ];
 
+const bigIdeaDetails = {
+  "Art helps us to see in new ways.": {
+    tone: "yellow",
+    title: "Art helps us to see in new ways.",
+    context: [
+      "Artists use a variety of means such as sketching and photography to record what they see in the world around them. Each method of recording has its unique features and helps us to focus on different aspects and visual qualities of what we see.",
+      "Artists also change the visual attributes of what they see to draw attention to the world around us.",
+    ],
+  },
+  "Art tells stories about our world.": {
+    tone: "pink",
+    title: "Art tells stories about our world.",
+    context: [
+      "Artworks often present a different perspective to events depicted, and provide a glimpse into the lives and concerns of artists and the people they portray.",
+      "We can learn about community, and aspects of how people live, and relate to one another by understanding the events depicted; and why and how people are depicted together in artworks.",
+    ],
+  },
+  "Art influences the way we live.": {
+    tone: "blue",
+    title: "Art influences the way we live.",
+    context: [
+      "Art is inseparable from daily life. Almost everything around us had been put together using visual principles. Art is present as part of our daily living, from the design and ergonomics of things we use, to advertisements we see around us, to the design of everyday spaces we navigate through. Over time, many of these unique images, artefacts and dwelling spaces have come to represent the cultures from which they originate. Artists use their knowledge of how images work to communicate certain ideas and persuade people to take actions.",
+    ],
+  },
+};
+
 const defaultWorkspaceCardLibrary = defaultCardLibrary.filter((category) => SHARED_CARD_TYPES.has(category.type));
 
 const lessonStructureCards = [
@@ -398,6 +424,7 @@ let workspaceDirectoryWorkspaceId = "";
 let workspaceDirectoryLoading = false;
 let planCatalogVerified = false;
 let cloudSaveBlocked = false;
+let cardDetailInsertAction = null;
 
 const screenHashes = {
   workspace: "#workspace",
@@ -427,6 +454,12 @@ const els = {
   recoveryTitle: document.querySelector("#recovery-title"),
   recoveryBody: document.querySelector("#recovery-body"),
   recoveryClose: document.querySelector("#recovery-close"),
+  cardDetailModal: document.querySelector("#card-detail-modal"),
+  cardDetailPreview: document.querySelector("#card-detail-preview"),
+  cardDetailTitle: document.querySelector("#card-detail-title"),
+  cardDetailContext: document.querySelector("#card-detail-context"),
+  cardDetailCancel: document.querySelector("#card-detail-cancel"),
+  cardDetailInsert: document.querySelector("#card-detail-insert"),
   teamManagementPanel: document.querySelector("#team-management-panel"),
   teamInviteForm: document.querySelector("#team-invite-form"),
   inviteEmail: document.querySelector("#invite-email"),
@@ -2778,6 +2811,38 @@ function renderWorkspaceSetup() {
   els.workspaceSetupModal.classList.toggle("hidden", !workspaceSetupOpen);
 }
 
+function bigIdeaDetailFor(payload) {
+  if (!payload || payload.type !== "bigIdeas") return null;
+  return bigIdeaDetails[payload.label] || null;
+}
+
+function openBigIdeaDetail(payload, onInsert) {
+  const detail = bigIdeaDetailFor(payload);
+  if (!detail || !els.cardDetailModal) {
+    onInsert();
+    return;
+  }
+
+  cardDetailInsertAction = onInsert;
+  els.cardDetailPreview.className = `big-idea-preview ${detail.tone}`;
+  els.cardDetailTitle.textContent = detail.title;
+  els.cardDetailContext.innerHTML = detail.context.map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`).join("");
+  els.cardDetailModal.classList.remove("hidden");
+}
+
+function closeCardDetail() {
+  cardDetailInsertAction = null;
+  els.cardDetailModal?.classList.add("hidden");
+}
+
+function handleLibraryCardClick(payload, onInsert) {
+  if (bigIdeaDetailFor(payload)) {
+    openBigIdeaDetail(payload, onInsert);
+    return;
+  }
+  onInsert();
+}
+
 function renderLibrary() {
   els.library.innerHTML = "";
   els.lessonNavPanel.classList.toggle("hidden", state.currentScreen !== "lesson");
@@ -2825,11 +2890,13 @@ function renderLibrary() {
       item.addEventListener("click", () => {
         const unit = selectedUnit();
         if (!unit) return;
-        if (state.currentScreen === "board") {
-          addBoardCard(unit, { type, label }, { zone: state.selectedBoardZone });
-        } else {
-          addLibraryItemToUnit(unit, { type, label });
-        }
+        handleLibraryCardClick({ type, label }, () => {
+          if (state.currentScreen === "board") {
+            addBoardCard(unit, { type, label }, { zone: state.selectedBoardZone });
+          } else {
+            addLibraryItemToUnit(unit, { type, label });
+          }
+        });
       });
       wrapper.querySelector(".library-category-content").append(item);
     });
@@ -3886,7 +3953,9 @@ function renderLessonCardLibrary(unit, lesson) {
         dragPayload = null;
       });
       button.addEventListener("click", () => {
-        addLessonBoardCard(unit, lesson, { type: item.type, label: item.label });
+        handleLibraryCardClick({ type: item.type, label: item.label }, () => {
+          addLessonBoardCard(unit, lesson, { type: item.type, label: item.label });
+        });
       });
       category.querySelector(".library-category-content").append(button);
     });
@@ -3976,7 +4045,7 @@ function renderMobileCardPicker(container, sections, onAdd) {
       button.textContent = item.label;
       button.dataset.type = item.type;
       button.dataset.label = item.label;
-      button.addEventListener("click", () => onAdd(item));
+      button.addEventListener("click", () => handleLibraryCardClick(item, () => onAdd(item)));
       category.querySelector(".mobile-card-picker-content").append(button);
     });
     container.append(category);
@@ -6176,6 +6245,15 @@ els.addActivity.addEventListener("click", () => {
 els.cloudAuth?.addEventListener("click", toggleCloudAuth);
 els.loginGoogle?.addEventListener("click", toggleCloudAuth);
 els.loginReset?.addEventListener("click", resetCloudSignIn);
+els.cardDetailCancel?.addEventListener("click", closeCardDetail);
+els.cardDetailInsert?.addEventListener("click", () => {
+  const action = cardDetailInsertAction;
+  closeCardDetail();
+  if (action) action();
+});
+els.cardDetailModal?.addEventListener("click", (event) => {
+  if (event.target === els.cardDetailModal) closeCardDetail();
+});
 
 window.addEventListener("error", (event) => {
   console.warn("Planner startup error", event.error || event.message);

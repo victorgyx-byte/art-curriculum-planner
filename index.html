@@ -523,6 +523,27 @@
       </section>
     </div>
 
+    <div id="card-detail-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="card-detail-title">
+      <section class="unit-setup-modal card-detail-modal">
+        <div id="card-detail-preview" class="big-idea-preview">
+          <div class="big-idea-detail-heading">
+            <span class="big-idea-mark" aria-hidden="true">
+              <span class="big-idea-mark-piece mark-top"></span>
+              <span class="big-idea-mark-piece mark-left"></span>
+              <span class="big-idea-mark-piece mark-right"></span>
+            </span>
+            <h2 id="card-detail-title">Big Idea</h2>
+          </div>
+          <div class="big-idea-context-label">Context</div>
+          <div id="card-detail-context" class="big-idea-context"></div>
+        </div>
+        <div class="unit-setup-actions">
+          <button id="card-detail-cancel" class="ghost-button" type="button">Cancel</button>
+          <button id="card-detail-insert" class="primary-button" type="button">Insert Into Board</button>
+        </div>
+      </section>
+    </div>
+
     <script>
       window.__ART_APP_BOOTED__ = false;
       window.addEventListener("error", (event) => {
@@ -540,6 +561,6 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-    <script src="app.js?v=20260601-preserve-refresh-screen"></script>
+    <script src="app.js?v=20260601-big-idea-preview"></script>
   </body>
 </html>
