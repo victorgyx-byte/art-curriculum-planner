@@ -1845,6 +1845,34 @@ function syncLessonDescription(lesson, value) {
   lesson.details = value;
 }
 
+function planContentScore(planState) {
+  const valueLength = (value) => String(value || "").trim().length;
+  return (planState?.units || []).reduce((total, unit) => {
+    const lessonScore = (unit.lessons || []).reduce((lessonTotal, lesson) => {
+      const stepScore = (lesson.steps || []).reduce((stepTotal, step) => (
+        stepTotal
+        + valueLength(step.description)
+        + valueLength(step.evidence)
+        + valueLength(step.customisation)
+        + valueLength(step.duration)
+      ), 0);
+      return lessonTotal
+        + 20
+        + valueLength(lesson.title)
+        + valueLength(lesson.description)
+        + valueLength(lesson.details)
+        + valueLength(lesson.objectives)
+        + stepScore;
+    }, 0);
+    return total
+      + 50
+      + valueLength(unit.title)
+      + valueLength(unit.artTask)
+      + (unit.boardCards || []).length * 10
+      + lessonScore;
+  }, 0);
+}
+
 function saveState() {
   if (cloud.available && !cloud.user && els.loginGate && !els.loginGate.classList.contains("hidden")) return;
   const storedPlanId = localStorage.getItem(ACTIVE_PLAN_STORAGE_KEY);
@@ -1855,6 +1883,7 @@ function saveState() {
   if (state.currentScreen === "workspace" && !planMetaById(activePlanId())) return;
   state.plan = normalizePlanMetadata(state.plan);
   state.cardLibrary = normalizeCardLibrary(state.cardLibrary);
+  state.localSavedAtMs = Date.now();
   savePlanToCatalog(state.plan);
   const currentWorkspace = currentWorkspaceMeta();
   saveWorkspaceToCatalog({
@@ -1868,6 +1897,7 @@ function saveState() {
   localStorage.setItem(ACTIVE_PLAN_STORAGE_KEY, activePlanId());
   localStorage.setItem(planStateStorageKey(), JSON.stringify(state));
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  localStorage.setItem(lastGoodPlanStateStorageKey(), JSON.stringify(state));
   scheduleCloudSave();
 }
 
@@ -2314,8 +2344,39 @@ async function loadCloudState() {
     return;
   }
   if (remoteState && Array.isArray(remoteState.units)) {
+    const localState = loadLocalPlanState(snapshot.id) || loadLastGoodPlanState(snapshot.id);
+    const normalizedRemote = normalizeState(remoteState);
+    if (localState && localState.plan?.id === snapshot.id) {
+      const localScore = planContentScore(localState);
+      const remoteScore = planContentScore(normalizedRemote);
+      const localSavedAt = Number(localState.localSavedAtMs || 0);
+      const remoteSavedAt = Number(remoteState.localSavedAtMs || 0);
+      if (localScore > remoteScore || (localSavedAt && localSavedAt > remoteSavedAt && localScore >= remoteScore)) {
+        cloudSyncPaused = true;
+        state = normalizeState(localState);
+        state.plan = normalizePlanMetadata({
+          ...state.plan,
+          id: snapshot.id,
+          title: snapshot.data()?.title || state.plan.title,
+          subject: snapshot.data()?.subject || state.plan.subject,
+          teamId: snapshot.data()?.teamId || state.plan.teamId,
+          teamName: snapshot.data()?.teamName || state.plan.teamName,
+          role: planMetaById(snapshot.id)?.role || state.plan.role,
+        });
+        savePlanToCatalog(state.plan);
+        localStorage.setItem(ACTIVE_PLAN_STORAGE_KEY, activePlanId());
+        localStorage.setItem(planStateStorageKey(), JSON.stringify(state));
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        localStorage.setItem(lastGoodPlanStateStorageKey(), JSON.stringify(state));
+        cloudSyncPaused = false;
+        renderCloudStatus("Recovered newer local lesson edits. Saving them online...", "Sign out");
+        render();
+        window.setTimeout(saveCloudStateNow, 100);
+        return;
+      }
+    }
     cloudSyncPaused = true;
-    state = normalizeState(remoteState);
+    state = normalizedRemote;
     state.plan = normalizePlanMetadata({
       ...state.plan,
       id: snapshot.id,
@@ -2344,16 +2405,20 @@ function scheduleCloudSave() {
 }
 
 async function saveCloudStateNow() {
-  if (!cloud.available || !cloud.user || !cloud.db) return;
-  if (state.currentScreen === "workspace") return;
+  window.clearTimeout(cloudSaveTimer);
+  if (!cloud.available || !cloud.user || !cloud.db) return false;
+  if (state.currentScreen === "workspace") return false;
   const planMeta = planMetaById(activePlanId());
   if (!planCatalogVerified || !planMeta || planMeta.deletedAt || planMeta.stale || state.plan?.id !== activePlanId() || state.plan?.workspaceId !== activeWorkspaceId()) {
     cloudSaveBlocked = true;
     renderCloudStatus("Plan not verified. Saving paused to prevent overwrite.", "Sign out");
-    return;
+    return false;
   }
   try {
+    state.localSavedAtMs = Date.now();
     const cleanState = cleanCloudState(state);
+    cleanState.cloudSavedAtMs = Date.now();
+    cleanState.localSavedAtMs = state.localSavedAtMs;
     await cloudPlanRef().set({
       title: activePlanTitle(),
       subject: state.plan?.subject || "Art",
@@ -2363,15 +2428,47 @@ async function saveCloudStateNow() {
       state: cleanState,
       updatedAt: window.firebase.firestore.FieldValue.serverTimestamp(),
     }, { merge: true });
+    state.cloudSavedAtMs = cleanState.cloudSavedAtMs;
+    localStorage.setItem(planStateStorageKey(), JSON.stringify(state));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     localStorage.setItem(lastGoodPlanStateStorageKey(), JSON.stringify(cleanState));
     await createPlanSnapshot("autosave", cleanState, { onlyIfDue: true });
     cloudSaveBlocked = false;
     renderCloudStatus(`Cloud saved: ${cloud.user.displayName || cloud.user.email || "signed in"}`, "Sign out");
+    return true;
   } catch (error) {
     console.warn("Cloud save failed", error);
     localStorage.setItem(lastGoodPlanStateStorageKey(), JSON.stringify(state));
     renderCloudStatus(`Saved locally, cloud retry pending: ${error.code || error.message || "check rules"}`, "Sign out");
+    return false;
   }
+}
+
+async function commitPlanSaveNow({ statusElement, buttons = [], successMessage = "Saved online" } = {}) {
+  const buttonList = buttons.filter(Boolean);
+  const originalLabels = buttonList.map((button) => button.textContent);
+  buttonList.forEach((button) => {
+    button.disabled = true;
+    button.textContent = "Saving...";
+  });
+  if (statusElement) statusElement.textContent = "Saving online...";
+  saveState();
+  const savedOnline = await saveCloudStateNow();
+  const message = savedOnline
+    ? successMessage
+    : (cloud.available && cloud.user ? "Saved locally; online retry pending" : "Saved locally");
+  if (statusElement) statusElement.textContent = message;
+  buttonList.forEach((button, index) => {
+    button.disabled = false;
+    button.textContent = savedOnline ? "Saved" : originalLabels[index];
+  });
+  window.setTimeout(() => {
+    if (statusElement) statusElement.textContent = "";
+    buttonList.forEach((button, index) => {
+      button.textContent = originalLabels[index];
+    });
+  }, 1600);
+  return savedOnline;
 }
 
 function cleanCloudState(value) {
@@ -6494,15 +6591,18 @@ els.addLessonFromBoard.addEventListener("click", () => {
   render();
 });
 
-els.saveUnit.addEventListener("click", () => {
+els.saveUnit.addEventListener("click", async () => {
   const unit = selectedUnit();
   if (!unit) return;
   boardHeaderEditing = { title: false, performanceTask: false };
-  saveState();
   renderUnitList();
   renderUnits();
   renderBoard();
-  showSaveStatus("Saved");
+  await commitPlanSaveNow({
+    statusElement: els.saveStatus,
+    buttons: [els.saveUnit],
+    successMessage: "Saved online",
+  });
 });
 
 els.editBoardTitle.addEventListener("click", () => {
@@ -6589,19 +6689,17 @@ els.lessonObjectives.addEventListener("input", (event) => {
   saveState();
 });
 
-function saveCurrentLesson() {
+async function saveCurrentLesson() {
   const lesson = selectedLesson();
   if (!lesson) return;
   lesson.confirmed = true;
   state.lessonOverviewOpen = false;
-  saveState();
   render();
-  els.lessonSaveStatus.textContent = "Saved";
-  els.confirmLessonBoard.textContent = "Saved";
-  window.setTimeout(() => {
-    els.lessonSaveStatus.textContent = "";
-    els.confirmLessonBoard.textContent = "Save Lesson";
-  }, 1200);
+  await commitPlanSaveNow({
+    statusElement: els.lessonSaveStatus,
+    buttons: [els.confirmLessonBoard, els.saveLessonBottom],
+    successMessage: "Lesson saved online",
+  });
 }
 
 els.confirmLessonBoard.addEventListener("click", saveCurrentLesson);
