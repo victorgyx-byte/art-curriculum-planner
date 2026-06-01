@@ -6,6 +6,8 @@ const BOARD_SNAP = 28;
 const TIMELINE_HEADER_HEIGHT = 76;
 const TIMELINE_LANE_HEIGHT = 150;
 const STORAGE_KEY = "art-curriculum-editor-v1";
+const ACTIVE_PLAN_STORAGE_KEY = "art-curriculum-active-plan-id";
+const PLAN_CATALOG_STORAGE_KEY = "art-curriculum-plan-catalog";
 const CLOUD_WORKSPACE_PREFIX = "teacher-workspace";
 const CLOUD_PLAN_ID = "main-planner-state";
 const SUGGESTION_VERSION = 2;
@@ -353,11 +355,13 @@ const defaultState = {
   ],
 };
 
+let planCatalog = loadPlanCatalog();
 let state = loadState();
 let dragPayload = null;
 let timelineDrag = null;
 let boardHeaderEditing = { title: false, performanceTask: false };
 let unitSetupOpen = false;
+let planSetupOpen = false;
 let cloudSaveTimer = null;
 let cloudSyncPaused = false;
 let historySyncPaused = false;
@@ -384,6 +388,8 @@ const els = {
   loginStatus: document.querySelector("#login-status"),
   libraryEyebrow: document.querySelector("#library-eyebrow"),
   libraryTitle: document.querySelector("#library-title"),
+  planSelect: document.querySelector("#plan-select"),
+  newPlan: document.querySelector("#new-plan"),
   unitList: document.querySelector("#unit-list"),
   timelineGrid: document.querySelector("#timeline-grid"),
   unitLayer: document.querySelector("#unit-layer"),
@@ -457,6 +463,12 @@ const els = {
   cancelUnitSetup: document.querySelector("#cancel-unit-setup"),
   createUnitTimeline: document.querySelector("#create-unit-timeline"),
   createUnitBoard: document.querySelector("#create-unit-board"),
+  planSetupModal: document.querySelector("#plan-setup-modal"),
+  newPlanTitle: document.querySelector("#new-plan-title"),
+  newPlanSubject: document.querySelector("#new-plan-subject"),
+  newPlanTeam: document.querySelector("#new-plan-team"),
+  cancelPlanSetup: document.querySelector("#cancel-plan-setup"),
+  createPlan: document.querySelector("#create-plan"),
   cloudPanel: document.querySelector("#cloud-panel"),
   cloudStatus: document.querySelector("#cloud-status"),
   cloudAuth: document.querySelector("#cloud-auth"),
@@ -482,13 +494,18 @@ const els = {
 
 function loadState() {
   try {
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    const activePlanId = localStorage.getItem(ACTIVE_PLAN_STORAGE_KEY);
+    const saved = JSON.parse(localStorage.getItem(planStateStorageKey(activePlanId)) || localStorage.getItem(STORAGE_KEY));
     const loaded = saved && Array.isArray(saved.units) ? normalizeState(saved) : structuredClone(defaultState);
     loaded.currentScreen = screenFromLocation();
+    savePlanToCatalog(loaded.plan);
+    localStorage.setItem(ACTIVE_PLAN_STORAGE_KEY, loaded.plan.id);
     return loaded;
   } catch {
     const fallback = structuredClone(defaultState);
     fallback.currentScreen = screenFromLocation();
+    savePlanToCatalog(fallback.plan);
+    localStorage.setItem(ACTIVE_PLAN_STORAGE_KEY, fallback.plan.id);
     return fallback;
   }
 }
@@ -587,6 +604,128 @@ function cloneDefaultCardLibrary() {
 
 function activeCardLibrary() {
   return Array.isArray(state.cardLibrary) && state.cardLibrary.length ? state.cardLibrary : defaultCardLibrary;
+}
+
+function planStateStorageKey(planId = activePlanId()) {
+  return `${STORAGE_KEY}:${planId || CLOUD_PLAN_ID}`;
+}
+
+function loadPlanCatalog() {
+  try {
+    const catalog = JSON.parse(localStorage.getItem(PLAN_CATALOG_STORAGE_KEY));
+    return Array.isArray(catalog) ? catalog : [];
+  } catch {
+    return [];
+  }
+}
+
+function savePlanCatalog() {
+  localStorage.setItem(PLAN_CATALOG_STORAGE_KEY, JSON.stringify(planCatalog));
+}
+
+function savePlanToCatalog(plan = state.plan) {
+  const normalized = normalizePlanMetadata(plan);
+  const existing = planCatalog.find((entry) => entry.id === normalized.id);
+  if (existing) {
+    Object.assign(existing, normalized);
+  } else {
+    planCatalog.push(normalized);
+  }
+  savePlanCatalog();
+}
+
+function createPlanState({ title, subject, teamName }) {
+  const next = normalizeState({
+    ...structuredClone(defaultState),
+    plan: {
+      id: uid("plan"),
+      title: title || `${subject || "Art"} 2YIP`,
+      subject: subject || "Art",
+      teamId: teamName ? slugify(teamName) : "",
+      teamName: teamName || "",
+    },
+    cardLibrary: cloneLibraryForSubject(subject || "Art"),
+    units: [],
+    selectedUnitId: "",
+    selectedLessonId: "",
+    currentScreen: "timeline",
+  });
+  return next;
+}
+
+function loadLocalPlanState(planId) {
+  try {
+    const saved = JSON.parse(localStorage.getItem(planStateStorageKey(planId)));
+    return saved && Array.isArray(saved.units) ? normalizeState(saved) : null;
+  } catch {
+    return null;
+  }
+}
+
+function planMetaById(planId) {
+  return planCatalog.find((plan) => plan.id === planId) || null;
+}
+
+async function persistCurrentPlanBeforeSwitch() {
+  saveState();
+  if (cloud.loaded) await saveCloudStateNow();
+}
+
+async function switchPlan(planId) {
+  if (!planId || planId === activePlanId()) return;
+  const currentScreen = state.currentScreen;
+  await persistCurrentPlanBeforeSwitch();
+  localStorage.setItem(ACTIVE_PLAN_STORAGE_KEY, planId);
+  const catalogPlan = planMetaById(planId);
+  let nextState = loadLocalPlanState(planId);
+  if (!nextState && catalogPlan) {
+    nextState = createPlanState({
+      title: catalogPlan.title,
+      subject: catalogPlan.subject,
+      teamName: catalogPlan.teamName,
+    });
+    nextState.plan.id = catalogPlan.id;
+  }
+  if (!nextState) nextState = structuredClone(defaultState);
+
+  if (cloud.loaded) {
+    try {
+      const snapshot = await cloudPlanRefFor(planId).get();
+      const remoteState = snapshot.exists ? snapshot.data()?.state : null;
+      if (remoteState && Array.isArray(remoteState.units)) nextState = normalizeState(remoteState);
+    } catch (error) {
+      console.warn("Plan switch cloud load failed", error);
+    }
+  }
+
+  state = normalizeState(nextState);
+  state.currentScreen = currentScreen || "timeline";
+  saveState();
+  render();
+}
+
+function cloneLibraryForSubject(subject) {
+  const cloned = cloneDefaultCardLibrary();
+  if (subject !== "Music") return cloned;
+  return cloned.map((category) => {
+    if (category.title === "Media / Art Forms") {
+      return {
+        ...category,
+        items: ["Voice", "Percussion", "Keyboard", "Guitar", "Music Technology", "Ensemble", "Composition"],
+      };
+    }
+    if (category.title === "Core Learning Experiences") {
+      return {
+        ...category,
+        items: ["Listen and Respond", "Perform", "Create", "Document and Reflect"],
+      };
+    }
+    return category;
+  });
+}
+
+function slugify(value) {
+  return value.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 }
 
 function normalizeLessons(lessons, unit = {}) {
@@ -737,6 +876,9 @@ function syncLessonDescription(lesson, value) {
 }
 
 function saveState() {
+  savePlanToCatalog(state.plan);
+  localStorage.setItem(ACTIVE_PLAN_STORAGE_KEY, activePlanId());
+  localStorage.setItem(planStateStorageKey(), JSON.stringify(state));
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   scheduleCloudSave();
 }
@@ -862,6 +1004,9 @@ async function loadCloudState() {
   if (remoteState && Array.isArray(remoteState.units)) {
     cloudSyncPaused = true;
     state = normalizeState(remoteState);
+    savePlanToCatalog(state.plan);
+    localStorage.setItem(ACTIVE_PLAN_STORAGE_KEY, activePlanId());
+    localStorage.setItem(planStateStorageKey(), JSON.stringify(state));
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     cloudSyncPaused = false;
     render();
@@ -884,6 +1029,7 @@ async function saveCloudStateNow() {
       title: activePlanTitle(),
       subject: state.plan?.subject || "Art",
       teamId: state.plan?.teamId || "",
+      teamName: state.plan?.teamName || "",
       ownerId: cloud.user.uid,
       state: cleanState,
       updatedAt: window.firebase.firestore.FieldValue.serverTimestamp(),
@@ -900,11 +1046,15 @@ function cleanCloudState(value) {
 }
 
 function cloudPlanRef() {
+  return cloudPlanRefFor(activePlanId());
+}
+
+function cloudPlanRefFor(planId) {
   return cloud.db
     .collection("workspaces")
     .doc(cloudWorkspaceId())
     .collection("plans")
-    .doc(activePlanId());
+    .doc(planId || CLOUD_PLAN_ID);
 }
 
 function cloudWorkspaceId() {
@@ -1050,8 +1200,10 @@ function packAllTimelineYears() {
 function render() {
   syncHistoryToScreen();
   renderScreens();
+  renderPlanControls();
   renderUnitList();
   renderUnitSetup();
+  renderPlanSetup();
   renderLibrary();
   renderTimelineGrid();
   renderUnits();
@@ -1144,6 +1296,20 @@ function renderUnitSetup() {
       </label>
     `)
     .join("");
+}
+
+function renderPlanControls() {
+  if (!els.planSelect) return;
+  savePlanToCatalog(state.plan);
+  els.planSelect.innerHTML = planCatalog
+    .map((plan) => `<option value="${escapeAttr(plan.id)}">${escapeHtml(plan.title || "Untitled Plan")}</option>`)
+    .join("");
+  els.planSelect.value = activePlanId();
+}
+
+function renderPlanSetup() {
+  if (!els.planSetupModal) return;
+  els.planSetupModal.classList.toggle("hidden", !planSetupOpen);
 }
 
 function renderLibrary() {
@@ -2125,7 +2291,8 @@ function bindLessonPickerReorderControls(scope, unit, lesson) {
 
 function bindLessonDragReorder(node, unit, lesson) {
   node.addEventListener("dragstart", (event) => {
-    if (event.target.closest("button, input, textarea, select, .lesson-picker-move")) {
+    const interactiveTarget = event.target.closest("button, input, textarea, select, .lesson-picker-move");
+    if (interactiveTarget && interactiveTarget !== node) {
       event.preventDefault();
       return;
     }
@@ -2141,19 +2308,25 @@ function bindLessonDragReorder(node, unit, lesson) {
     event.preventDefault();
     event.dataTransfer.dropEffect = "move";
     node.classList.add("lesson-drop-target");
+    const rect = node.getBoundingClientRect();
+    const position = event.clientY > rect.top + rect.height / 2 ? "after" : "before";
+    node.classList.toggle("drop-after", position === "after");
+    node.classList.toggle("drop-before", position === "before");
   });
   node.addEventListener("dragleave", () => {
-    node.classList.remove("lesson-drop-target");
+    node.classList.remove("lesson-drop-target", "drop-before", "drop-after");
   });
   node.addEventListener("drop", (event) => {
     const payload = readDragPayload(event);
-    node.classList.remove("lesson-drop-target");
+    const rect = node.getBoundingClientRect();
+    const position = event.clientY > rect.top + rect.height / 2 ? "after" : "before";
+    node.classList.remove("lesson-drop-target", "drop-before", "drop-after");
     if (payload?.kind !== "lessonReorder" || payload.unitId !== unit.id || payload.lessonId === lesson.id) return;
     event.preventDefault();
-    reorderLessonBefore(unit, payload.lessonId, lesson.id);
+    reorderLessonRelative(unit, payload.lessonId, lesson.id, position);
   });
   node.addEventListener("dragend", () => {
-    node.classList.remove("dragging", "lesson-drop-target");
+    node.classList.remove("dragging", "lesson-drop-target", "drop-before", "drop-after");
     dragPayload = null;
   });
 }
@@ -2180,10 +2353,15 @@ function moveLesson(unit, lessonId, direction) {
 }
 
 function reorderLessonBefore(unit, movingLessonId, targetLessonId) {
+  reorderLessonRelative(unit, movingLessonId, targetLessonId, "before");
+}
+
+function reorderLessonRelative(unit, movingLessonId, targetLessonId, position = "before") {
   if (!unit?.lessons?.length) return;
   const from = unit.lessons.findIndex((lesson) => lesson.id === movingLessonId);
   let to = unit.lessons.findIndex((lesson) => lesson.id === targetLessonId);
   if (from < 0 || to < 0 || from === to) return;
+  if (position === "after") to += 1;
   const [lesson] = unit.lessons.splice(from, 1);
   if (from < to) to -= 1;
   unit.lessons.splice(to, 0, lesson);
@@ -3925,6 +4103,44 @@ els.unitSetupModal.addEventListener("click", (event) => {
   if (event.target !== els.unitSetupModal) return;
   unitSetupOpen = false;
   render();
+});
+
+els.newPlan?.addEventListener("click", () => {
+  planSetupOpen = true;
+  els.newPlanTitle.value = "";
+  els.newPlanSubject.value = "Art";
+  els.newPlanTeam.value = "";
+  render();
+  window.setTimeout(() => els.newPlanTitle.focus(), 0);
+});
+
+els.cancelPlanSetup?.addEventListener("click", () => {
+  planSetupOpen = false;
+  render();
+});
+
+els.createPlan?.addEventListener("click", async () => {
+  const title = els.newPlanTitle.value.trim();
+  const subject = els.newPlanSubject.value;
+  const teamName = els.newPlanTeam.value.trim();
+  await persistCurrentPlanBeforeSwitch();
+  state = createPlanState({ title, subject, teamName });
+  state.currentScreen = "timeline";
+  localStorage.setItem(ACTIVE_PLAN_STORAGE_KEY, activePlanId());
+  planSetupOpen = false;
+  saveState();
+  render();
+  if (cloud.loaded) await saveCloudStateNow();
+});
+
+els.planSetupModal?.addEventListener("click", (event) => {
+  if (event.target !== els.planSetupModal) return;
+  planSetupOpen = false;
+  render();
+});
+
+els.planSelect?.addEventListener("change", (event) => {
+  switchPlan(event.target.value);
 });
 
 els.resetDemo.addEventListener("click", () => {
