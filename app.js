@@ -615,6 +615,8 @@ function lessonCardsFromUnit(unit, removedKeys = []) {
       id: uid("lesson-card"),
       type: card.type,
       label: card.label,
+      value: card.value || "",
+      confirmed: Boolean(card.confirmed),
       zone: lessonZoneForType(card.type),
       order: index + 1,
       inherited: true,
@@ -628,7 +630,11 @@ function ensureLessonInheritsUnitCards(unit, lesson) {
   lesson.removedUnitCardKeys = lesson.removedUnitCardKeys || [];
   const existingKeys = new Set(lesson.boardCards.map((card) => card.unitCardKey || cardKey(card)));
   lessonCardsFromUnit(unit, lesson.removedUnitCardKeys).forEach((card) => {
-    if (existingKeys.has(card.unitCardKey)) return;
+    if (existingKeys.has(card.unitCardKey)) {
+      const existing = lesson.boardCards.find((candidate) => (candidate.unitCardKey || cardKey(candidate)) === card.unitCardKey);
+      if (existing) copyUnitCardFieldsToLessonCard(existing, card);
+      return;
+    }
     card.order = nextLessonCardOrder(lesson, card.zone);
     lesson.boardCards.push(card);
     existingKeys.add(card.unitCardKey);
@@ -1411,6 +1417,7 @@ function renderBoard() {
       textInput.addEventListener("input", (event) => {
         card.value = event.target.value;
         syncMeaningTextCardsToUnit(unit);
+        syncUnitCardToLessons(unit, card);
         renderExportPreview(unit);
         saveState();
       });
@@ -1421,6 +1428,7 @@ function renderBoard() {
         event.stopPropagation();
         card.confirmed = true;
         syncMeaningTextCardsToUnit(unit);
+        syncUnitCardToLessons(unit, card);
         render();
       });
     }
@@ -1429,6 +1437,7 @@ function renderBoard() {
       editButton.addEventListener("click", (event) => {
         event.stopPropagation();
         card.confirmed = false;
+        syncUnitCardToLessons(unit, card);
         render();
       });
     }
@@ -2336,7 +2345,7 @@ function renderLessonPlanningBoard(lesson) {
       node.innerHTML = `
         <button class="board-card-remove" type="button" title="Remove card">x</button>
         <div class="board-card-type">${escapeHtml(cardTypeLabel(card.type, card))}</div>
-        <div class="board-card-title">${escapeHtml(card.label)}</div>
+        <div class="board-card-title">${escapeHtml(lessonPlanningCardTitle(card))}</div>
       `;
       node.querySelector(".board-card-remove").addEventListener("click", (event) => {
         event.stopPropagation();
@@ -2365,6 +2374,11 @@ function renderLessonPlanningBoard(lesson) {
       const target = document.querySelector(`.lesson-zone[data-lesson-zone="${card.zone || lessonZoneForType(card.type)}"] .zone-cards`);
       target?.append(node);
     });
+}
+
+function lessonPlanningCardTitle(card) {
+  if (isTextCard(card.type) && card.value?.trim()) return card.value.trim();
+  return card.label;
 }
 
 function renderLessonInheritedChips(unit) {
@@ -2849,18 +2863,29 @@ function syncUnitCardToLessons(unit, unitCard) {
     if (existing) {
       existing.inherited = true;
       existing.unitCardKey = cardKey(unitCard);
+      copyUnitCardFieldsToLessonCard(existing, unitCard);
       return;
     }
     lesson.boardCards.push({
       id: uid("lesson-card"),
       type: unitCard.type,
       label: unitCard.label,
+      value: unitCard.value || "",
+      confirmed: Boolean(unitCard.confirmed),
       zone: lessonZoneForType(unitCard.type),
       order: nextLessonCardOrder(lesson, lessonZoneForType(unitCard.type)),
       inherited: true,
       unitCardKey: cardKey(unitCard),
     });
   });
+}
+
+function copyUnitCardFieldsToLessonCard(lessonCard, unitCard) {
+  lessonCard.type = unitCard.type;
+  lessonCard.label = unitCard.label;
+  lessonCard.value = unitCard.value || "";
+  lessonCard.confirmed = Boolean(unitCard.confirmed);
+  lessonCard.zone = lessonZoneForType(unitCard.type);
 }
 
 function uniqueBoardCards(cards) {
@@ -2895,6 +2920,8 @@ function uniqueLessonCards(cards) {
       id: card.id || uid("lesson-card"),
       type: card.type,
       label: card.label,
+      value: card.value || "",
+      confirmed: Boolean(card.confirmed),
       zone: lessonZoneAllowsType(card.zone, card.type) ? card.zone : lessonZoneForType(card.type),
       order: Number.isFinite(card.order) ? card.order : index + 1,
       inherited: Boolean(card.inherited),
@@ -2927,6 +2954,7 @@ function lessonZoneForType(type) {
     pedagogy: "pedagogy",
     teachingMoves: "pedagogy",
     assessment: "assessment",
+    meaningText: "content",
     media: "content",
     context: "content",
     artisticProcesses: "content",
@@ -2966,7 +2994,7 @@ function lessonZoneAllowsType(zone, type) {
     curricular: ["learningOutcomes", "cc21"],
     pedagogy: ["pedagogy", "teachingMoves"],
     assessment: ["assessment"],
-    content: ["media", "context", "artisticProcesses", "visualQualities", "visualQualityText"],
+    content: ["meaningText", "media", "context", "artisticProcesses", "visualQualities", "visualQualityText"],
     core: ["coreExperiences"],
   };
   return Boolean(zone && allowed[zone]?.includes(type));
