@@ -634,6 +634,16 @@ function savePlanToCatalog(plan = state.plan) {
   savePlanCatalog();
 }
 
+function mergeCloudPlanIntoCatalog(planId, data = {}) {
+  savePlanToCatalog({
+    id: planId,
+    title: data.title || data.state?.plan?.title || "Untitled Plan",
+    subject: data.subject || data.state?.plan?.subject || "Art",
+    teamId: data.teamId || data.state?.plan?.teamId || "",
+    teamName: data.teamName || data.state?.plan?.teamName || "",
+  });
+}
+
 function createPlanState({ title, subject, teamName }) {
   const next = normalizeState({
     ...structuredClone(defaultState),
@@ -692,7 +702,18 @@ async function switchPlan(planId) {
     try {
       const snapshot = await cloudPlanRefFor(planId).get();
       const remoteState = snapshot.exists ? snapshot.data()?.state : null;
-      if (remoteState && Array.isArray(remoteState.units)) nextState = normalizeState(remoteState);
+      if (snapshot.exists) mergeCloudPlanIntoCatalog(snapshot.id, snapshot.data());
+      if (remoteState && Array.isArray(remoteState.units)) {
+        nextState = normalizeState(remoteState);
+        nextState.plan = normalizePlanMetadata({
+          ...nextState.plan,
+          id: planId,
+          title: snapshot.data()?.title || nextState.plan.title,
+          subject: snapshot.data()?.subject || nextState.plan.subject,
+          teamId: snapshot.data()?.teamId || nextState.plan.teamId,
+          teamName: snapshot.data()?.teamName || nextState.plan.teamName,
+        });
+      }
     } catch (error) {
       console.warn("Plan switch cloud load failed", error);
     }
@@ -961,10 +982,12 @@ async function handleCloudUser(user) {
   renderCloudStatus("Loading cloud save...", "Sign out", true);
   try {
     await ensureCloudWorkspace(user);
+    await loadCloudPlanCatalog();
     await loadCloudState();
     cloud.loaded = true;
     els.loginGate.classList.add("hidden");
     els.appShell.classList.remove("hidden");
+    render();
     renderCloudStatus(`Cloud save: ${user.displayName || user.email || "signed in"}`, "Sign out");
   } catch (error) {
     console.warn("Cloud load failed", error);
@@ -997,6 +1020,15 @@ async function ensureCloudWorkspace(user) {
   }, { merge: true });
 }
 
+async function loadCloudPlanCatalog() {
+  const snapshot = await cloud.db
+    .collection("workspaces")
+    .doc(cloudWorkspaceId())
+    .collection("plans")
+    .get();
+  snapshot.forEach((doc) => mergeCloudPlanIntoCatalog(doc.id, doc.data()));
+}
+
 async function loadCloudState() {
   const planRef = cloudPlanRef();
   const snapshot = await planRef.get();
@@ -1004,6 +1036,14 @@ async function loadCloudState() {
   if (remoteState && Array.isArray(remoteState.units)) {
     cloudSyncPaused = true;
     state = normalizeState(remoteState);
+    state.plan = normalizePlanMetadata({
+      ...state.plan,
+      id: snapshot.id,
+      title: snapshot.data()?.title || state.plan.title,
+      subject: snapshot.data()?.subject || state.plan.subject,
+      teamId: snapshot.data()?.teamId || state.plan.teamId,
+      teamName: snapshot.data()?.teamName || state.plan.teamName,
+    });
     savePlanToCatalog(state.plan);
     localStorage.setItem(ACTIVE_PLAN_STORAGE_KEY, activePlanId());
     localStorage.setItem(planStateStorageKey(), JSON.stringify(state));
@@ -1302,9 +1342,14 @@ function renderPlanControls() {
   if (!els.planSelect) return;
   savePlanToCatalog(state.plan);
   els.planSelect.innerHTML = planCatalog
-    .map((plan) => `<option value="${escapeAttr(plan.id)}">${escapeHtml(plan.title || "Untitled Plan")}</option>`)
+    .map((plan) => `<option value="${escapeAttr(plan.id)}">${escapeHtml(planOptionLabel(plan))}</option>`)
     .join("");
   els.planSelect.value = activePlanId();
+}
+
+function planOptionLabel(plan) {
+  const meta = normalizePlanMetadata(plan);
+  return [meta.title || "Untitled Plan", meta.subject, meta.teamName].filter(Boolean).join(" · ");
 }
 
 function renderPlanSetup() {

@@ -36,12 +36,17 @@ workspaces/{workspaceId}/members/{uid}
 
 workspaces/{workspaceId}/plans/{planId}
   title
+  subject
+  teamId
+  teamName
   ownerId
+  state.plan
+  state.cardLibrary
   state
   updatedAt
 ```
 
-For the MVP, `state` can store the current app state as one document field. Later, we can split units and lessons into separate documents if collaboration becomes heavier.
+For the MVP, `state` stores the current app state as one document field. Each plan document also keeps lightweight metadata (`title`, `subject`, `teamId`, `teamName`) so the app can list and switch between plans without opening every full planner state. Later, we can split units and lessons into separate documents if collaboration becomes heavier.
 
 ## Firebase Setup Checklist
 
@@ -61,11 +66,13 @@ For the MVP, `state` can store the current app state as one document field. Late
 4. Add Firebase environment variables from `.env.example`.
 5. Redeploy after environment variables are added.
 
+## Current Code Step
+
+- Google sign-in opens the teacher's personal workspace.
+- The plan selector can create and switch between multiple 2YIP plans.
+- Firestore plan documents are discovered into a local plan catalog after sign-in.
+- Each plan stores its own `cardLibrary`, making subject-specific and team-specific card sets possible.
+
 ## Next Code Step
 
-Add a small data adapter:
-
-- `localAdapter`: current browser local storage.
-- `firebaseAdapter`: signed-in workspace save/load.
-
-The UI should call `loadPlannerState()` and `savePlannerState()` instead of touching local storage directly. That lets us keep the local prototype while adding login and shared workspaces cleanly.
+Add team/workspace management screens so an HOD can invite teachers into a shared workspace and assign roles (`owner`, `teacher`, `viewer`) instead of every user only seeing their personal workspace.

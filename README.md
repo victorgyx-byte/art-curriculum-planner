@@ -11,7 +11,7 @@ The planner supports:
 
 ## Current State
 
-This is currently a browser-based prototype using local browser storage.
+The app runs as a static web app with Google sign-in, Firestore cloud save, and browser local storage as a resilience fallback. Each signed-in teacher currently gets a personal workspace, and that workspace can contain multiple 2YIP plans. Plan metadata includes subject and team name, and each plan carries its own card library so future Art, Music, or team-specific card sets can diverge without changing the whole app.
 
 ## Online Direction
 
