@@ -11,7 +11,7 @@ const CLOUD_PLAN_ID = "main-planner-state";
 const SUGGESTION_VERSION = 2;
 const hiddenPlanningCards = new Set(["Communication, Collaboration and Information Skills"]);
 
-const library = [
+const defaultCardLibrary = [
   {
     title: "Big Ideas",
     type: "bigIdeas",
@@ -198,6 +198,14 @@ const loProcessSuggestions = [
 ];
 
 const defaultState = {
+  plan: {
+    id: CLOUD_PLAN_ID,
+    title: "Main 2YIP",
+    subject: "Art",
+    teamId: "",
+    teamName: "",
+  },
+  cardLibrary: cloneDefaultCardLibrary(),
   selectedUnitId: "u1",
   selectedLessonId: "",
   currentScreen: "timeline",
@@ -487,6 +495,8 @@ function loadState() {
 
 function normalizeState(candidate) {
   const normalized = { ...structuredClone(defaultState), ...candidate };
+  normalized.plan = normalizePlanMetadata(candidate.plan);
+  normalized.cardLibrary = normalizeCardLibrary(candidate.cardLibrary);
   normalized.currentScreen = normalized.currentScreen || "timeline";
   normalized.selectedLessonId = normalized.selectedLessonId || "";
   normalized.lessonOverviewOpen = false;
@@ -547,6 +557,36 @@ function normalizeState(candidate) {
     activities: unit.activities || [],
   }));
   return normalized;
+}
+
+function normalizePlanMetadata(plan = {}) {
+  return {
+    id: plan.id || CLOUD_PLAN_ID,
+    title: plan.title || "Main 2YIP",
+    subject: plan.subject || "Art",
+    teamId: plan.teamId || "",
+    teamName: plan.teamName || "",
+  };
+}
+
+function normalizeCardLibrary(cardLibrary) {
+  const fallback = cloneDefaultCardLibrary();
+  if (!Array.isArray(cardLibrary) || !cardLibrary.length) return fallback;
+  return cardLibrary
+    .map((category) => ({
+      title: category.title || "Cards",
+      type: category.type || "",
+      items: Array.isArray(category.items) ? category.items : [],
+    }))
+    .filter((category) => category.title && category.items.length);
+}
+
+function cloneDefaultCardLibrary() {
+  return structuredClone(defaultCardLibrary);
+}
+
+function activeCardLibrary() {
+  return Array.isArray(state.cardLibrary) && state.cardLibrary.length ? state.cardLibrary : defaultCardLibrary;
 }
 
 function normalizeLessons(lessons, unit = {}) {
@@ -841,7 +881,9 @@ async function saveCloudStateNow() {
   try {
     const cleanState = cleanCloudState(state);
     await cloudPlanRef().set({
-      title: "Main 2YIP",
+      title: activePlanTitle(),
+      subject: state.plan?.subject || "Art",
+      teamId: state.plan?.teamId || "",
       ownerId: cloud.user.uid,
       state: cleanState,
       updatedAt: window.firebase.firestore.FieldValue.serverTimestamp(),
@@ -862,11 +904,19 @@ function cloudPlanRef() {
     .collection("workspaces")
     .doc(cloudWorkspaceId())
     .collection("plans")
-    .doc(CLOUD_PLAN_ID);
+    .doc(activePlanId());
 }
 
 function cloudWorkspaceId() {
   return `${CLOUD_WORKSPACE_PREFIX}-${cloud.user?.uid || "local"}`;
+}
+
+function activePlanId() {
+  return state.plan?.id || CLOUD_PLAN_ID;
+}
+
+function activePlanTitle() {
+  return state.plan?.title || "Main 2YIP";
 }
 
 function renderCloudStatus(status, buttonLabel, disabled = false) {
@@ -1113,7 +1163,7 @@ function renderLibrary() {
   els.libraryEyebrow.textContent = activeZone ? "Cards For" : "Cards";
   els.libraryTitle.textContent = activeZone ? boardZoneLabel(activeZone) : "Drag Into Units";
 
-  library.forEach((category) => {
+  activeCardLibrary().forEach((category) => {
     const entries = category.items
       .map((entry) => normalizeLibraryEntry(category, entry))
       .filter((entry) => entry.type !== "teachingMoves")
@@ -2213,7 +2263,7 @@ function renderMobileUnitCardPicker(unit) {
     return;
   }
   const activeZone = state.selectedBoardZone;
-  const sections = library
+  const sections = activeCardLibrary()
     .map((category) => {
       const items = category.items
         .map((entry) => normalizeLibraryEntry(category, entry))
@@ -2375,13 +2425,13 @@ function lessonItemsFromValues(type, values) {
 }
 
 function libraryItemsByType(type) {
-  return library
+  return activeCardLibrary()
     .find((category) => category.type === type)
     ?.items.map((entry) => normalizeLibraryEntry({ type }, entry).label) || [];
 }
 
 function libraryEntriesByTypes(types) {
-  return library
+  return activeCardLibrary()
     .flatMap((category) => category.items.map((entry) => normalizeLibraryEntry(category, entry)))
     .filter((entry) => types.includes(entry.type));
 }
@@ -2820,7 +2870,7 @@ function selectedArtisticProcesses(unit) {
 }
 
 function learningOutcomeByCode(code) {
-  return library
+  return activeCardLibrary()
     .find((category) => category.type === "learningOutcomes")
     ?.items.find((item) => item.startsWith(code));
 }
