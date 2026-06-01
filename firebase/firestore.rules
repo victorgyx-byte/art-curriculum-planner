@@ -6,18 +6,18 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function isWorkspaceMember(workspaceId) {
-      return signedIn()
-        && exists(/databases/$(database)/documents/workspaces/$(workspaceId)/members/$(request.auth.uid));
-    }
-
-    function isWorkspaceOwner(workspaceId) {
-      return signedIn()
-        && get(/databases/$(database)/documents/workspaces/$(workspaceId)/members/$(request.auth.uid)).data.role == "owner";
+    function isOwnUser(userId) {
+      return signedIn() && request.auth.uid == userId;
     }
 
     function isOwnTeacherWorkspace(workspaceId) {
       return signedIn() && workspaceId == "teacher-workspace-" + request.auth.uid;
+    }
+
+    function isWorkspaceOwner(workspaceId) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/workspaces/$(workspaceId)/members/$(request.auth.uid))
+        && get(/databases/$(database)/documents/workspaces/$(workspaceId)/members/$(request.auth.uid)).data.role == "owner";
     }
 
     function isWorkspaceCreator(workspaceId) {
@@ -25,62 +25,79 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.createdBy == request.auth.uid;
     }
 
-    function inviteIdFor(workspaceId) {
-      return workspaceId + "__" + request.auth.token.email;
+    function isPlanMember(workspaceId, planId) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/workspaces/$(workspaceId)/plans/$(planId)/members/$(request.auth.uid));
     }
 
-    function matchingPendingInvite(workspaceId) {
+    function canReadWritePlan(workspaceId, planId) {
+      return isWorkspaceOwner(workspaceId) || isOwnTeacherWorkspace(workspaceId) || isPlanMember(workspaceId, planId);
+    }
+
+    function planInviteIdFor(workspaceId, planId) {
+      return workspaceId + "__" + planId + "__" + request.auth.token.email;
+    }
+
+    function matchingPendingPlanInvite(workspaceId, planId) {
       return signedIn()
-        && exists(/databases/$(database)/documents/invites/$(inviteIdFor(workspaceId)))
-        && get(/databases/$(database)/documents/invites/$(inviteIdFor(workspaceId))).data.email == request.auth.token.email
-        && get(/databases/$(database)/documents/invites/$(inviteIdFor(workspaceId))).data.status == "pending";
+        && exists(/databases/$(database)/documents/planInvites/$(planInviteIdFor(workspaceId, planId)))
+        && get(/databases/$(database)/documents/planInvites/$(planInviteIdFor(workspaceId, planId))).data.email == request.auth.token.email
+        && get(/databases/$(database)/documents/planInvites/$(planInviteIdFor(workspaceId, planId))).data.status == "pending";
     }
 
     match /users/{userId} {
-      allow read, write: if signedIn() && request.auth.uid == userId;
+      allow read, write: if isOwnUser(userId);
     }
 
-    match /invites/{inviteId} {
+    match /planInvites/{inviteId} {
       allow read: if signedIn()
         && (resource.data.email == request.auth.token.email
           || isWorkspaceOwner(resource.data.workspaceId));
       allow create: if signedIn()
+        && isWorkspaceOwner(request.resource.data.workspaceId)
         && request.resource.data.createdBy == request.auth.uid
-        && request.resource.data.status == "pending"
         && request.resource.data.role == "editor"
-        && isWorkspaceOwner(request.resource.data.workspaceId);
+        && request.resource.data.status == "pending";
       allow update: if signedIn()
-        && ((isWorkspaceOwner(resource.data.workspaceId))
+        && (isWorkspaceOwner(resource.data.workspaceId)
           || (resource.data.email == request.auth.token.email
             && resource.data.status == "pending"
             && request.resource.data.status == "accepted"
             && request.resource.data.acceptedBy == request.auth.uid
             && request.resource.data.workspaceId == resource.data.workspaceId
+            && request.resource.data.planId == resource.data.planId
             && request.resource.data.email == resource.data.email
             && request.resource.data.role == resource.data.role));
       allow delete: if signedIn() && isWorkspaceOwner(resource.data.workspaceId);
     }
 
     match /workspaces/{workspaceId} {
-      allow read: if isWorkspaceMember(workspaceId) || isOwnTeacherWorkspace(workspaceId);
+      allow read: if isWorkspaceOwner(workspaceId) || isOwnTeacherWorkspace(workspaceId);
       allow create: if signedIn()
         && request.resource.data.createdBy == request.auth.uid;
       allow update: if isWorkspaceOwner(workspaceId) || isOwnTeacherWorkspace(workspaceId);
       allow delete: if isWorkspaceOwner(workspaceId);
 
       match /members/{memberId} {
-        allow read: if isWorkspaceMember(workspaceId) || isOwnTeacherWorkspace(workspaceId);
+        allow read: if isWorkspaceOwner(workspaceId) || isOwnTeacherWorkspace(workspaceId);
         allow create, update: if (isWorkspaceCreator(workspaceId) && memberId == request.auth.uid)
-          || isWorkspaceOwner(workspaceId)
-          || (memberId == request.auth.uid
-            && matchingPendingInvite(workspaceId)
-            && request.resource.data.role == get(/databases/$(database)/documents/invites/$(inviteIdFor(workspaceId))).data.role
-            && request.resource.data.email == request.auth.token.email);
+          || isWorkspaceOwner(workspaceId);
         allow delete: if isWorkspaceOwner(workspaceId);
       }
 
       match /plans/{planId} {
-        allow read, write: if isWorkspaceMember(workspaceId) || isOwnTeacherWorkspace(workspaceId);
+        allow read, update: if canReadWritePlan(workspaceId, planId);
+        allow create, delete: if isWorkspaceOwner(workspaceId) || isOwnTeacherWorkspace(workspaceId);
+
+        match /members/{memberId} {
+          allow read: if isWorkspaceOwner(workspaceId) || memberId == request.auth.uid;
+          allow create, update: if isWorkspaceOwner(workspaceId)
+            || (memberId == request.auth.uid
+              && matchingPendingPlanInvite(workspaceId, planId)
+              && request.resource.data.role == get(/databases/$(database)/documents/planInvites/$(planInviteIdFor(workspaceId, planId))).data.role
+              && request.resource.data.email == request.auth.token.email);
+          allow delete: if isWorkspaceOwner(workspaceId);
+        }
       }
     }
   }

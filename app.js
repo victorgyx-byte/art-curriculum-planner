@@ -386,6 +386,7 @@ let cloudSyncPaused = false;
 let historySyncPaused = false;
 let workspaceMembers = [];
 let workspaceInvites = [];
+let userAccessiblePlans = [];
 let workspaceDirectoryWorkspaceId = "";
 let workspaceDirectoryLoading = false;
 
@@ -629,6 +630,7 @@ function normalizePlanMetadata(plan = {}) {
     teamId: plan.teamId || "",
     teamName: plan.teamName || "",
     workspaceId: plan.workspaceId || activeWorkspaceId(),
+    role: plan.role || "owner",
   };
 }
 
@@ -650,8 +652,8 @@ function emailKey(email = "") {
   return normalizeEmail(email).replace(/[^a-z0-9_.@+-]/g, "_");
 }
 
-function inviteDocId(workspaceId, email) {
-  return `${workspaceId}__${emailKey(email)}`;
+function planInviteDocId(workspaceId, planId, email) {
+  return `${workspaceId}__${planId}__${emailKey(email)}`;
 }
 
 function currentWorkspaceMeta() {
@@ -664,6 +666,10 @@ function currentWorkspaceRole() {
 
 function canManageActiveWorkspace() {
   return currentWorkspaceRole() === "owner";
+}
+
+function canManagePlanSharing() {
+  return canManageActiveWorkspace();
 }
 
 function normalizeCardLibrary(cardLibrary, options = {}) {
@@ -780,6 +786,7 @@ function mergeCloudPlanIntoCatalog(planId, data = {}) {
     teamId: data.teamId || data.state?.plan?.teamId || "",
     teamName: data.teamName || data.state?.plan?.teamName || "",
     workspaceId: cloudWorkspaceId(),
+    role: data.role || (canManageActiveWorkspace() ? "owner" : "editor"),
   });
 }
 
@@ -852,6 +859,7 @@ async function switchPlan(planId, options = {}) {
           subject: snapshot.data()?.subject || nextState.plan.subject,
           teamId: snapshot.data()?.teamId || nextState.plan.teamId,
           teamName: snapshot.data()?.teamName || nextState.plan.teamName,
+          role: planMetaById(planId)?.role || nextState.plan.role,
         });
       }
     } catch (error) {
@@ -965,18 +973,23 @@ async function createTeamWorkspace(name) {
   render();
 }
 
-async function createWorkspaceInvite(email) {
-  if (!cloud.user || !cloud.db || !canManageActiveWorkspace()) return;
+async function createPlanInvite(planId, email) {
+  if (!cloud.user || !cloud.db || !canManagePlanSharing()) return;
   const normalizedEmail = normalizeEmail(email);
   if (!normalizedEmail || !normalizedEmail.includes("@")) {
     renderCloudStatus("Enter a valid teacher email", "Sign out");
     return;
   }
+  const plan = planMetaById(planId);
+  if (!plan) return;
   const workspace = currentWorkspaceMeta();
-  const inviteId = inviteDocId(workspace.id, normalizedEmail);
-  await cloud.db.collection("invites").doc(inviteId).set({
+  const inviteId = planInviteDocId(workspace.id, plan.id, normalizedEmail);
+  await cloud.db.collection("planInvites").doc(inviteId).set({
     workspaceId: workspace.id,
     workspaceName: workspace.name,
+    planId: plan.id,
+    planTitle: plan.title,
+    subject: plan.subject,
     email: normalizedEmail,
     role: "editor",
     status: "pending",
@@ -985,17 +998,16 @@ async function createWorkspaceInvite(email) {
     acceptedBy: "",
     acceptedAt: null,
   }, { merge: true });
-  els.inviteEmail.value = "";
   workspaceDirectoryWorkspaceId = "";
   renderCloudStatus(`Invite ready for ${normalizedEmail}`, "Sign out");
   render();
 }
 
-async function removeWorkspaceInvite(inviteId) {
-  if (!cloud.user || !cloud.db || !canManageActiveWorkspace() || !inviteId) return;
-  await cloud.db.collection("invites").doc(inviteId).delete();
+async function removePlanInvite(inviteId) {
+  if (!cloud.user || !cloud.db || !canManagePlanSharing() || !inviteId) return;
+  await cloud.db.collection("planInvites").doc(inviteId).delete();
   workspaceDirectoryWorkspaceId = "";
-  renderCloudStatus("Invite removed", "Sign out");
+  renderCloudStatus("Plan invite removed", "Sign out");
   render();
 }
 
@@ -1334,16 +1346,17 @@ async function acceptPendingInvites(user) {
   const email = normalizeEmail(user.email || "");
   if (!email) return;
   const snapshot = await cloud.db
-    .collection("invites")
+    .collection("planInvites")
     .where("email", "==", email)
     .where("status", "==", "pending")
     .get();
   for (const doc of snapshot.docs) {
     const invite = doc.data() || {};
-    if (!invite.workspaceId) continue;
+    if (!invite.workspaceId || !invite.planId) continue;
     const workspaceId = invite.workspaceId;
-    const role = invite.role === "owner" ? "owner" : "editor";
-    await cloud.db.collection("workspaces").doc(workspaceId).collection("members").doc(user.uid).set({
+    const planId = invite.planId;
+    const role = "editor";
+    await cloud.db.collection("workspaces").doc(workspaceId).collection("plans").doc(planId).collection("members").doc(user.uid).set({
       role,
       email,
       displayName: user.displayName || "",
@@ -1355,6 +1368,16 @@ async function acceptPendingInvites(user) {
           id: workspaceId,
           name: invite.workspaceName || "Shared Workspace",
           type: "team",
+          role: "editor",
+        },
+      },
+      accessiblePlans: {
+        [`${workspaceId}__${planId}`]: {
+          workspaceId,
+          workspaceName: invite.workspaceName || "Shared Workspace",
+          planId,
+          planTitle: invite.planTitle || "Shared 2YIP",
+          subject: invite.subject || "Art",
           role,
         },
       },
@@ -1372,6 +1395,7 @@ async function loadCloudWorkspaceCatalog() {
   const userSnapshot = await cloud.db.collection("users").doc(cloud.user.uid).get();
   const userData = userSnapshot.exists ? userSnapshot.data() || {} : {};
   const workspaces = userData.workspaces || {};
+  userAccessiblePlans = Object.values(userData.accessiblePlans || {});
   const personalWorkspace = { id: personalWorkspaceId(cloud.user.uid), name: "My Planner", type: "personal", role: "owner" };
   const cloudWorkspaces = [personalWorkspace, ...Object.values(workspaces).filter((workspace) => workspace?.id !== personalWorkspace.id)];
   workspaceCatalog = cloudWorkspaces.map((workspace) => normalizeWorkspaceMetadata(workspace));
@@ -1383,6 +1407,10 @@ async function loadCloudWorkspaceCatalog() {
 }
 
 async function loadCloudWorkspaceLibrary() {
+  if (!canManageActiveWorkspace()) {
+    setWorkspaceSharedLibrary(loadWorkspaceSharedLibrary());
+    return;
+  }
   const workspaceSnapshot = await cloud.db.collection("workspaces").doc(cloudWorkspaceId()).get();
   const sharedLibrary = workspaceSnapshot.exists ? workspaceSnapshot.data()?.sharedCardLibrary : null;
   setWorkspaceSharedLibrary(sharedLibrary || loadWorkspaceSharedLibrary());
@@ -1391,6 +1419,7 @@ async function loadCloudWorkspaceLibrary() {
 
 function ensureWorkspaceDirectoryLoaded() {
   if (!cloud.loaded || !cloud.db) return;
+  if (!canManageActiveWorkspace()) return;
   const workspaceId = activeWorkspaceId();
   if (workspaceDirectoryWorkspaceId === workspaceId || workspaceDirectoryLoading) return;
   workspaceDirectoryLoading = true;
@@ -1413,7 +1442,7 @@ async function loadCloudWorkspaceDirectory(workspaceId = activeWorkspaceId()) {
   workspaceInvites = [];
   if (canManageActiveWorkspace()) {
     const invitesSnapshot = await cloud.db
-      .collection("invites")
+      .collection("planInvites")
       .where("workspaceId", "==", workspaceId)
       .where("status", "==", "pending")
       .get();
@@ -1431,15 +1460,34 @@ async function saveCloudWorkspaceLibrary() {
 }
 
 async function loadCloudPlanCatalog() {
-  const snapshot = await cloud.db
-    .collection("workspaces")
-    .doc(cloudWorkspaceId())
-    .collection("plans")
-    .get();
-  snapshot.forEach((doc) => mergeCloudPlanIntoCatalog(doc.id, doc.data()));
+  planCatalog = planCatalog.filter((plan) => plan.workspaceId !== cloudWorkspaceId());
+  const plansRef = cloud.db.collection("workspaces").doc(cloudWorkspaceId()).collection("plans");
+  if (canManageActiveWorkspace()) {
+    const snapshot = await plansRef.get();
+    snapshot.forEach((doc) => mergeCloudPlanIntoCatalog(doc.id, { ...doc.data(), role: "owner" }));
+  } else {
+    const sharedPlans = userAccessiblePlans.filter((plan) => plan.workspaceId === cloudWorkspaceId());
+    for (const sharedPlan of sharedPlans) {
+      const snapshot = await plansRef.doc(sharedPlan.planId).get();
+      if (snapshot.exists) {
+        mergeCloudPlanIntoCatalog(snapshot.id, {
+          ...snapshot.data(),
+          title: snapshot.data()?.title || sharedPlan.planTitle,
+          subject: snapshot.data()?.subject || sharedPlan.subject,
+          role: sharedPlan.role || "editor",
+        });
+      }
+    }
+  }
+  savePlanCatalog();
+  const nextPlan = firstPlanForActiveWorkspace();
+  if (nextPlan && !plansForActiveWorkspace().some((plan) => plan.id === activePlanId())) {
+    localStorage.setItem(ACTIVE_PLAN_STORAGE_KEY, nextPlan.id);
+  }
 }
 
 async function loadCloudState() {
+  if (!firstPlanForActiveWorkspace()) return;
   const planRef = cloudPlanRef();
   const snapshot = await planRef.get();
   const remoteState = snapshot.exists ? snapshot.data()?.state : null;
@@ -1453,6 +1501,7 @@ async function loadCloudState() {
       subject: snapshot.data()?.subject || state.plan.subject,
       teamId: snapshot.data()?.teamId || state.plan.teamId,
       teamName: snapshot.data()?.teamName || state.plan.teamName,
+      role: planMetaById(snapshot.id)?.role || state.plan.role,
     });
     savePlanToCatalog(state.plan);
     localStorage.setItem(ACTIVE_PLAN_STORAGE_KEY, activePlanId());
@@ -1473,6 +1522,7 @@ function scheduleCloudSave() {
 
 async function saveCloudStateNow() {
   if (!cloud.available || !cloud.user || !cloud.db) return;
+  if (!planMetaById(activePlanId())) return;
   try {
     const cleanState = cleanCloudState(state);
     await cloudPlanRef().set({
@@ -1481,7 +1531,6 @@ async function saveCloudStateNow() {
       teamId: state.plan?.teamId || "",
       teamName: state.plan?.teamName || "",
       workspaceId: activeWorkspaceId(),
-      ownerId: cloud.user.uid,
       state: cleanState,
       updatedAt: window.firebase.firestore.FieldValue.serverTimestamp(),
     }, { merge: true });
@@ -1877,63 +1926,74 @@ function renderWorkspaceHome() {
   els.planCardGrid.innerHTML = plans
     .map((plan) => {
       const meta = normalizePlanMetadata(plan);
+      const pendingInvites = workspaceInvites.filter((invite) => invite.planId === meta.id);
+      const inviteHtml = pendingInvites.length
+        ? `<div class="plan-invite-list">${pendingInvites.map((invite) => `
+          <span class="plan-invite-pill">
+            ${escapeHtml(invite.email || "Pending")}
+            <button type="button" data-invite-id="${escapeAttr(invite.id)}" class="plan-invite-remove">x</button>
+          </span>
+        `).join("")}</div>`
+        : "";
+      const shareHtml = canManagePlanSharing()
+        ? `
+          <div class="plan-share-row">
+            <input class="text-input plan-share-email" type="email" placeholder="teacher@email.com" data-plan-id="${escapeAttr(meta.id)}" />
+            <button class="ghost-button plan-share-button" type="button" data-plan-id="${escapeAttr(meta.id)}">Share</button>
+          </div>
+          ${inviteHtml}
+        `
+        : "";
       return `
-        <button class="plan-card" type="button" data-plan-id="${escapeAttr(meta.id)}">
+        <article class="plan-card" data-plan-id="${escapeAttr(meta.id)}">
           <span class="workspace-card-eyebrow">${escapeHtml(meta.subject || "Subject")}</span>
           <strong>${escapeHtml(meta.title || "Untitled Plan")}</strong>
-          <small>${escapeHtml(activeWorkspace.name || "Workspace")}</small>
-        </button>
+          <small>${escapeHtml(meta.role === "owner" ? "Owner" : "Editor")} · ${escapeHtml(activeWorkspace.name || "Workspace")}</small>
+          <div class="plan-card-actions">
+            <button class="primary-button open-plan-button" type="button" data-plan-id="${escapeAttr(meta.id)}">Open</button>
+          </div>
+          ${shareHtml}
+        </article>
       `;
     })
     .join("");
-  const newPlanCard = document.createElement("button");
-  newPlanCard.className = "plan-card create-card";
-  newPlanCard.type = "button";
-  newPlanCard.innerHTML = `<span class="workspace-card-eyebrow">New 2YIP</span><strong>Create 2YIP Plan</strong><small>Title and subject</small>`;
-  newPlanCard.addEventListener("click", openPlanSetup);
-  els.planCardGrid.append(newPlanCard);
-  els.planCardGrid.querySelectorAll("[data-plan-id]").forEach((button) => {
+  if (canManageActiveWorkspace()) {
+    const newPlanCard = document.createElement("button");
+    newPlanCard.className = "plan-card create-card";
+    newPlanCard.type = "button";
+    newPlanCard.innerHTML = `<span class="workspace-card-eyebrow">New 2YIP</span><strong>Create 2YIP Plan</strong><small>Title and subject</small>`;
+    newPlanCard.addEventListener("click", openPlanSetup);
+    els.planCardGrid.append(newPlanCard);
+  }
+  els.planCardGrid.querySelectorAll(".open-plan-button").forEach((button) => {
     button.addEventListener("click", () => openWorkspacePlan(button.dataset.planId));
+  });
+  els.planCardGrid.querySelectorAll(".plan-share-button").forEach((button) => {
+    button.addEventListener("click", () => {
+      const input = [...els.planCardGrid.querySelectorAll(".plan-share-email")].find((candidate) => candidate.dataset.planId === button.dataset.planId);
+      createPlanInvite(button.dataset.planId, input?.value || "");
+    });
+  });
+  els.planCardGrid.querySelectorAll(".plan-share-email").forEach((input) => {
+    input.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter") return;
+      event.preventDefault();
+      createPlanInvite(input.dataset.planId, input.value);
+    });
+  });
+  els.planCardGrid.querySelectorAll(".plan-invite-remove").forEach((button) => {
+    button.addEventListener("click", () => removePlanInvite(button.dataset.inviteId));
   });
 
   renderWorkspaceDirectory();
 }
 
 function renderWorkspaceDirectory() {
-  const canManage = canManageActiveWorkspace();
-  els.teamInviteForm.classList.toggle("hidden", !canManage);
-  els.memberList.innerHTML = workspaceDirectoryLoading
-    ? `<div class="workspace-empty">Loading members...</div>`
-    : workspaceMembers.length
-      ? workspaceMembers
-        .map((member) => `
-          <div class="member-row">
-            <span>${escapeHtml(member.displayName || member.email || "Member")}</span>
-            <strong>${escapeHtml(member.role || "editor")}</strong>
-          </div>
-        `)
-        .join("")
-      : `<div class="workspace-empty">No members loaded yet.</div>`;
-  els.inviteList.innerHTML = !canManage
-    ? `<div class="workspace-empty">Only owners can manage invites.</div>`
-    : workspaceDirectoryLoading
-      ? `<div class="workspace-empty">Loading invites...</div>`
-      : workspaceInvites.length
-        ? workspaceInvites
-          .map((invite) => `
-            <div class="invite-row">
-              <span>${escapeHtml(invite.email || "Pending invite")}</span>
-              <button class="ghost-button remove-invite" type="button" data-invite-id="${escapeAttr(invite.id)}">Remove</button>
-            </div>
-          `)
-          .join("")
-        : `<div class="workspace-empty">No pending invites.</div>`;
-  els.inviteList.querySelectorAll(".remove-invite").forEach((button) => {
-    button.addEventListener("click", () => removeWorkspaceInvite(button.dataset.inviteId));
-  });
+  els.teamManagementPanel.classList.add("hidden");
 }
 
 function openPlanSetup() {
+  if (!canManageActiveWorkspace()) return;
   planSetupOpen = true;
   els.newPlanTitle.value = "";
   els.newPlanSubject.value = "Art";
@@ -4791,6 +4851,10 @@ els.cancelPlanSetup?.addEventListener("click", () => {
 });
 
 els.createPlan?.addEventListener("click", async () => {
+  if (!canManageActiveWorkspace()) {
+    renderCloudStatus("Only the workspace owner can create plans", "Sign out");
+    return;
+  }
   const title = els.newPlanTitle.value.trim();
   const subject = els.newPlanSubject.value;
   const teamName = workspaceLabel();
@@ -4853,16 +4917,6 @@ els.workspaceHome?.addEventListener("click", () => {
   state.currentScreen = "workspace";
   workspaceDirectoryWorkspaceId = "";
   render();
-});
-
-els.sendInvite?.addEventListener("click", () => {
-  createWorkspaceInvite(els.inviteEmail.value);
-});
-
-els.inviteEmail?.addEventListener("keydown", (event) => {
-  if (event.key !== "Enter") return;
-  event.preventDefault();
-  createWorkspaceInvite(els.inviteEmail.value);
 });
 
 els.resetDemo.addEventListener("click", () => {

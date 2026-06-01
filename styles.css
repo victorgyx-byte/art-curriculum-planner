@@ -566,6 +566,10 @@ button:disabled {
   box-shadow: var(--shadow);
 }
 
+.workspace-card {
+  cursor: pointer;
+}
+
 .workspace-card:hover,
 .plan-card:hover,
 .workspace-card.selected {
@@ -595,6 +599,50 @@ button:disabled {
 
 .create-card {
   border-style: dashed;
+}
+
+.plan-card-actions,
+.plan-share-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.plan-share-row {
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+
+.plan-share-email {
+  min-width: min(220px, 100%);
+  flex: 1;
+}
+
+.plan-invite-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.plan-invite-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid rgba(45, 123, 127, 0.24);
+  border-radius: 999px;
+  padding: 4px 7px 4px 10px;
+  background: rgba(232, 248, 247, 0.72);
+  color: var(--teal);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.plan-invite-remove {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-weight: 900;
 }
 
 .workspace-home-section,
