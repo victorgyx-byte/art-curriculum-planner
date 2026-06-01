@@ -1059,11 +1059,14 @@ async function deleteWorkspace(workspaceId) {
   for (const planDoc of plansSnapshot.docs) {
     await deletePlanDocument(workspaceId, planDoc.id);
   }
-  const membersSnapshot = await workspaceRef.collection("members").get();
-  await Promise.all(membersSnapshot.docs.map((memberDoc) => memberDoc.ref.delete()));
   const invitesSnapshot = await cloud.db.collection("planInvites").where("workspaceId", "==", workspaceId).get();
   await Promise.all(invitesSnapshot.docs.map((inviteDoc) => inviteDoc.ref.delete()));
   await workspaceRef.delete();
+  const membersSnapshot = await workspaceRef.collection("members").get();
+  const ownMemberDoc = membersSnapshot.docs.find((memberDoc) => memberDoc.id === cloud.user.uid);
+  const otherMemberDocs = membersSnapshot.docs.filter((memberDoc) => memberDoc.id !== cloud.user.uid);
+  await Promise.all(otherMemberDocs.map((memberDoc) => memberDoc.ref.delete()));
+  if (ownMemberDoc) await ownMemberDoc.ref.delete();
   await cloud.db.collection("users").doc(cloud.user.uid).set({
     workspaces: {
       [workspaceId]: window.firebase.firestore.FieldValue.delete(),
@@ -1541,8 +1544,9 @@ async function acceptPendingInvites(user) {
 async function loadCloudWorkspaceCatalog() {
   const userSnapshot = await cloud.db.collection("users").doc(cloud.user.uid).get();
   const userData = userSnapshot.exists ? userSnapshot.data() || {} : {};
-  const workspaces = userData.workspaces || {};
-  userAccessiblePlans = Object.values(userData.accessiblePlans || {});
+  const validatedAccess = await validateAccessiblePlanAccess(userData);
+  const workspaces = validatedAccess.workspaces;
+  userAccessiblePlans = Object.values(validatedAccess.accessiblePlans);
   const personalWorkspace = { id: personalWorkspaceId(cloud.user.uid), name: "My Planner", type: "personal", role: "owner" };
   const cloudWorkspaces = [personalWorkspace, ...Object.values(workspaces).filter((workspace) => workspace?.id !== personalWorkspace.id)];
   workspaceCatalog = cloudWorkspaces.map((workspace) => normalizeWorkspaceMetadata(workspace));
@@ -1551,6 +1555,60 @@ async function loadCloudWorkspaceCatalog() {
   const preferredId = allowedIds.has(userData.lastWorkspaceId) ? userData.lastWorkspaceId : personalWorkspace.id;
   const activeId = activeWorkspaceId();
   if (!allowedIds.has(activeId)) localStorage.setItem(ACTIVE_WORKSPACE_STORAGE_KEY, preferredId);
+}
+
+async function validateAccessiblePlanAccess(userData = {}) {
+  const rawWorkspaces = userData.workspaces || {};
+  const rawAccessiblePlans = userData.accessiblePlans || {};
+  const validAccessiblePlans = {};
+  const validWorkspaceIds = new Set();
+  const cleanup = { accessiblePlans: {}, workspaces: {} };
+  let cleanupNeeded = false;
+
+  for (const [key, sharedPlan] of Object.entries(rawAccessiblePlans)) {
+    if (!sharedPlan?.workspaceId || !sharedPlan?.planId) continue;
+    try {
+      const snapshot = await cloud.db
+        .collection("workspaces")
+        .doc(sharedPlan.workspaceId)
+        .collection("plans")
+        .doc(sharedPlan.planId)
+        .get();
+      if (snapshot.exists) {
+        const data = snapshot.data() || {};
+        validAccessiblePlans[key] = {
+          ...sharedPlan,
+          planTitle: data.title || sharedPlan.planTitle,
+          subject: data.subject || sharedPlan.subject || "Art",
+        };
+        validWorkspaceIds.add(sharedPlan.workspaceId);
+        continue;
+      }
+    } catch (error) {
+      console.warn("Dropping stale shared plan access", sharedPlan, error);
+    }
+    cleanup.accessiblePlans[key] = window.firebase.firestore.FieldValue.delete();
+    cleanupNeeded = true;
+  }
+
+  const validWorkspaces = {};
+  for (const [workspaceId, workspace] of Object.entries(rawWorkspaces)) {
+    if (workspace?.role === "owner" || validWorkspaceIds.has(workspaceId)) {
+      validWorkspaces[workspaceId] = workspace;
+    } else {
+      cleanup.workspaces[workspaceId] = window.firebase.firestore.FieldValue.delete();
+      cleanupNeeded = true;
+    }
+  }
+
+  if (cleanupNeeded) {
+    const update = { updatedAt: window.firebase.firestore.FieldValue.serverTimestamp() };
+    if (Object.keys(cleanup.accessiblePlans).length) update.accessiblePlans = cleanup.accessiblePlans;
+    if (Object.keys(cleanup.workspaces).length) update.workspaces = cleanup.workspaces;
+    await cloud.db.collection("users").doc(cloud.user.uid).set(update, { merge: true });
+  }
+
+  return { workspaces: validWorkspaces, accessiblePlans: validAccessiblePlans };
 }
 
 async function loadCloudWorkspaceLibrary() {
