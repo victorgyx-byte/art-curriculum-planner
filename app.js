@@ -20,6 +20,9 @@ const TEAM_WORKSPACE_PREFIX = "team-workspace";
 const CLOUD_PLAN_ID = "main-planner-state";
 const SUGGESTION_VERSION = 3;
 const SNAPSHOT_INTERVAL_MS = 5 * 60 * 1000;
+const CLOUD_IMAGE_MAX_CHARS = 320000;
+const CLOUD_IMAGE_TOTAL_MAX_CHARS = 620000;
+const IMAGE_PREVIEW_MAX_SIDE = 1100;
 const SHARED_CARD_TYPES = new Set(["cc21"]);
 const hiddenPlanningCards = new Set(["Communication, Collaboration and Information Skills"]);
 const lessonOnlyCardTypes = new Set(["teachingMoves", "cc21Goals"]);
@@ -698,6 +701,7 @@ let cloudSaveTimer = null;
 let authStateTimer = null;
 let cloudSyncPaused = false;
 let historySyncPaused = false;
+let saveWritesPaused = false;
 let workspaceMembers = [];
 let workspaceInvites = [];
 let userAccessiblePlans = [];
@@ -1713,6 +1717,7 @@ function normalizeLessons(lessons, unit = {}) {
       duration: lesson.duration || "",
       imageDataUrl: lesson.imageDataUrl || "",
       imageName: lesson.imageName || "",
+      imageSaveNotice: lesson.imageSaveNotice || "",
       structures: Array.isArray(lesson.structures) ? lesson.structures : [],
       otherStructure: lesson.otherStructure || "",
       otherConfirmed: Boolean(lesson.otherConfirmed || lesson.otherStructure),
@@ -1807,6 +1812,7 @@ function createLesson(unit) {
     duration: "",
     imageDataUrl: "",
     imageName: "",
+    imageSaveNotice: "",
     structures: [],
     otherStructure: "",
     otherConfirmed: false,
@@ -1874,7 +1880,26 @@ function planContentScore(planState) {
   }, 0);
 }
 
+function applyLoadedPlanState(planState, snapshotId, snapshotData = {}) {
+  state = normalizeState(planState);
+  state.plan = normalizePlanMetadata({
+    ...state.plan,
+    id: snapshotId,
+    title: snapshotData.title || state.plan.title,
+    subject: snapshotData.subject || state.plan.subject,
+    teamId: snapshotData.teamId || state.plan.teamId,
+    teamName: snapshotData.teamName || state.plan.teamName,
+    role: planMetaById(snapshotId)?.role || state.plan.role,
+  });
+  savePlanToCatalog(state.plan);
+  localStorage.setItem(ACTIVE_PLAN_STORAGE_KEY, activePlanId());
+  localStorage.setItem(planStateStorageKey(), JSON.stringify(state));
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  localStorage.setItem(lastGoodPlanStateStorageKey(), JSON.stringify(state));
+}
+
 function saveState() {
+  if (saveWritesPaused) return;
   if (cloud.available && !cloud.user && els.loginGate && !els.loginGate.classList.contains("hidden")) return;
   const storedPlanId = localStorage.getItem(ACTIVE_PLAN_STORAGE_KEY);
   if (storedPlanId && state.plan?.id && state.plan.id !== storedPlanId) {
@@ -1986,7 +2011,9 @@ async function handleCloudUser(user) {
   window.clearTimeout(authStateTimer);
   cloud.user = user;
   cloud.loaded = false;
+  saveWritesPaused = true;
   if (!user) {
+    saveWritesPaused = false;
     els.appShell.classList.add("hidden");
     els.loginGate.classList.remove("hidden");
     renderLoginGate("Sign in to open your planner.", false);
@@ -1996,28 +2023,61 @@ async function handleCloudUser(user) {
 
   renderLoginGate("Loading your planner...", true);
   renderCloudStatus("Loading cloud save...", "Sign out", true);
+  const warnings = [];
+  const runLoadStep = async (label, action, fallbackValue = undefined) => {
+    try {
+      return await action();
+    } catch (error) {
+      console.warn(`${label} failed`, error);
+      warnings.push(`${label}: ${errorLabel(error)}`);
+      return fallbackValue;
+    }
+  };
   try {
     const requestedScreen = screenFromLocation();
-    await ensureCloudWorkspace(user);
-    await acceptPendingInvites(user);
-    await loadCloudWorkspaceCatalog();
-    await loadCloudWorkspaceLibrary();
-    const planCatalogLoaded = await loadCloudPlanCatalog();
-    await loadCloudState();
-    cloud.loaded = true;
-    state.currentScreen = requestedScreen === "workspace" || !firstPlanForActiveWorkspace() ? "workspace" : requestedScreen;
+    await runLoadStep("Workspace setup", () => ensureCloudWorkspace(user));
+    await runLoadStep("Invite check", () => acceptPendingInvites(user));
+    await runLoadStep("Workspace list", () => loadCloudWorkspaceCatalog());
+    await runLoadStep("Shared card library", () => loadCloudWorkspaceLibrary());
+    const planCatalogLoaded = await runLoadStep("2YIP list", () => loadCloudPlanCatalog(), false);
+    const planContentLoaded = await runLoadStep("2YIP content", () => loadCloudState(), false);
+    const hasVerifiedPlanContent = planContentLoaded === "remote" || planContentLoaded === "local" || !firstPlanForActiveWorkspace();
+    cloud.loaded = hasVerifiedPlanContent;
+    if (!hasVerifiedPlanContent) {
+      planCatalogVerified = false;
+      state.currentScreen = "workspace";
+    } else {
+      state.currentScreen = requestedScreen === "workspace" || !firstPlanForActiveWorkspace() ? "workspace" : requestedScreen;
+    }
     if (state.currentScreen === "lesson") state.lessonOverviewOpen = false;
     workspaceDirectoryWorkspaceId = "";
     els.loginGate.classList.add("hidden");
     els.appShell.classList.remove("hidden");
+    if (!hasVerifiedPlanContent || planCatalogLoaded === false) planCatalogVerified = false;
+    saveWritesPaused = !hasVerifiedPlanContent;
     render();
-    renderCloudStatus(planCatalogLoaded === false
-      ? "Could not refresh online plans. Showing last known list."
-      : `Cloud save: ${user.displayName || user.email || "signed in"}`, "Sign out");
+    if (!hasVerifiedPlanContent) {
+      renderCloudStatus("Full 2YIP did not load. Staying in Workspace to prevent data loss.", "Sign out");
+    } else if (warnings.length) {
+      renderCloudStatus(`Opened last known planner. Online refresh issue: ${warnings[0]}`, "Sign out");
+    } else {
+      renderCloudStatus(planCatalogLoaded === false
+        ? "Could not refresh online plans. Showing last known list."
+        : `Cloud save: ${user.displayName || user.email || "signed in"}`, "Sign out");
+    }
+    saveWritesPaused = false;
   } catch (error) {
     console.warn("Cloud load failed", error);
-    renderLoginGate(firebaseErrorMessage(error, "Could not load your online planner. Try Reset sign-in, then sign in again."), false);
-    renderCloudStatus("Cloud unavailable", "Sign out");
+    cloud.loaded = false;
+    planCatalogVerified = false;
+    state.currentScreen = screenFromLocation() === "workspace" ? "workspace" : state.currentScreen || "workspace";
+    workspaceDirectoryWorkspaceId = "";
+    els.loginGate.classList.add("hidden");
+    els.appShell.classList.remove("hidden");
+    saveWritesPaused = true;
+    render();
+    saveWritesPaused = false;
+    renderCloudStatus(`Opened local copy. Online load failed: ${errorLabel(error)}`, "Sign out");
   }
 }
 
@@ -2346,15 +2406,25 @@ async function loadCloudState() {
     snapshot = await planRef.get();
   } catch (error) {
     console.warn("Cloud state load failed; keeping local state", error);
-    renderCloudStatus("Could not refresh online plan. Showing last local version.", "Sign out");
-    return;
+    const fallbackPlanId = activePlanId();
+    const fallbackState = loadLocalPlanState(fallbackPlanId) || loadLastGoodPlanState(fallbackPlanId);
+    if (fallbackState && planContentScore(fallbackState) > 0) {
+      cloudSyncPaused = true;
+      applyLoadedPlanState(fallbackState, fallbackPlanId, fallbackState.plan || {});
+      cloudSyncPaused = false;
+      renderCloudStatus("Could not refresh online plan. Showing last known local version.", "Sign out");
+      return "local";
+    }
+    renderCloudStatus("Could not refresh online plan. Full plan loading paused.", "Sign out");
+    return false;
   }
   const remoteState = snapshot.exists ? snapshot.data()?.state : null;
   if (snapshot.exists && snapshot.data()?.deletedAt) {
     renderCloudStatus("This 2YIP is in Trash. Restore it before editing.", "Sign out");
-    return;
+    return false;
   }
   if (remoteState && Array.isArray(remoteState.units)) {
+    const snapshotData = snapshot.data() || {};
     const localState = loadLocalPlanState(snapshot.id) || loadLastGoodPlanState(snapshot.id);
     const normalizedRemote = normalizeState(remoteState);
     if (localState && localState.plan?.id === snapshot.id) {
@@ -2364,49 +2434,22 @@ async function loadCloudState() {
       const remoteSavedAt = Number(remoteState.localSavedAtMs || 0);
       if (localScore > remoteScore || (localSavedAt && localSavedAt > remoteSavedAt && localScore >= remoteScore)) {
         cloudSyncPaused = true;
-        state = normalizeState(localState);
-        state.plan = normalizePlanMetadata({
-          ...state.plan,
-          id: snapshot.id,
-          title: snapshot.data()?.title || state.plan.title,
-          subject: snapshot.data()?.subject || state.plan.subject,
-          teamId: snapshot.data()?.teamId || state.plan.teamId,
-          teamName: snapshot.data()?.teamName || state.plan.teamName,
-          role: planMetaById(snapshot.id)?.role || state.plan.role,
-        });
-        savePlanToCatalog(state.plan);
-        localStorage.setItem(ACTIVE_PLAN_STORAGE_KEY, activePlanId());
-        localStorage.setItem(planStateStorageKey(), JSON.stringify(state));
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-        localStorage.setItem(lastGoodPlanStateStorageKey(), JSON.stringify(state));
+        applyLoadedPlanState(localState, snapshot.id, snapshotData);
         cloudSyncPaused = false;
         renderCloudStatus("Recovered newer local lesson edits. Saving them online...", "Sign out");
         render();
         window.setTimeout(saveCloudStateNow, 100);
-        return;
+        return "local";
       }
     }
     cloudSyncPaused = true;
-    state = normalizedRemote;
-    state.plan = normalizePlanMetadata({
-      ...state.plan,
-      id: snapshot.id,
-      title: snapshot.data()?.title || state.plan.title,
-      subject: snapshot.data()?.subject || state.plan.subject,
-      teamId: snapshot.data()?.teamId || state.plan.teamId,
-      teamName: snapshot.data()?.teamName || state.plan.teamName,
-      role: planMetaById(snapshot.id)?.role || state.plan.role,
-    });
-    savePlanToCatalog(state.plan);
-    localStorage.setItem(ACTIVE_PLAN_STORAGE_KEY, activePlanId());
-    localStorage.setItem(planStateStorageKey(), JSON.stringify(state));
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    localStorage.setItem(lastGoodPlanStateStorageKey(), JSON.stringify(state));
+    applyLoadedPlanState(normalizedRemote, snapshot.id, snapshotData);
     cloudSyncPaused = false;
     render();
-    return;
+    return "remote";
   }
   renderCloudStatus("No online plan body found. Local copy kept; saving paused to prevent overwrite.", "Sign out");
+  return false;
 }
 
 function scheduleCloudSave() {
@@ -2487,7 +2530,64 @@ async function commitPlanSaveNow({ statusElement, statusElements = [], buttons =
 }
 
 function cleanCloudState(value) {
-  return JSON.parse(JSON.stringify(value));
+  const cleanState = JSON.parse(JSON.stringify(value));
+  let imageChars = 0;
+  (cleanState.units || []).forEach((unit) => {
+    (unit.lessons || []).forEach((lesson) => {
+      const imageLength = lesson.imageDataUrl?.length || 0;
+      imageChars += imageLength;
+      if (imageLength > CLOUD_IMAGE_MAX_CHARS || imageChars > CLOUD_IMAGE_TOTAL_MAX_CHARS) {
+        lesson.imageDataUrl = "";
+        lesson.imageSaveNotice = "Image was too large for online save. Re-upload a smaller reference image.";
+      }
+    });
+  });
+  return cleanState;
+}
+
+function imageSizeLabel(dataUrl = "") {
+  const bytes = Math.round((dataUrl.length * 3) / 4);
+  if (bytes > 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+}
+
+function loadImageElement(url) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = reject;
+    image.src = url;
+  });
+}
+
+async function compressImageFile(file) {
+  if (!file.type?.startsWith("image/")) throw new Error("Choose an image file.");
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    const image = await loadImageElement(objectUrl);
+    const canvas = document.createElement("canvas");
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("Image compression unavailable.");
+    const sourceMax = Math.max(image.naturalWidth || image.width, image.naturalHeight || image.height, 1);
+    const maxSides = [IMAGE_PREVIEW_MAX_SIDE, 900, 720, 560];
+    const qualities = [0.76, 0.66, 0.56, 0.48];
+    let bestDataUrl = "";
+    for (const maxSide of maxSides) {
+      const scale = Math.min(1, maxSide / sourceMax);
+      canvas.width = Math.max(1, Math.round((image.naturalWidth || image.width) * scale));
+      canvas.height = Math.max(1, Math.round((image.naturalHeight || image.height) * scale));
+      context.clearRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      for (const quality of qualities) {
+        const dataUrl = canvas.toDataURL("image/jpeg", quality);
+        if (!bestDataUrl || dataUrl.length < bestDataUrl.length) bestDataUrl = dataUrl;
+        if (dataUrl.length <= CLOUD_IMAGE_MAX_CHARS) return dataUrl;
+      }
+    }
+    return bestDataUrl;
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
 }
 
 function snapshotMetaStorageKey(planId = activePlanId(), workspaceId = activeWorkspaceId()) {
@@ -2669,6 +2769,16 @@ function firebaseErrorMessage(error, fallback = "Google sign-in failed. Try agai
     return "Online save is blocked by Firebase rules. Publish the latest Firestore rules.";
   }
   return error?.message ? `${fallback} (${code || error.message})` : fallback;
+}
+
+function errorLabel(error) {
+  const code = error?.code || "";
+  if (code === "permission-denied" || code === "firestore/permission-denied") return "Firebase rules blocked access";
+  if (code === "failed-precondition") return "Firebase needs an index or rule update";
+  if (code) return code;
+  if (error?.message) return error.message;
+  if (error?.name) return error.name;
+  return "unknown error";
 }
 
 function uid(prefix) {
@@ -4803,8 +4913,8 @@ function lessonActivityOverviewHtml(step, index) {
 
 function renderLessonImage(lesson) {
   els.lessonImagePreview.innerHTML = lesson.imageDataUrl
-    ? `<img src="${escapeAttr(lesson.imageDataUrl)}" alt="${escapeAttr(lesson.imageName || "Lesson reference image")}" /><span>${escapeHtml(lesson.imageName || "Uploaded image")}</span>`
-    : `<span>No image uploaded</span>`;
+    ? `<img src="${escapeAttr(lesson.imageDataUrl)}" alt="${escapeAttr(lesson.imageName || "Lesson reference image")}" /><span>${escapeHtml(lesson.imageName || "Uploaded image")} · ${escapeHtml(imageSizeLabel(lesson.imageDataUrl))}</span>${lesson.imageSaveNotice ? `<span>${escapeHtml(lesson.imageSaveNotice)}</span>` : ""}`
+    : `<span>${escapeHtml(lesson.imageSaveNotice || "No image uploaded")}</span>`;
   els.removeLessonImage.disabled = !lesson.imageDataUrl;
 }
 
@@ -6733,18 +6843,29 @@ els.chooseLessonImage.addEventListener("click", () => {
   els.lessonImageUpload.click();
 });
 
-els.lessonImageUpload.addEventListener("change", (event) => {
+els.lessonImageUpload.addEventListener("change", async (event) => {
   const lesson = selectedLesson();
   const file = event.target.files?.[0];
   if (!lesson || !file) return;
-  const reader = new FileReader();
-  reader.addEventListener("load", () => {
-    lesson.imageDataUrl = String(reader.result || "");
+  renderCloudStatus("Preparing image for online save...", cloud.user ? "Sign out" : "Sign in", true);
+  try {
+    const dataUrl = await compressImageFile(file);
+    lesson.imageDataUrl = dataUrl.length <= CLOUD_IMAGE_MAX_CHARS ? dataUrl : "";
     lesson.imageName = file.name;
-    event.target.value = "";
+    lesson.imageSaveNotice = dataUrl.length <= CLOUD_IMAGE_MAX_CHARS
+      ? `Compressed for online save (${imageSizeLabel(dataUrl)}).`
+      : "Image is still too large after compression. Try a smaller image.";
+    saveState();
     render();
-  });
-  reader.readAsDataURL(file);
+    renderCloudStatus(dataUrl.length <= CLOUD_IMAGE_MAX_CHARS ? "Image ready for online save" : "Image too large; not attached", cloud.user ? "Sign out" : "Sign in");
+  } catch (error) {
+    console.warn("Image upload failed", error);
+    lesson.imageSaveNotice = error?.message || "Image could not be uploaded.";
+    render();
+    renderCloudStatus("Image could not be prepared", cloud.user ? "Sign out" : "Sign in");
+  } finally {
+    event.target.value = "";
+  }
 });
 
 els.removeLessonImage.addEventListener("click", () => {
@@ -6752,6 +6873,8 @@ els.removeLessonImage.addEventListener("click", () => {
   if (!lesson) return;
   lesson.imageDataUrl = "";
   lesson.imageName = "";
+  lesson.imageSaveNotice = "";
+  saveState();
   render();
 });
 

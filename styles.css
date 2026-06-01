@@ -449,13 +449,14 @@ button:disabled {
 }
 
 #cloud-status {
-  max-width: 220px;
+  max-width: 360px;
   overflow: hidden;
   color: var(--muted);
   font-size: 12px;
   font-weight: 800;
+  line-height: 1.2;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
 }
 
 #cloud-auth {
