@@ -1124,10 +1124,10 @@ function syncHistoryToScreen(options = {}) {
   window.history[method]({ screen: state.currentScreen }, "", hash);
 }
 
-function initCloudSync() {
+async function initCloudSync() {
   const config = window.__FIREBASE_CONFIG__ || {};
   const hasConfig = Boolean(config.apiKey && config.authDomain && config.projectId && config.appId);
-  if (!hasConfig || !window.firebase?.initializeApp) {
+  if (!hasConfig) {
     cloud.available = false;
     renderLoginGate("Online sign-in is not configured yet.", true);
     renderCloudStatus("Online unavailable", "Sign in", true);
@@ -1135,6 +1135,9 @@ function initCloudSync() {
   }
 
   try {
+    renderLoginGate("Connecting to online save...", true);
+    renderCloudStatus("Connecting online save...", "Sign in", true);
+    await loadFirebaseSdk();
     window.firebase.initializeApp(config);
     cloud.available = true;
     cloud.auth = window.firebase.auth();
@@ -1149,6 +1152,39 @@ function initCloudSync() {
     renderLoginGate("Online sign-in failed to initialise.", true);
     renderCloudStatus("Online unavailable", "Sign in", true);
   }
+}
+
+async function loadFirebaseSdk() {
+  if (window.firebase?.initializeApp && window.firebase?.auth && window.firebase?.firestore) return;
+  await loadScript("https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js");
+  await loadScript("https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js");
+  await loadScript("https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js");
+}
+
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    if ([...document.scripts].some((script) => script.src === src && script.dataset.loaded === "true")) {
+      resolve();
+      return;
+    }
+    const script = document.createElement("script");
+    const timeout = window.setTimeout(() => {
+      script.remove();
+      reject(new Error(`Timed out loading ${src}`));
+    }, 9000);
+    script.src = src;
+    script.async = true;
+    script.onload = () => {
+      window.clearTimeout(timeout);
+      script.dataset.loaded = "true";
+      resolve();
+    };
+    script.onerror = () => {
+      window.clearTimeout(timeout);
+      reject(new Error(`Failed loading ${src}`));
+    };
+    document.head.append(script);
+  });
 }
 
 async function handleCloudUser(user) {
