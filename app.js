@@ -4600,36 +4600,78 @@ function lessonNumber(unit, lesson) {
 function lessonConfirmedSummary(unit, lesson) {
   const structures = lessonDisplayStructures(lesson);
   return `
-    <section class="lap-summary">
+    <section class="lap-summary lesson-document">
+      <div class="unit-overview-heading lesson-overview-heading">
+        <div>
+          <p class="eyebrow">Lesson Board</p>
+          <h2>${escapeHtml(`${unit.title || "Untitled Unit"} · ${lessonNumber(unit, lesson)}`)}</h2>
+        </div>
+      </div>
       ${lesson.imageDataUrl ? `<img class="lap-summary-image" src="${escapeAttr(lesson.imageDataUrl)}" alt="${escapeAttr(lesson.imageName || "Lesson reference image")}" />` : ""}
-      <dl class="lap-summary-list">
+      <dl class="lap-summary-list lesson-summary-list">
+        <dt>Meaning Brief</dt><dd>${unitOverviewInlineGroups([
+          ["Big Idea", overviewValues(unit, "bigIdeas")],
+          ["Guiding Question", guidingQuestionValues(unit)],
+          ["Theme", themeValues(unit)],
+        ])}</dd>
         <dt>Lesson Title</dt><dd>${escapeHtml(lesson.title || "Not set")}</dd>
         <dt>Lesson Description</dt><dd>${escapeHtml(lesson.description || "Not set")}</dd>
         <dt>Lesson Objectives</dt><dd>${escapeHtml(lesson.objectives || "Not set")}</dd>
         <dt>Lesson Duration</dt><dd>${escapeHtml(lessonDurationLabel(lesson))}</dd>
-        <dt>Lesson Board</dt><dd>${lessonBoardSummaryHtml(lesson)}</dd>
-        <dt>Lesson Structure</dt><dd>${structures.length ? structures.map((item) => `<span class="lesson-display-chip">${escapeHtml(item)}</span>`).join(" ") : "Not set"}</dd>
-        <dt>Learning Activities</dt><dd>${lesson.steps?.length ? lesson.steps.map((step, index) => lessonActivitySummaryHtml(step, index)).join("") : "Not set"}</dd>
+        <dt>Curricular Goals</dt><dd>${lessonOverviewGroups(lesson, [
+          ["Learning Outcomes", "learningOutcomes"],
+          ["21CC Emphasis", "cc21"],
+          ["21CC Lesson Goals", "cc21Goals"],
+        ])}</dd>
+        <dt>Learning Content</dt><dd>${lessonOverviewGroups(lesson, [
+          ["Media / Art Forms", "media"],
+          ["Context", "context"],
+          ["Artistic Processes", "artisticProcesses"],
+          ["Visual Qualities", "visualQualities"],
+          ["Other Visual Qualities", "visualQualityText"],
+        ])}</dd>
+        <dt>Core Learning Experiences</dt><dd>${lessonOverviewGroups(lesson, [["Core Learning Experiences", "coreExperiences"]])}</dd>
+        <dt>Pedagogy and Teaching Actions</dt><dd>${lessonOverviewGroups(lesson, [
+          ["Pedagogy", "pedagogy"],
+          ["Teaching Actions", "teachingMoves"],
+        ])}</dd>
+        <dt>Assessment</dt><dd>${lessonOverviewGroups(lesson, [["Assessment", "assessment"]])}</dd>
+        <dt>Lesson Structure</dt><dd>${lessonOverviewList(structures)}</dd>
+        <dt>Learning Activities</dt><dd>${lesson.steps?.length ? lesson.steps.map((step, index) => lessonActivityOverviewHtml(step, index)).join("") : `<span class="not-planned">Not yet planned</span>`}</dd>
       </dl>
     </section>
   `;
 }
 
-function lessonBoardSummaryHtml(lesson) {
-  if (!lesson.boardCards?.length) return "Not set";
-  return lessonZoneDefinitions()
-    .map(({ key, label }) => {
-      const cards = lesson.boardCards.filter((card) => (card.zone || lessonZoneForType(card.type)) === key);
-      if (!cards.length) return "";
-      return `
-        <div class="lap-step-summary">
-          <strong>${escapeHtml(label)}:</strong>
-          ${cards.map((card) => `<span class="lesson-display-chip">${escapeHtml(card.label)}</span>`).join(" ")}
-        </div>
-      `;
-    })
-    .filter(Boolean)
-    .join("");
+function lessonOverviewGroups(lesson, groups) {
+  return unitOverviewInlineGroups(groups.map(([label, type]) => [label, lessonOverviewValues(lesson, type)]));
+}
+
+function lessonOverviewValues(lesson, type) {
+  return uniqueReadableValues(
+    (lesson.boardCards || [])
+      .filter((card) => card.type === type)
+      .map((card) => readableCardValue(card)),
+  );
+}
+
+function lessonOverviewList(values) {
+  const items = (values || []).filter(Boolean);
+  return items.length ? `<ul>${items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>` : `<span class="not-planned">Not yet planned</span>`;
+}
+
+function lessonActivityOverviewHtml(step, index) {
+  return `
+    <div class="unit-summary-lesson lesson-summary-activity">
+      <div>
+        <strong>Activity ${index + 1}${step.type ? `: ${escapeHtml(step.type)}` : ""}</strong>
+        ${step.duration ? `<p><strong>Duration:</strong> ${escapeHtml(String(step.duration))} minutes</p>` : ""}
+        ${step.description ? `<p>${escapeHtml(step.description)}</p>` : `<p class="not-planned">Details not yet planned</p>`}
+        ${step.evidence ? `<p><strong>Evidence for Assessment:</strong> ${escapeHtml(step.evidence)}</p>` : ""}
+        ${step.customisation ? `<p><strong>Customisation:</strong> ${escapeHtml(step.customisation)}</p>` : ""}
+      </div>
+    </div>
+  `;
 }
 
 function renderLessonImage(lesson) {

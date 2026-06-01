@@ -2729,6 +2729,25 @@ button:disabled {
   gap: 14px;
 }
 
+.lesson-document {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px;
+  background: rgba(255, 253, 250, 0.92);
+}
+
+.lesson-overview-heading {
+  margin-bottom: 4px;
+}
+
+.lesson-summary-list {
+  margin-top: 4px;
+}
+
+.lesson-summary-activity {
+  margin-bottom: 8px;
+}
+
 .lap-summary-image {
   max-width: 100%;
   max-height: 320px;
