@@ -1359,6 +1359,7 @@ async function acceptPendingInvites(user) {
     await cloud.db.collection("workspaces").doc(workspaceId).collection("plans").doc(planId).collection("members").doc(user.uid).set({
       role,
       email,
+      inviteId: doc.id,
       displayName: user.displayName || "",
       updatedAt: window.firebase.firestore.FieldValue.serverTimestamp(),
     }, { merge: true });

@@ -34,15 +34,14 @@ service cloud.firestore {
       return isWorkspaceOwner(workspaceId) || isOwnTeacherWorkspace(workspaceId) || isPlanMember(workspaceId, planId);
     }
 
-    function planInviteIdFor(workspaceId, planId) {
-      return workspaceId + "__" + planId + "__" + request.auth.token.email;
-    }
-
-    function matchingPendingPlanInvite(workspaceId, planId) {
+    function matchingPendingPlanInvite(inviteId, workspaceId, planId) {
       return signedIn()
-        && exists(/databases/$(database)/documents/planInvites/$(planInviteIdFor(workspaceId, planId)))
-        && get(/databases/$(database)/documents/planInvites/$(planInviteIdFor(workspaceId, planId))).data.email == request.auth.token.email
-        && get(/databases/$(database)/documents/planInvites/$(planInviteIdFor(workspaceId, planId))).data.status == "pending";
+        && inviteId is string
+        && exists(/databases/$(database)/documents/planInvites/$(inviteId))
+        && get(/databases/$(database)/documents/planInvites/$(inviteId)).data.workspaceId == workspaceId
+        && get(/databases/$(database)/documents/planInvites/$(inviteId)).data.planId == planId
+        && get(/databases/$(database)/documents/planInvites/$(inviteId)).data.email == request.auth.token.email
+        && get(/databases/$(database)/documents/planInvites/$(inviteId)).data.status == "pending";
     }
 
     match /users/{userId} {
@@ -93,8 +92,8 @@ service cloud.firestore {
           allow read: if isWorkspaceOwner(workspaceId) || memberId == request.auth.uid;
           allow create, update: if isWorkspaceOwner(workspaceId)
             || (memberId == request.auth.uid
-              && matchingPendingPlanInvite(workspaceId, planId)
-              && request.resource.data.role == get(/databases/$(database)/documents/planInvites/$(planInviteIdFor(workspaceId, planId))).data.role
+              && matchingPendingPlanInvite(request.resource.data.inviteId, workspaceId, planId)
+              && request.resource.data.role == get(/databases/$(database)/documents/planInvites/$(request.resource.data.inviteId)).data.role
               && request.resource.data.email == request.auth.token.email);
           allow delete: if isWorkspaceOwner(workspaceId);
         }
