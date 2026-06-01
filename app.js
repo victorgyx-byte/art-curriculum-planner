@@ -1212,7 +1212,7 @@ async function ensureCloudWorkspace(user) {
   await userRef.set({
     email: user.email || "",
     displayName: user.displayName || "",
-    lastWorkspaceId: activeWorkspaceId(),
+    lastWorkspaceId: workspaceId,
     workspaces: {
       [workspaceId]: {
         id: workspaceId,
@@ -1231,15 +1231,14 @@ async function loadCloudWorkspaceCatalog() {
   const userSnapshot = await cloud.db.collection("users").doc(cloud.user.uid).get();
   const userData = userSnapshot.exists ? userSnapshot.data() || {} : {};
   const workspaces = userData.workspaces || {};
-  Object.values(workspaces).forEach((workspace) => saveWorkspaceToCatalog(workspace));
-  saveWorkspaceToCatalog({ id: personalWorkspaceId(cloud.user.uid), name: "My Planner", type: "personal", role: "owner" });
-  if (!localStorage.getItem(ACTIVE_WORKSPACE_STORAGE_KEY) && userData.lastWorkspaceId) {
-    localStorage.setItem(ACTIVE_WORKSPACE_STORAGE_KEY, userData.lastWorkspaceId);
-  }
+  const personalWorkspace = { id: personalWorkspaceId(cloud.user.uid), name: "My Planner", type: "personal", role: "owner" };
+  const cloudWorkspaces = [personalWorkspace, ...Object.values(workspaces).filter((workspace) => workspace?.id !== personalWorkspace.id)];
+  workspaceCatalog = cloudWorkspaces.map((workspace) => normalizeWorkspaceMetadata(workspace));
+  saveWorkspaceCatalog();
+  const allowedIds = new Set(workspaceCatalog.map((workspace) => workspace.id));
+  const preferredId = allowedIds.has(userData.lastWorkspaceId) ? userData.lastWorkspaceId : personalWorkspace.id;
   const activeId = activeWorkspaceId();
-  if (!workspaceCatalog.some((workspace) => workspace.id === activeId)) {
-    localStorage.setItem(ACTIVE_WORKSPACE_STORAGE_KEY, personalWorkspaceId(cloud.user.uid));
-  }
+  if (!allowedIds.has(activeId)) localStorage.setItem(ACTIVE_WORKSPACE_STORAGE_KEY, preferredId);
 }
 
 async function loadCloudWorkspaceLibrary() {
