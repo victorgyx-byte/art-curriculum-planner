@@ -2226,56 +2226,6 @@ button:disabled {
   align-content: start;
 }
 
-.lesson-meaning-brief {
-  display: grid;
-  grid-template-columns: 180px minmax(0, 1fr);
-  gap: 14px;
-  align-items: start;
-  margin-bottom: 14px;
-  border: 1px solid rgba(216, 208, 194, 0.9);
-  border-radius: var(--radius);
-  padding: 12px;
-  background: rgba(255, 253, 250, 0.82);
-}
-
-.lesson-meaning-brief h3 {
-  margin: 2px 0 0;
-  color: var(--ink);
-  font-size: 19px;
-  line-height: 1.15;
-}
-
-.lesson-meaning-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.lesson-meaning-item {
-  min-width: 0;
-  border-left: 4px solid var(--accent);
-  border-radius: var(--radius);
-  padding: 9px 10px;
-  background: #fff;
-}
-
-.lesson-meaning-item span {
-  display: block;
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 900;
-  line-height: 1.2;
-  text-transform: uppercase;
-}
-
-.lesson-meaning-item p {
-  margin: 4px 0 0;
-  color: var(--ink);
-  font-size: 14px;
-  font-weight: 780;
-  line-height: 1.32;
-}
-
 .lesson-brief-card {
   position: relative;
   display: grid;
@@ -3657,11 +3607,6 @@ button:disabled {
 
   .lesson-board-shell {
     padding: 10px;
-  }
-
-  .lesson-meaning-brief,
-  .lesson-meaning-grid {
-    grid-template-columns: 1fr;
   }
 
   .lesson-planning-board {

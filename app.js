@@ -778,7 +778,6 @@ const els = {
   lessonDuration: document.querySelector("#lesson-duration"),
   lessonDescription: document.querySelector("#lesson-description"),
   lessonObjectives: document.querySelector("#lesson-objectives"),
-  lessonMeaningBrief: document.querySelector("#lesson-meaning-brief"),
   lessonImagePreview: document.querySelector("#lesson-image-preview"),
   lessonImageUpload: document.querySelector("#lesson-image-upload"),
   chooseLessonImage: document.querySelector("#choose-lesson-image"),
@@ -4050,7 +4049,6 @@ function renderLessonBoard() {
   els.lessonDuration.textContent = lessonDurationLabel(lesson);
   if (document.activeElement !== els.lessonDescription) els.lessonDescription.value = lesson.description || "";
   if (document.activeElement !== els.lessonObjectives) els.lessonObjectives.value = lesson.objectives || "";
-  renderLessonMeaningBrief(unit);
   renderLessonImage(lesson);
   renderLessonPlanningBoard(lesson);
   renderMobileLessonTabs();
@@ -4609,11 +4607,6 @@ function lessonConfirmedSummary(unit, lesson) {
       </div>
       ${lesson.imageDataUrl ? `<img class="lap-summary-image" src="${escapeAttr(lesson.imageDataUrl)}" alt="${escapeAttr(lesson.imageName || "Lesson reference image")}" />` : ""}
       <dl class="lap-summary-list lesson-summary-list">
-        <dt>Meaning Brief</dt><dd>${unitOverviewInlineGroups([
-          ["Big Idea", overviewValues(unit, "bigIdeas")],
-          ["Guiding Question", guidingQuestionValues(unit)],
-          ["Theme", themeValues(unit)],
-        ])}</dd>
         <dt>Lesson Title</dt><dd>${escapeHtml(lesson.title || "Not set")}</dd>
         <dt>Lesson Description</dt><dd>${escapeHtml(lesson.description || "Not set")}</dd>
         <dt>Lesson Objectives</dt><dd>${escapeHtml(lesson.objectives || "Not set")}</dd>
@@ -4728,29 +4721,6 @@ function renderLessonPlanningBoard(lesson) {
       const target = document.querySelector(`.lesson-zone[data-lesson-zone="${card.zone || lessonZoneForType(card.type)}"] .zone-cards`);
       target?.append(node);
     });
-}
-
-function renderLessonMeaningBrief(unit) {
-  if (!els.lessonMeaningBrief) return;
-  const groups = [
-    ["Big Idea", overviewValues(unit, "bigIdeas")],
-    ["Guiding Question", guidingQuestionValues(unit)],
-    ["Theme", themeValues(unit)],
-  ];
-  els.lessonMeaningBrief.innerHTML = `
-    <div>
-      <p class="eyebrow">Inherited From Unit</p>
-      <h3>Meaning Brief</h3>
-    </div>
-    <div class="lesson-meaning-grid">
-      ${groups.map(([label, values]) => `
-        <div class="lesson-meaning-item">
-          <span>${escapeHtml(label)}</span>
-          <p>${escapeHtml(values.join("; ") || "Not set")}</p>
-        </div>
-      `).join("")}
-    </div>
-  `;
 }
 
 function lessonPlanningCardTitle(card) {
