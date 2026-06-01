@@ -1535,6 +1535,7 @@ button:disabled {
   border-radius: var(--radius);
   padding: 12px;
   background: #fffdfa;
+  cursor: grab;
 }
 
 .lesson-card.confirmed {
@@ -1542,6 +1543,17 @@ button:disabled {
   border-left: 5px solid var(--accent);
   background: #fff;
   box-shadow: 0 7px 16px rgba(42, 37, 29, 0.1);
+}
+
+.lesson-card.dragging,
+.lesson-picker-item.dragging {
+  opacity: 0.58;
+}
+
+.lesson-card.lesson-drop-target,
+.lesson-picker-item.lesson-drop-target {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 2px rgba(47, 111, 115, 0.2);
 }
 
 .lesson-card-header {
@@ -1575,6 +1587,7 @@ button:disabled {
 .lesson-remove,
 .lesson-confirm,
 .lesson-edit,
+.lesson-move,
 .lesson-open-board {
   border: 0;
   border-radius: 999px;
@@ -1583,6 +1596,16 @@ button:disabled {
   color: var(--muted);
   font-size: 12px;
   font-weight: 800;
+}
+
+.lesson-move {
+  min-width: 28px;
+  border: 1px solid rgba(111, 106, 97, 0.18);
+  background: #fff;
+}
+
+.lesson-move:disabled {
+  opacity: 0.35;
 }
 
 .lesson-confirm,
@@ -2194,6 +2217,8 @@ button:disabled {
 
 .lesson-picker-item {
   display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
   gap: 3px;
   width: 100%;
   border: 1px solid var(--line);
@@ -2203,12 +2228,43 @@ button:disabled {
   background: #fff;
   color: var(--ink);
   text-align: left;
+  cursor: grab;
 }
 
 .lesson-picker-item.active {
   border-color: rgba(47, 111, 115, 0.42);
   border-left-color: var(--accent);
   background: rgba(219, 238, 237, 0.54);
+}
+
+.lesson-picker-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.lesson-picker-move-controls {
+  display: flex;
+  gap: 4px;
+}
+
+.lesson-picker-move {
+  display: inline-grid;
+  place-items: center;
+  min-width: 26px;
+  min-height: 26px;
+  border: 1px solid rgba(111, 106, 97, 0.18);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.lesson-picker-move[aria-disabled="true"] {
+  opacity: 0.35;
+  cursor: not-allowed;
 }
 
 .lap-summary {

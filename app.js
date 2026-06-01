@@ -1833,6 +1833,8 @@ function renderLessons(unit) {
     const card = document.createElement("article");
     card.className = "lesson-card";
     if (lesson.confirmed) card.classList.add("confirmed");
+    card.draggable = true;
+    card.dataset.lessonId = lesson.id;
     card.innerHTML = `
       <div class="lesson-card-header">
         <div>
@@ -1840,6 +1842,8 @@ function renderLessons(unit) {
           <div class="lesson-subtitle">${lesson.confirmed ? "Confirmed" : "Lesson Structure"}</div>
         </div>
         <div class="lesson-actions">
+          <button class="lesson-move" data-direction="up" type="button" ${index === 0 ? "disabled" : ""} aria-label="Move Lesson ${index + 1} up">↑</button>
+          <button class="lesson-move" data-direction="down" type="button" ${index === unit.lessons.length - 1 ? "disabled" : ""} aria-label="Move Lesson ${index + 1} down">↓</button>
           <button class="lesson-open-board" type="button">Go to Lesson Board</button>
           ${lesson.confirmed ? `<button class="lesson-edit" type="button">Edit</button>` : `<button class="lesson-confirm" type="button">Confirm</button>`}
           <button class="lesson-remove" type="button">Remove</button>
@@ -1848,6 +1852,8 @@ function renderLessons(unit) {
       ${lesson.confirmed ? lessonDisplayContent(lesson) : lessonEditContent(lesson)}
     `;
 
+    bindLessonReorderControls(card, unit, lesson);
+    bindLessonDragReorder(card, unit, lesson);
     card.querySelector(".lesson-open-board").addEventListener("click", () => {
       state.selectedLessonId = lesson.id;
       state.currentScreen = "lesson";
@@ -1994,9 +2000,17 @@ function renderLessonPicker(container, unit, options = {}) {
       button.className = "lesson-picker-item";
       if (lesson.id === state.selectedLessonId) button.classList.add("active");
       button.type = "button";
+      button.draggable = true;
+      button.dataset.lessonId = lesson.id;
       button.innerHTML = `
-        <span class="unit-list-title">Lesson ${index + 1}</span>
-        <span class="unit-list-meta">${escapeHtml(lesson.title || `Lesson ${index + 1}`)}</span>
+        <span class="lesson-picker-copy">
+          <span class="unit-list-title">Lesson ${index + 1}</span>
+          <span class="unit-list-meta">${escapeHtml(lesson.title || `Lesson ${index + 1}`)}</span>
+        </span>
+        <span class="lesson-picker-move-controls">
+          <span class="lesson-picker-move" data-direction="up" role="button" tabindex="0" aria-label="Move Lesson ${index + 1} up" aria-disabled="${index === 0 ? "true" : "false"}">↑</span>
+          <span class="lesson-picker-move" data-direction="down" role="button" tabindex="0" aria-label="Move Lesson ${index + 1} down" aria-disabled="${index === unit.lessons.length - 1 ? "true" : "false"}">↓</span>
+        </span>
       `;
       button.addEventListener("click", () => {
         state.selectedLessonId = lesson.id;
@@ -2004,6 +2018,11 @@ function renderLessonPicker(container, unit, options = {}) {
         state.currentScreen = "lesson";
         render();
       });
+      button.querySelector(".lesson-picker-move-controls").addEventListener("click", (event) => {
+        event.stopPropagation();
+      });
+      bindLessonPickerReorderControls(button, unit, lesson);
+      bindLessonDragReorder(button, unit, lesson);
       container.append(button);
     });
   }
@@ -2025,6 +2044,101 @@ function renderLessonPicker(container, unit, options = {}) {
     });
     container.append(addButton);
   }
+}
+
+function bindLessonReorderControls(scope, unit, lesson) {
+  scope.querySelectorAll(".lesson-move").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (button.disabled) return;
+      moveLesson(unit, lesson.id, button.dataset.direction);
+    });
+  });
+}
+
+function bindLessonPickerReorderControls(scope, unit, lesson) {
+  scope.querySelectorAll(".lesson-picker-move").forEach((control) => {
+    const handleMove = (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (control.getAttribute("aria-disabled") === "true") return;
+      moveLesson(unit, lesson.id, control.dataset.direction);
+    };
+    control.addEventListener("click", handleMove);
+    control.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      handleMove(event);
+    });
+  });
+}
+
+function bindLessonDragReorder(node, unit, lesson) {
+  node.addEventListener("dragstart", (event) => {
+    if (event.target.closest("button, input, textarea, select, .lesson-picker-move")) {
+      event.preventDefault();
+      return;
+    }
+    dragPayload = { kind: "lessonReorder", unitId: unit.id, lessonId: lesson.id };
+    event.dataTransfer.setData("text/plain", JSON.stringify(dragPayload));
+    event.dataTransfer.setData("application/json", JSON.stringify(dragPayload));
+    event.dataTransfer.effectAllowed = "move";
+    node.classList.add("dragging");
+  });
+  node.addEventListener("dragover", (event) => {
+    const payload = readDragPayload(event);
+    if (payload?.kind !== "lessonReorder" || payload.unitId !== unit.id || payload.lessonId === lesson.id) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    node.classList.add("lesson-drop-target");
+  });
+  node.addEventListener("dragleave", () => {
+    node.classList.remove("lesson-drop-target");
+  });
+  node.addEventListener("drop", (event) => {
+    const payload = readDragPayload(event);
+    node.classList.remove("lesson-drop-target");
+    if (payload?.kind !== "lessonReorder" || payload.unitId !== unit.id || payload.lessonId === lesson.id) return;
+    event.preventDefault();
+    reorderLessonBefore(unit, payload.lessonId, lesson.id);
+  });
+  node.addEventListener("dragend", () => {
+    node.classList.remove("dragging", "lesson-drop-target");
+    dragPayload = null;
+  });
+}
+
+function readDragPayload(event) {
+  if (dragPayload) return dragPayload;
+  try {
+    return JSON.parse(event.dataTransfer.getData("application/json") || event.dataTransfer.getData("text/plain") || "null");
+  } catch {
+    return null;
+  }
+}
+
+function moveLesson(unit, lessonId, direction) {
+  if (!unit?.lessons?.length) return;
+  const from = unit.lessons.findIndex((lesson) => lesson.id === lessonId);
+  if (from < 0) return;
+  const to = direction === "up" ? from - 1 : from + 1;
+  if (to < 0 || to >= unit.lessons.length) return;
+  const [lesson] = unit.lessons.splice(from, 1);
+  unit.lessons.splice(to, 0, lesson);
+  state.selectedLessonId = lesson.id;
+  render();
+}
+
+function reorderLessonBefore(unit, movingLessonId, targetLessonId) {
+  if (!unit?.lessons?.length) return;
+  const from = unit.lessons.findIndex((lesson) => lesson.id === movingLessonId);
+  let to = unit.lessons.findIndex((lesson) => lesson.id === targetLessonId);
+  if (from < 0 || to < 0 || from === to) return;
+  const [lesson] = unit.lessons.splice(from, 1);
+  if (from < to) to -= 1;
+  unit.lessons.splice(to, 0, lesson);
+  state.selectedLessonId = lesson.id;
+  render();
 }
 
 function renderLessonCardLibrary(unit, lesson) {
