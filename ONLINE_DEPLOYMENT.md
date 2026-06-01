@@ -32,6 +32,7 @@ workspaces/{workspaceId}
   name
   schoolName
   type: personal | team
+  sharedCardLibrary
   createdBy
   createdAt
 
@@ -47,12 +48,12 @@ workspaces/{workspaceId}/plans/{planId}
   teamName
   ownerId
   state.plan
-  state.cardLibrary
+  state.cardLibrary        # subject-specific cards only
   state
   updatedAt
 ```
 
-For the MVP, `state` stores the current app state as one document field. Each plan document also keeps lightweight metadata (`title`, `subject`, `teamId`, `teamName`) so the app can list and switch between plans without opening every full planner state. Later, we can split units and lessons into separate documents if collaboration becomes heavier.
+For the MVP, `state` stores the current app state as one document field. Each plan document also keeps lightweight metadata (`title`, `subject`, `teamId`, `teamName`) so the app can list and switch between plans without opening every full planner state. Subject-specific cards live with the plan. Shared cross-curricular cards, currently 21CC, live with the workspace so they remain consistent across Art, Music, and other plans. Later, we can split units and lessons into separate documents if collaboration becomes heavier.
 
 ## Firebase Setup Checklist
 
@@ -78,7 +79,8 @@ For the MVP, `state` stores the current app state as one document field. Each pl
 - Teachers can create a team workspace and switch between workspaces.
 - The plan selector can create and switch between multiple 2YIP plans.
 - Firestore workspace and plan documents are discovered into local catalogs after sign-in.
-- Each plan stores its own `cardLibrary`, making subject-specific and team-specific card sets possible.
+- Each plan stores its own subject-specific `cardLibrary`, making Art/Music/team-specific card sets possible.
+- Each workspace stores `sharedCardLibrary` for subject-agnostic 21CC cards.
 
 ## Next Code Step
 

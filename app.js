@@ -8,12 +8,14 @@ const TIMELINE_LANE_HEIGHT = 150;
 const STORAGE_KEY = "art-curriculum-editor-v1";
 const ACTIVE_WORKSPACE_STORAGE_KEY = "art-curriculum-active-workspace-id";
 const WORKSPACE_CATALOG_STORAGE_KEY = "art-curriculum-workspace-catalog";
+const WORKSPACE_SHARED_LIBRARY_STORAGE_KEY = "art-curriculum-workspace-shared-library";
 const ACTIVE_PLAN_STORAGE_KEY = "art-curriculum-active-plan-id";
 const PLAN_CATALOG_STORAGE_KEY = "art-curriculum-plan-catalog";
 const CLOUD_WORKSPACE_PREFIX = "teacher-workspace";
 const TEAM_WORKSPACE_PREFIX = "team-workspace";
 const CLOUD_PLAN_ID = "main-planner-state";
 const SUGGESTION_VERSION = 2;
+const SHARED_CARD_TYPES = new Set(["cc21"]);
 const hiddenPlanningCards = new Set(["Communication, Collaboration and Information Skills"]);
 
 const defaultCardLibrary = [
@@ -157,6 +159,8 @@ const defaultCardLibrary = [
     ],
   },
 ];
+
+const defaultWorkspaceCardLibrary = defaultCardLibrary.filter((category) => SHARED_CARD_TYPES.has(category.type));
 
 const lessonStructureCards = [
   "Verbal Recap",
@@ -359,6 +363,7 @@ const defaultState = {
 };
 
 let workspaceCatalog = loadWorkspaceCatalog();
+let workspaceSharedLibrary = loadWorkspaceSharedLibrary();
 let planCatalog = loadPlanCatalog();
 let state = loadState();
 let dragPayload = null;
@@ -607,8 +612,9 @@ function normalizeWorkspaceMetadata(workspace = {}) {
   };
 }
 
-function normalizeCardLibrary(cardLibrary) {
-  const fallback = cloneDefaultCardLibrary();
+function normalizeCardLibrary(cardLibrary, options = {}) {
+  const includeShared = Boolean(options.includeShared);
+  const fallback = includeShared ? cloneDefaultWorkspaceCardLibrary() : cloneDefaultPlanCardLibrary();
   if (!Array.isArray(cardLibrary) || !cardLibrary.length) return fallback;
   return cardLibrary
     .map((category) => ({
@@ -616,6 +622,7 @@ function normalizeCardLibrary(cardLibrary) {
       type: category.type || "",
       items: Array.isArray(category.items) ? category.items : [],
     }))
+    .filter((category) => includeShared ? SHARED_CARD_TYPES.has(category.type) : !SHARED_CARD_TYPES.has(category.type))
     .filter((category) => category.title && category.items.length);
 }
 
@@ -623,12 +630,44 @@ function cloneDefaultCardLibrary() {
   return structuredClone(defaultCardLibrary);
 }
 
+function cloneDefaultPlanCardLibrary() {
+  return cloneDefaultCardLibrary().filter((category) => !SHARED_CARD_TYPES.has(category.type));
+}
+
+function cloneDefaultWorkspaceCardLibrary() {
+  return structuredClone(defaultWorkspaceCardLibrary);
+}
+
 function activeCardLibrary() {
-  return Array.isArray(state.cardLibrary) && state.cardLibrary.length ? state.cardLibrary : defaultCardLibrary;
+  const planLibrary = Array.isArray(state.cardLibrary) && state.cardLibrary.length ? normalizeCardLibrary(state.cardLibrary) : cloneDefaultPlanCardLibrary();
+  const sharedLibrary = normalizeCardLibrary(workspaceSharedLibrary, { includeShared: true });
+  return [...planLibrary, ...sharedLibrary];
 }
 
 function planStateStorageKey(planId = activePlanId(), workspaceId = activeWorkspaceId()) {
   return `${STORAGE_KEY}:${workspaceId || "local-workspace"}:${planId || CLOUD_PLAN_ID}`;
+}
+
+function workspaceSharedLibraryStorageKey(workspaceId = activeWorkspaceId()) {
+  return `${WORKSPACE_SHARED_LIBRARY_STORAGE_KEY}:${workspaceId || "local-workspace"}`;
+}
+
+function loadWorkspaceSharedLibrary(workspaceId = activeWorkspaceId()) {
+  try {
+    const saved = JSON.parse(localStorage.getItem(workspaceSharedLibraryStorageKey(workspaceId)));
+    return normalizeCardLibrary(saved, { includeShared: true });
+  } catch {
+    return cloneDefaultWorkspaceCardLibrary();
+  }
+}
+
+function saveWorkspaceSharedLibrary() {
+  localStorage.setItem(workspaceSharedLibraryStorageKey(), JSON.stringify(normalizeCardLibrary(workspaceSharedLibrary, { includeShared: true })));
+}
+
+function setWorkspaceSharedLibrary(library) {
+  workspaceSharedLibrary = normalizeCardLibrary(library, { includeShared: true });
+  saveWorkspaceSharedLibrary();
 }
 
 function loadWorkspaceCatalog() {
@@ -789,12 +828,14 @@ async function switchWorkspace(workspaceId) {
   if (!workspaceId || workspaceId === activeWorkspaceId()) return;
   await persistCurrentPlanBeforeSwitch();
   localStorage.setItem(ACTIVE_WORKSPACE_STORAGE_KEY, workspaceId);
+  setWorkspaceSharedLibrary(loadWorkspaceSharedLibrary(workspaceId));
   if (cloud.loaded) {
     await cloud.db.collection("users").doc(cloud.user.uid).set({
       lastWorkspaceId: workspaceId,
       updatedAt: window.firebase.firestore.FieldValue.serverTimestamp(),
     }, { merge: true });
   }
+  if (cloud.loaded) await loadCloudWorkspaceLibrary();
   if (cloud.loaded) await loadCloudPlanCatalog();
   const nextPlan = firstPlanForActiveWorkspace();
   if (nextPlan) {
@@ -833,6 +874,7 @@ async function createTeamWorkspace(name) {
     schoolName: "",
     type: "team",
     createdBy: cloud.user.uid,
+    sharedCardLibrary: cloneDefaultWorkspaceCardLibrary(),
     updatedAt: window.firebase.firestore.FieldValue.serverTimestamp(),
   });
   await workspaceRef.collection("members").doc(cloud.user.uid).set({
@@ -850,6 +892,7 @@ async function createTeamWorkspace(name) {
   }, { merge: true });
   saveWorkspaceToCatalog(workspace);
   localStorage.setItem(ACTIVE_WORKSPACE_STORAGE_KEY, workspaceId);
+  setWorkspaceSharedLibrary(cloneDefaultWorkspaceCardLibrary());
   state = createPlanState({
     title: `${trimmedName} Art 2YIP`,
     subject: "Art",
@@ -862,7 +905,7 @@ async function createTeamWorkspace(name) {
 }
 
 function cloneLibraryForSubject(subject) {
-  const cloned = cloneDefaultCardLibrary();
+  const cloned = cloneDefaultPlanCardLibrary();
   if (subject !== "Music") return cloned;
   return cloned.map((category) => {
     if (category.title === "Media / Art Forms") {
@@ -1034,8 +1077,10 @@ function syncLessonDescription(lesson, value) {
 
 function saveState() {
   state.plan = normalizePlanMetadata(state.plan);
+  state.cardLibrary = normalizeCardLibrary(state.cardLibrary);
   savePlanToCatalog(state.plan);
   saveWorkspaceToCatalog({ id: activeWorkspaceId(), name: workspaceLabel(), type: activeWorkspaceId().startsWith(TEAM_WORKSPACE_PREFIX) ? "team" : "personal" });
+  saveWorkspaceSharedLibrary();
   localStorage.setItem(ACTIVE_WORKSPACE_STORAGE_KEY, activeWorkspaceId());
   localStorage.setItem(ACTIVE_PLAN_STORAGE_KEY, activePlanId());
   localStorage.setItem(planStateStorageKey(), JSON.stringify(state));
@@ -1122,6 +1167,7 @@ async function handleCloudUser(user) {
   try {
     await ensureCloudWorkspace(user);
     await loadCloudWorkspaceCatalog();
+    await loadCloudWorkspaceLibrary();
     await loadCloudPlanCatalog();
     await loadCloudState();
     cloud.loaded = true;
@@ -1185,6 +1231,21 @@ async function loadCloudWorkspaceCatalog() {
   if (!workspaceCatalog.some((workspace) => workspace.id === activeId)) {
     localStorage.setItem(ACTIVE_WORKSPACE_STORAGE_KEY, personalWorkspaceId(cloud.user.uid));
   }
+}
+
+async function loadCloudWorkspaceLibrary() {
+  const workspaceSnapshot = await cloud.db.collection("workspaces").doc(cloudWorkspaceId()).get();
+  const sharedLibrary = workspaceSnapshot.exists ? workspaceSnapshot.data()?.sharedCardLibrary : null;
+  setWorkspaceSharedLibrary(sharedLibrary || loadWorkspaceSharedLibrary());
+  if (!sharedLibrary) await saveCloudWorkspaceLibrary();
+}
+
+async function saveCloudWorkspaceLibrary() {
+  if (!cloud.available || !cloud.user || !cloud.db) return;
+  await cloud.db.collection("workspaces").doc(cloudWorkspaceId()).set({
+    sharedCardLibrary: normalizeCardLibrary(workspaceSharedLibrary, { includeShared: true }),
+    updatedAt: window.firebase.firestore.FieldValue.serverTimestamp(),
+  }, { merge: true });
 }
 
 async function loadCloudPlanCatalog() {
@@ -2970,9 +3031,12 @@ function renderLessonInheritedChips(unit) {
 function inheritedChipHtml(unit) {
   const groups = [
     ["Big Ideas", unit.bigIdeas || []],
+    ["Media / Art Forms", unit.media || []],
     ["Learning Outcomes", [...(unit.learningOutcomes?.primary || []), ...(unit.learningOutcomes?.supporting || [])]],
+    ["21CC", unit.cc21 || []],
     ["Core Learning Experiences", unit.coreExperiences || []],
     ["Pedagogy", unit.pedagogy || []],
+    ["Assessment", unit.assessment || []],
   ];
   return groups
     .map(([label, values]) => `
@@ -3801,6 +3865,7 @@ function renderHealth() {
         ${renderIncidenceGroup("Learning Outcomes", timelineUnits, "learningOutcomes", libraryItemsByType("learningOutcomes"), { source: "lesson" })}
         ${renderIncidenceGroup("21CC Emphasis", timelineUnits, "cc21", libraryItemsByType("cc21"), { source: "lesson" })}
         ${renderIncidenceGroup("Core Learning Experiences", timelineUnits, "coreExperiences", libraryItemsByType("coreExperiences"), { source: "lesson" })}
+        ${renderIncidenceGroup("Assessment", timelineUnits, "assessment", libraryItemsByType("assessment"), { source: "lesson" })}
         ${renderPedagogyGroup(timelineUnits)}
       </div>
     </section>
@@ -3848,14 +3913,14 @@ function incidenceRowMeta(row, lessonBased) {
 }
 
 function renderPedagogyGroup(units) {
-  const rows = incidenceRows(units, "pedagogy", libraryItemsByType("pedagogy"));
+  const rows = lessonIncidenceRows(units, "pedagogy", libraryItemsByType("pedagogy"));
   const activeRows = rows.filter((row) => row.unitCount);
-  const totalWeeks = activeRows.reduce((total, row) => total + row.weeks, 0);
+  const totalLessons = activeRows.reduce((total, row) => total + row.lessonCount, 0);
   const colors = ["#2f6f73", "#b5493a", "#d49a2a", "#4d5f91", "#7a5b9a", "#5f6f7a"];
   let cursor = 0;
   const stops = activeRows.map((row, index) => {
     const start = cursor;
-    const end = totalWeeks ? cursor + (row.weeks / totalWeeks) * 100 : cursor;
+    const end = totalLessons ? cursor + (row.lessonCount / totalLessons) * 100 : cursor;
     cursor = end;
     return `${colors[index % colors.length]} ${start}% ${end}%`;
   });
@@ -3870,7 +3935,7 @@ function renderPedagogyGroup(units) {
               <div class="analysis-row ${row.unitCount ? "" : "empty"}">
                 <div class="analysis-row-main">
                   <span><i class="analysis-swatch" style="background:${colors[index % colors.length]}"></i>${escapeHtml(row.label)}</span>
-                  <small>${row.unitCount ? `${row.unitCount} ${row.unitCount === 1 ? "unit" : "units"} · ${row.weeks} ${row.weeks === 1 ? "week" : "weeks"}` : "Not yet planned"}</small>
+                  <small>${incidenceRowMeta(row, true)}</small>
                 </div>
               </div>
             `).join("")}

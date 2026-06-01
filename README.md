@@ -11,7 +11,7 @@ The planner supports:
 
 ## Current State
 
-The app runs as a static web app with Google sign-in, Firestore cloud save, and browser local storage as a resilience fallback. Each signed-in teacher gets a personal workspace and can create team workspaces. Each workspace can contain multiple 2YIP plans. Plan metadata includes subject and team name, and each plan carries its own card library so future Art, Music, or team-specific card sets can diverge without changing the whole app.
+The app runs as a static web app with Google sign-in, Firestore cloud save, and browser local storage as a resilience fallback. Each signed-in teacher gets a personal workspace and can create team workspaces. Each workspace can contain multiple 2YIP plans. Plan metadata includes subject and team name, each plan carries its own subject-specific card library, and the workspace carries shared 21CC cards so cross-curricular emphases stay consistent across Art, Music, and other plans.
 
 ## Online Direction
 
