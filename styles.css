@@ -2732,10 +2732,6 @@ button:disabled {
     box-shadow 0.15s ease;
 }
 
-.unit-board .core-zone {
-  grid-column: span 2;
-}
-
 .board-zone.selected-zone {
   border-color: var(--accent);
   background:
@@ -3565,7 +3561,6 @@ button:disabled {
   .alignment-zone,
   .content-zone,
   .core-zone {
-    grid-column: auto;
     min-height: 180px;
   }
 
