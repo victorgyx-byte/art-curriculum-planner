@@ -362,6 +362,14 @@ const defaultState = {
   ],
 };
 
+let cloud = {
+  available: false,
+  auth: null,
+  db: null,
+  user: null,
+  loaded: false,
+  status: "Local save",
+};
 let workspaceCatalog = loadWorkspaceCatalog();
 let workspaceSharedLibrary = loadWorkspaceSharedLibrary();
 let planCatalog = loadPlanCatalog();
@@ -376,14 +384,6 @@ let cloudSaveTimer = null;
 let authStateTimer = null;
 let cloudSyncPaused = false;
 let historySyncPaused = false;
-let cloud = {
-  available: false,
-  auth: null,
-  db: null,
-  user: null,
-  loaded: false,
-  status: "Local save",
-};
 
 const screenHashes = {
   timeline: "#timeline",
@@ -5028,6 +5028,11 @@ els.cloudAuth?.addEventListener("click", toggleCloudAuth);
 els.loginGoogle?.addEventListener("click", toggleCloudAuth);
 els.loginReset?.addEventListener("click", resetCloudSignIn);
 
+window.addEventListener("error", (event) => {
+  console.warn("Planner startup error", event.error || event.message);
+  renderLoginGate(`Startup paused: ${event.message || "reload and try again."}`, false);
+});
+
 window.addEventListener("beforeunload", saveStateSafely);
 window.addEventListener("popstate", () => {
   historySyncPaused = true;
@@ -5040,6 +5045,12 @@ document.addEventListener("visibilitychange", () => {
 });
 window.setInterval(saveStateSafely, 2000);
 
-syncHistoryToScreen({ replace: true });
-render();
+window.__ART_APP_BOOTED__ = true;
 initCloudSync();
+try {
+  syncHistoryToScreen({ replace: true });
+  render();
+} catch (error) {
+  console.warn("Planner render failed", error);
+  renderLoginGate(firebaseErrorMessage(error, "Planner startup paused. Reload and try again."), false);
+}

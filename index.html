@@ -467,10 +467,23 @@
       </section>
     </div>
 
+    <script>
+      window.__ART_APP_BOOTED__ = false;
+      window.addEventListener("error", (event) => {
+        const status = document.querySelector("#login-status");
+        if (status) status.textContent = `Startup error: ${event.message || "reload and try again."}`;
+      });
+      window.setTimeout(() => {
+        const status = document.querySelector("#login-status");
+        if (status && !window.__ART_APP_BOOTED__) {
+          status.textContent = "App startup did not finish. Refresh after the latest deployment.";
+        }
+      }, 8000);
+    </script>
     <script src="firebase-config.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-    <script src="app.js?v=20260601-login-recovery"></script>
+    <script src="app.js?v=20260601-cloud-order-fix"></script>
   </body>
 </html>
