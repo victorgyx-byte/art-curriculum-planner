@@ -51,7 +51,8 @@ service cloud.firestore {
     match /planInvites/{inviteId} {
       allow read: if signedIn()
         && (resource.data.email == request.auth.token.email
-          || isWorkspaceOwner(resource.data.workspaceId));
+          || isWorkspaceOwner(resource.data.workspaceId)
+          || isWorkspaceCreator(resource.data.workspaceId));
       allow create: if signedIn()
         && isWorkspaceOwner(request.resource.data.workspaceId)
         && request.resource.data.createdBy == request.auth.uid
@@ -59,6 +60,7 @@ service cloud.firestore {
         && request.resource.data.status == "pending";
       allow update: if signedIn()
         && (isWorkspaceOwner(resource.data.workspaceId)
+          || isWorkspaceCreator(resource.data.workspaceId)
           || (resource.data.email == request.auth.token.email
             && resource.data.status == "pending"
             && request.resource.data.status == "accepted"
@@ -67,35 +69,38 @@ service cloud.firestore {
             && request.resource.data.planId == resource.data.planId
             && request.resource.data.email == resource.data.email
             && request.resource.data.role == resource.data.role));
-      allow delete: if signedIn() && isWorkspaceOwner(resource.data.workspaceId);
+      allow delete: if signedIn()
+        && (isWorkspaceOwner(resource.data.workspaceId)
+          || isWorkspaceCreator(resource.data.workspaceId));
     }
 
     match /workspaces/{workspaceId} {
-      allow read: if isWorkspaceOwner(workspaceId) || isOwnTeacherWorkspace(workspaceId);
+      allow read: if isWorkspaceOwner(workspaceId) || isWorkspaceCreator(workspaceId) || isOwnTeacherWorkspace(workspaceId);
       allow create: if signedIn()
         && request.resource.data.createdBy == request.auth.uid;
-      allow update: if isWorkspaceOwner(workspaceId) || isOwnTeacherWorkspace(workspaceId);
-      allow delete: if isWorkspaceOwner(workspaceId);
+      allow update: if isWorkspaceOwner(workspaceId) || isWorkspaceCreator(workspaceId) || isOwnTeacherWorkspace(workspaceId);
+      allow delete: if isWorkspaceOwner(workspaceId) || isWorkspaceCreator(workspaceId);
 
       match /members/{memberId} {
-        allow read: if isWorkspaceOwner(workspaceId) || isOwnTeacherWorkspace(workspaceId);
+        allow read: if isWorkspaceOwner(workspaceId) || isWorkspaceCreator(workspaceId) || isOwnTeacherWorkspace(workspaceId);
         allow create, update: if (isWorkspaceCreator(workspaceId) && memberId == request.auth.uid)
           || isWorkspaceOwner(workspaceId);
-        allow delete: if isWorkspaceOwner(workspaceId);
+        allow delete: if isWorkspaceOwner(workspaceId) || isWorkspaceCreator(workspaceId);
       }
 
       match /plans/{planId} {
-        allow read, update: if canReadWritePlan(workspaceId, planId);
-        allow create, delete: if isWorkspaceOwner(workspaceId) || isOwnTeacherWorkspace(workspaceId);
+        allow read, update: if canReadWritePlan(workspaceId, planId) || isWorkspaceCreator(workspaceId);
+        allow create, delete: if isWorkspaceOwner(workspaceId) || isWorkspaceCreator(workspaceId) || isOwnTeacherWorkspace(workspaceId);
 
         match /members/{memberId} {
-          allow read: if isWorkspaceOwner(workspaceId) || memberId == request.auth.uid;
+          allow read: if isWorkspaceOwner(workspaceId) || isWorkspaceCreator(workspaceId) || memberId == request.auth.uid;
           allow create, update: if isWorkspaceOwner(workspaceId)
+            || isWorkspaceCreator(workspaceId)
             || (memberId == request.auth.uid
               && matchingPendingPlanInvite(request.resource.data.inviteId, workspaceId, planId)
               && request.resource.data.role == get(/databases/$(database)/documents/planInvites/$(request.resource.data.inviteId)).data.role
               && request.resource.data.email == request.auth.token.email);
-          allow delete: if isWorkspaceOwner(workspaceId);
+          allow delete: if isWorkspaceOwner(workspaceId) || isWorkspaceCreator(workspaceId);
         }
       }
     }

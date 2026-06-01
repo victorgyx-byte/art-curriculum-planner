@@ -534,18 +534,24 @@ const els = {
 
 function loadState() {
   try {
-    const activePlanId = localStorage.getItem(ACTIVE_PLAN_STORAGE_KEY);
-    const saved = JSON.parse(localStorage.getItem(planStateStorageKey(activePlanId)) || localStorage.getItem(STORAGE_KEY));
+    const storedPlanId = localStorage.getItem(ACTIVE_PLAN_STORAGE_KEY);
+    const catalogPlanId = planCatalog.find(planBelongsToActiveWorkspace)?.id || "";
+    const activePlanId = storedPlanId || catalogPlanId;
+    const savedRaw = activePlanId ? localStorage.getItem(planStateStorageKey(activePlanId)) || localStorage.getItem(STORAGE_KEY) : null;
+    const saved = savedRaw ? JSON.parse(savedRaw) : null;
     const loaded = saved && Array.isArray(saved.units) ? normalizeState(saved) : structuredClone(defaultState);
     loaded.currentScreen = screenFromLocation();
-    savePlanToCatalog(loaded.plan);
-    localStorage.setItem(ACTIVE_PLAN_STORAGE_KEY, loaded.plan.id);
+    if (activePlanId || saved) {
+      savePlanToCatalog(loaded.plan);
+      localStorage.setItem(ACTIVE_PLAN_STORAGE_KEY, loaded.plan.id);
+    } else {
+      localStorage.removeItem(ACTIVE_PLAN_STORAGE_KEY);
+    }
     return loaded;
   } catch {
     const fallback = structuredClone(defaultState);
     fallback.currentScreen = screenFromLocation();
-    savePlanToCatalog(fallback.plan);
-    localStorage.setItem(ACTIVE_PLAN_STORAGE_KEY, fallback.plan.id);
+    localStorage.removeItem(ACTIVE_PLAN_STORAGE_KEY);
     return fallback;
   }
 }
@@ -1055,18 +1061,19 @@ async function deleteWorkspace(workspaceId) {
   const wasActiveWorkspace = workspaceId === activeWorkspaceId();
   const fallbackWorkspaceId = wasActiveWorkspace ? personalWorkspaceId(cloud.user.uid) : activeWorkspaceId();
   const workspaceRef = cloud.db.collection("workspaces").doc(workspaceId);
-  const plansSnapshot = await workspaceRef.collection("plans").get();
-  for (const planDoc of plansSnapshot.docs) {
-    await deletePlanDocument(workspaceId, planDoc.id);
+  try {
+    const plansSnapshot = await workspaceRef.collection("plans").get();
+    for (const planDoc of plansSnapshot.docs) {
+      await deletePlanDocument(workspaceId, planDoc.id);
+    }
+    const invitesSnapshot = await cloud.db.collection("planInvites").where("workspaceId", "==", workspaceId).get();
+    await Promise.all(invitesSnapshot.docs.map((inviteDoc) => inviteDoc.ref.delete()));
+    await workspaceRef.delete();
+  } catch (error) {
+    console.warn("Workspace document deletion failed", error);
+    renderCloudStatus(`Workspace delete failed: ${error.code || error.message || "check rules"}`, "Sign out");
+    return;
   }
-  const invitesSnapshot = await cloud.db.collection("planInvites").where("workspaceId", "==", workspaceId).get();
-  await Promise.all(invitesSnapshot.docs.map((inviteDoc) => inviteDoc.ref.delete()));
-  await workspaceRef.delete();
-  const membersSnapshot = await workspaceRef.collection("members").get();
-  const ownMemberDoc = membersSnapshot.docs.find((memberDoc) => memberDoc.id === cloud.user.uid);
-  const otherMemberDocs = membersSnapshot.docs.filter((memberDoc) => memberDoc.id !== cloud.user.uid);
-  await Promise.all(otherMemberDocs.map((memberDoc) => memberDoc.ref.delete()));
-  if (ownMemberDoc) await ownMemberDoc.ref.delete();
   await cloud.db.collection("users").doc(cloud.user.uid).set({
     workspaces: {
       [workspaceId]: window.firebase.firestore.FieldValue.delete(),
@@ -1078,8 +1085,14 @@ async function deleteWorkspace(workspaceId) {
   planCatalog = planCatalog.filter((plan) => plan.workspaceId !== workspaceId);
   saveWorkspaceCatalog();
   savePlanCatalog();
+  removeLocalPlansForWorkspace(workspaceId);
   localStorage.setItem(ACTIVE_WORKSPACE_STORAGE_KEY, fallbackWorkspaceId);
+  if (wasActiveWorkspace) {
+    localStorage.removeItem(ACTIVE_PLAN_STORAGE_KEY);
+    localStorage.removeItem(STORAGE_KEY);
+  }
   workspaceDirectoryWorkspaceId = "";
+  cleanupWorkspaceMembers(workspaceId).catch((error) => console.warn("Workspace member cleanup failed", error));
   await loadCloudWorkspaceCatalog();
   if (wasActiveWorkspace) {
     await loadCloudWorkspaceLibrary();
@@ -1132,6 +1145,7 @@ async function deletePlan(planId) {
   planCatalog = planCatalog.filter((entry) => !(entry.id === planId && entry.workspaceId === activeWorkspaceId()));
   savePlanCatalog();
   localStorage.removeItem(planStateStorageKey(planId, activeWorkspaceId()));
+  if (activePlanId() === planId) localStorage.removeItem(STORAGE_KEY);
   const nextPlan = firstPlanForActiveWorkspace();
   if (activePlanId() === planId && nextPlan) {
     await switchPlan(nextPlan.id, { targetScreen: "workspace", skipPersist: true, force: true });
@@ -1147,8 +1161,6 @@ async function deletePlan(planId) {
 
 async function deletePlanDocument(workspaceId, planId) {
   const planRef = cloud.db.collection("workspaces").doc(workspaceId).collection("plans").doc(planId);
-  const membersSnapshot = await planRef.collection("members").get();
-  await Promise.all(membersSnapshot.docs.map((memberDoc) => memberDoc.ref.delete()));
   const invitesSnapshot = await cloud.db
     .collection("planInvites")
     .where("workspaceId", "==", workspaceId)
@@ -1156,6 +1168,32 @@ async function deletePlanDocument(workspaceId, planId) {
     .get();
   await Promise.all(invitesSnapshot.docs.map((inviteDoc) => inviteDoc.ref.delete()));
   await planRef.delete();
+  cleanupPlanMembers(workspaceId, planId).catch((error) => console.warn("Plan member cleanup failed", error));
+}
+
+function removeLocalPlansForWorkspace(workspaceId) {
+  Object.keys(localStorage).forEach((key) => {
+    if (key.startsWith(`${STORAGE_KEY}:${workspaceId}:`)) localStorage.removeItem(key);
+  });
+}
+
+async function cleanupPlanMembers(workspaceId, planId) {
+  const membersSnapshot = await cloud.db
+    .collection("workspaces")
+    .doc(workspaceId)
+    .collection("plans")
+    .doc(planId)
+    .collection("members")
+    .get();
+  await Promise.all(membersSnapshot.docs.map((memberDoc) => memberDoc.ref.delete()));
+}
+
+async function cleanupWorkspaceMembers(workspaceId) {
+  const membersSnapshot = await cloud.db.collection("workspaces").doc(workspaceId).collection("members").get();
+  const ownMemberDoc = membersSnapshot.docs.find((memberDoc) => memberDoc.id === cloud.user.uid);
+  const otherMemberDocs = membersSnapshot.docs.filter((memberDoc) => memberDoc.id !== cloud.user.uid);
+  await Promise.all(otherMemberDocs.map((memberDoc) => memberDoc.ref.delete()));
+  if (ownMemberDoc) await ownMemberDoc.ref.delete();
 }
 
 function cloneLibraryForSubject(subject) {
