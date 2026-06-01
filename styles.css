@@ -566,7 +566,7 @@ button:disabled {
   box-shadow: var(--shadow);
 }
 
-.workspace-card {
+.workspace-card.create-card {
   cursor: pointer;
 }
 
@@ -606,6 +606,16 @@ button:disabled {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.danger-button {
+  color: #a64232;
+  border-color: rgba(166, 66, 50, 0.34);
+}
+
+.danger-button:hover {
+  background: rgba(166, 66, 50, 0.08);
+  color: #843326;
 }
 
 .plan-share-row {

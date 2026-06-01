@@ -824,7 +824,9 @@ function planMetaById(planId) {
 }
 
 async function persistCurrentPlanBeforeSwitch() {
-  saveState();
+  if (state.currentScreen !== "workspace" || planMetaById(activePlanId())) {
+    saveState();
+  }
   if (cloud.loaded) await saveCloudStateNow();
 }
 
@@ -1009,6 +1011,148 @@ async function removePlanInvite(inviteId) {
   workspaceDirectoryWorkspaceId = "";
   renderCloudStatus("Plan invite removed", "Sign out");
   render();
+}
+
+async function renameWorkspace(workspaceId) {
+  const workspace = workspaceCatalog.find((entry) => entry.id === workspaceId);
+  if (!cloud.user || !cloud.db || !workspace || workspace.role !== "owner" || workspace.type !== "team") return;
+  const nextName = window.prompt("Rename workspace", workspace.name || "Workspace");
+  const trimmedName = (nextName || "").trim();
+  if (!trimmedName || trimmedName === workspace.name) return;
+  renderCloudStatus("Renaming workspace...", "Sign out", true);
+  await cloud.db.collection("workspaces").doc(workspaceId).set({
+    name: trimmedName,
+    updatedAt: window.firebase.firestore.FieldValue.serverTimestamp(),
+  }, { merge: true });
+  await cloud.db.collection("users").doc(cloud.user.uid).set({
+    workspaces: {
+      [workspaceId]: {
+        ...normalizeWorkspaceMetadata(workspace),
+        name: trimmedName,
+      },
+    },
+    updatedAt: window.firebase.firestore.FieldValue.serverTimestamp(),
+  }, { merge: true });
+  workspace.name = trimmedName;
+  saveWorkspaceCatalog();
+  renderCloudStatus("Workspace renamed", "Sign out");
+  render();
+}
+
+async function deleteWorkspace(workspaceId) {
+  const workspace = workspaceCatalog.find((entry) => entry.id === workspaceId);
+  if (!cloud.user || !cloud.db || !workspace || workspace.role !== "owner" || workspace.type !== "team") return;
+  const workspaceName = workspace.name || "this team workspace";
+  const confirmed = window.confirm(`Delete "${workspaceName}" and all 2YIP plans inside it? This cannot be undone.`);
+  if (!confirmed) return;
+  const typedName = window.prompt(`Type the workspace name to confirm deletion:\n${workspaceName}`);
+  if ((typedName || "").trim() !== workspaceName) {
+    renderCloudStatus("Workspace deletion cancelled", "Sign out");
+    return;
+  }
+  renderCloudStatus("Deleting workspace...", "Sign out", true);
+  window.clearTimeout(cloudSaveTimer);
+  const wasActiveWorkspace = workspaceId === activeWorkspaceId();
+  const fallbackWorkspaceId = wasActiveWorkspace ? personalWorkspaceId(cloud.user.uid) : activeWorkspaceId();
+  const workspaceRef = cloud.db.collection("workspaces").doc(workspaceId);
+  const plansSnapshot = await workspaceRef.collection("plans").get();
+  for (const planDoc of plansSnapshot.docs) {
+    await deletePlanDocument(workspaceId, planDoc.id);
+  }
+  const membersSnapshot = await workspaceRef.collection("members").get();
+  await Promise.all(membersSnapshot.docs.map((memberDoc) => memberDoc.ref.delete()));
+  const invitesSnapshot = await cloud.db.collection("planInvites").where("workspaceId", "==", workspaceId).get();
+  await Promise.all(invitesSnapshot.docs.map((inviteDoc) => inviteDoc.ref.delete()));
+  await workspaceRef.delete();
+  await cloud.db.collection("users").doc(cloud.user.uid).set({
+    workspaces: {
+      [workspaceId]: window.firebase.firestore.FieldValue.delete(),
+    },
+    lastWorkspaceId: fallbackWorkspaceId,
+    updatedAt: window.firebase.firestore.FieldValue.serverTimestamp(),
+  }, { merge: true });
+  workspaceCatalog = workspaceCatalog.filter((entry) => entry.id !== workspaceId);
+  planCatalog = planCatalog.filter((plan) => plan.workspaceId !== workspaceId);
+  saveWorkspaceCatalog();
+  savePlanCatalog();
+  localStorage.setItem(ACTIVE_WORKSPACE_STORAGE_KEY, fallbackWorkspaceId);
+  workspaceDirectoryWorkspaceId = "";
+  await loadCloudWorkspaceCatalog();
+  if (wasActiveWorkspace) {
+    await loadCloudWorkspaceLibrary();
+    await loadCloudPlanCatalog();
+  }
+  state.currentScreen = "workspace";
+  renderCloudStatus("Workspace deleted", "Sign out");
+  render();
+}
+
+async function renamePlan(planId) {
+  if (!cloud.user || !cloud.db || !canManagePlanSharing()) return;
+  const plan = planMetaById(planId);
+  if (!plan) return;
+  const nextTitle = window.prompt("Rename 2YIP plan", plan.title || "Untitled Plan");
+  const trimmedTitle = (nextTitle || "").trim();
+  if (!trimmedTitle || trimmedTitle === plan.title) return;
+  renderCloudStatus("Renaming 2YIP...", "Sign out", true);
+  const planRef = cloud.db.collection("workspaces").doc(activeWorkspaceId()).collection("plans").doc(planId);
+  const snapshot = await planRef.get();
+  const remoteState = snapshot.exists ? snapshot.data()?.state : null;
+  if (remoteState?.plan) remoteState.plan.title = trimmedTitle;
+  const update = {
+    title: trimmedTitle,
+    updatedAt: window.firebase.firestore.FieldValue.serverTimestamp(),
+  };
+  if (remoteState?.plan) update.state = remoteState;
+  await planRef.set(update, { merge: true });
+  plan.title = trimmedTitle;
+  if (activePlanId() === planId) {
+    state.plan.title = trimmedTitle;
+    saveState();
+  } else {
+    savePlanCatalog();
+  }
+  renderCloudStatus("2YIP renamed", "Sign out");
+  render();
+}
+
+async function deletePlan(planId) {
+  if (!cloud.user || !cloud.db || !canManagePlanSharing()) return;
+  const plan = planMetaById(planId);
+  if (!plan) return;
+  const planTitle = plan.title || "this 2YIP";
+  const confirmed = window.confirm(`Delete "${planTitle}"? This removes the 2YIP plan, units, lessons, and plan sharing.`);
+  if (!confirmed) return;
+  renderCloudStatus("Deleting 2YIP...", "Sign out", true);
+  window.clearTimeout(cloudSaveTimer);
+  await deletePlanDocument(activeWorkspaceId(), planId);
+  planCatalog = planCatalog.filter((entry) => !(entry.id === planId && entry.workspaceId === activeWorkspaceId()));
+  savePlanCatalog();
+  localStorage.removeItem(planStateStorageKey(planId, activeWorkspaceId()));
+  const nextPlan = firstPlanForActiveWorkspace();
+  if (activePlanId() === planId && nextPlan) {
+    await switchPlan(nextPlan.id, { targetScreen: "workspace", skipPersist: true, force: true });
+    state.currentScreen = "workspace";
+  } else if (activePlanId() === planId) {
+    state.currentScreen = "workspace";
+    localStorage.removeItem(ACTIVE_PLAN_STORAGE_KEY);
+  }
+  workspaceDirectoryWorkspaceId = "";
+  renderCloudStatus("2YIP deleted", "Sign out");
+  render();
+}
+
+async function deletePlanDocument(workspaceId, planId) {
+  const planRef = cloud.db.collection("workspaces").doc(workspaceId).collection("plans").doc(planId);
+  const membersSnapshot = await planRef.collection("members").get();
+  await Promise.all(membersSnapshot.docs.map((memberDoc) => memberDoc.ref.delete()));
+  const invitesSnapshot = await cloud.db
+    .collection("planInvites")
+    .where("workspaceId", "==", workspaceId)
+    .where("planId", "==", planId)
+    .get();
+  await Promise.all(invitesSnapshot.docs.map((inviteDoc) => inviteDoc.ref.delete()));
+  await planRef.delete();
 }
 
 function cloneLibraryForSubject(subject) {
@@ -1892,7 +2036,9 @@ function renderPlanControls() {
   if (!workspaceCatalog.some((workspace) => workspace.id === activeWorkspaceId())) {
     saveWorkspaceToCatalog({ id: activeWorkspaceId(), name: workspaceLabel(), type: activeWorkspaceId().startsWith(TEAM_WORKSPACE_PREFIX) ? "team" : "personal", role: currentWorkspaceRole() });
   }
-  savePlanToCatalog(state.plan);
+  if (state.currentScreen !== "workspace" || planMetaById(activePlanId())) {
+    savePlanToCatalog(state.plan);
+  }
   if (!els.planSelect || !els.workspaceSelect) return;
   els.workspaceSelect.innerHTML = workspaceCatalog
     .map((workspace) => `<option value="${escapeAttr(workspace.id)}">${escapeHtml(workspaceOptionLabel(workspace))}</option>`)
@@ -1924,12 +2070,28 @@ function renderWorkspaceHome() {
     .map((workspace) => {
       const meta = normalizeWorkspaceMetadata(workspace);
       const selected = meta.id === activeWorkspaceId() ? " selected" : "";
+      const canEditWorkspace = meta.role === "owner" && meta.type === "team";
+      const canDeleteWorkspace = canEditWorkspace && meta.type === "team";
+      const workspaceActions = canEditWorkspace
+        ? `
+          <div class="plan-card-actions">
+            <button class="primary-button workspace-open-button" type="button" data-workspace-id="${escapeAttr(meta.id)}">Open</button>
+            <button class="ghost-button workspace-rename-button" type="button" data-workspace-id="${escapeAttr(meta.id)}">Rename</button>
+            ${canDeleteWorkspace ? `<button class="ghost-button danger-button workspace-delete-button" type="button" data-workspace-id="${escapeAttr(meta.id)}">Delete</button>` : ""}
+          </div>
+        `
+        : `
+          <div class="plan-card-actions">
+            <button class="primary-button workspace-open-button" type="button" data-workspace-id="${escapeAttr(meta.id)}">Open</button>
+          </div>
+        `;
       return `
-        <button class="workspace-card${selected}" type="button" data-workspace-id="${escapeAttr(meta.id)}">
+        <article class="workspace-card${selected}" data-workspace-id="${escapeAttr(meta.id)}">
           <span class="workspace-card-eyebrow">${escapeHtml(meta.type === "team" ? "Team Workspace" : "Personal Workspace")}</span>
           <strong>${escapeHtml(meta.name || "Workspace")}</strong>
           <small>${escapeHtml(meta.role === "owner" ? "Owner" : "Editor")}</small>
-        </button>
+          ${workspaceActions}
+        </article>
       `;
     })
     .join("");
@@ -1939,8 +2101,14 @@ function renderWorkspaceHome() {
   newWorkspaceCard.innerHTML = `<span class="workspace-card-eyebrow">New Team</span><strong>Create Team Workspace</strong><small>Invite colleagues by email</small>`;
   newWorkspaceCard.addEventListener("click", openWorkspaceSetup);
   els.workspaceCardGrid.append(newWorkspaceCard);
-  els.workspaceCardGrid.querySelectorAll("[data-workspace-id]").forEach((button) => {
+  els.workspaceCardGrid.querySelectorAll(".workspace-open-button").forEach((button) => {
     button.addEventListener("click", () => switchWorkspace(button.dataset.workspaceId));
+  });
+  els.workspaceCardGrid.querySelectorAll(".workspace-rename-button").forEach((button) => {
+    button.addEventListener("click", () => renameWorkspace(button.dataset.workspaceId));
+  });
+  els.workspaceCardGrid.querySelectorAll(".workspace-delete-button").forEach((button) => {
+    button.addEventListener("click", () => deleteWorkspace(button.dataset.workspaceId));
   });
 
   const plans = plansForActiveWorkspace();
@@ -1972,6 +2140,8 @@ function renderWorkspaceHome() {
           <small>${escapeHtml(meta.role === "owner" ? "Owner" : "Editor")} · ${escapeHtml(activeWorkspace.name || "Workspace")}</small>
           <div class="plan-card-actions">
             <button class="primary-button open-plan-button" type="button" data-plan-id="${escapeAttr(meta.id)}">Open</button>
+            ${canManagePlanSharing() ? `<button class="ghost-button plan-rename-button" type="button" data-plan-id="${escapeAttr(meta.id)}">Rename</button>` : ""}
+            ${canManagePlanSharing() ? `<button class="ghost-button danger-button plan-delete-button" type="button" data-plan-id="${escapeAttr(meta.id)}">Delete</button>` : ""}
           </div>
           ${shareHtml}
         </article>
@@ -1988,6 +2158,12 @@ function renderWorkspaceHome() {
   }
   els.planCardGrid.querySelectorAll(".open-plan-button").forEach((button) => {
     button.addEventListener("click", () => openWorkspacePlan(button.dataset.planId));
+  });
+  els.planCardGrid.querySelectorAll(".plan-rename-button").forEach((button) => {
+    button.addEventListener("click", () => renamePlan(button.dataset.planId));
+  });
+  els.planCardGrid.querySelectorAll(".plan-delete-button").forEach((button) => {
+    button.addEventListener("click", () => deletePlan(button.dataset.planId));
   });
   els.planCardGrid.querySelectorAll(".plan-share-button").forEach((button) => {
     button.addEventListener("click", () => {
