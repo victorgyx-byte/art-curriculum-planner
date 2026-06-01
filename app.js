@@ -200,6 +200,30 @@ const libraryCardDetails = {
       "Beginning with questions helps to ground the lesson unit in inquiry-led approaches.",
     ],
   },
+  "Drawing: Observe": {
+    tone: "teal",
+    title: "Through drawing | Observe",
+    detailLabel: "Elaboration",
+    context: [
+      "Observational drawing encourages students to go slow to explore, notice, sense-make and think about the stimulus more thoroughly.",
+    ],
+  },
+  "Drawing: Think": {
+    tone: "teal",
+    title: "Through drawing | Think",
+    detailLabel: "Elaboration",
+    context: [
+      "Drawing can be used as a tool to generate, develop, organize, encode and communicate personal ideas.",
+    ],
+  },
+  "Drawing: Imagine": {
+    tone: "teal",
+    title: "Through drawing | Imagine",
+    detailLabel: "Elaboration",
+    context: [
+      "Through drawing, students make marks on paper and are encouraged to imagine the possibilities of what the drawing can be.",
+    ],
+  },
 };
 
 const defaultWorkspaceCardLibrary = defaultCardLibrary.filter((category) => SHARED_CARD_TYPES.has(category.type));
@@ -2824,7 +2848,7 @@ function renderWorkspaceSetup() {
 }
 
 function cardDetailFor(payload) {
-  if (!payload || !["bigIdeas", "meaningText"].includes(payload.type)) return null;
+  if (!payload || !["bigIdeas", "meaningText", "coreExperiences"].includes(payload.type)) return null;
   return libraryCardDetails[payload.label] || null;
 }
 
