@@ -373,6 +373,7 @@ let unitSetupOpen = false;
 let planSetupOpen = false;
 let workspaceSetupOpen = false;
 let cloudSaveTimer = null;
+let authStateTimer = null;
 let cloudSyncPaused = false;
 let historySyncPaused = false;
 let cloud = {
@@ -395,6 +396,7 @@ const els = {
   appShell: document.querySelector("#app-shell"),
   loginGate: document.querySelector("#login-gate"),
   loginGoogle: document.querySelector("#login-google"),
+  loginReset: document.querySelector("#login-reset"),
   loginStatus: document.querySelector("#login-status"),
   libraryEyebrow: document.querySelector("#library-eyebrow"),
   libraryTitle: document.querySelector("#library-title"),
@@ -1129,7 +1131,7 @@ function initCloudSync() {
   const hasConfig = Boolean(config.apiKey && config.authDomain && config.projectId && config.appId);
   if (!hasConfig || !window.firebase?.initializeApp) {
     cloud.available = false;
-    renderLoginGate("Online sign-in is not configured yet.", true);
+    renderLoginGate("Online sign-in is not connected on this deployment.", false);
     renderCloudStatus("Online unavailable", "Sign in", true);
     return;
   }
@@ -1142,16 +1144,23 @@ function initCloudSync() {
     cloud.db.settings({ ignoreUndefinedProperties: true });
     renderLoginGate("Checking sign-in...", true);
     renderCloudStatus("Checking sign-in...", "Sign in", true);
+    window.clearTimeout(authStateTimer);
+    authStateTimer = window.setTimeout(() => {
+      if (!cloud.user && els.loginGate && !els.loginGate.classList.contains("hidden")) {
+        renderLoginGate("Taking too long. Try Reset sign-in, then Continue with Google.", false);
+      }
+    }, 6000);
     cloud.auth.onAuthStateChanged(handleCloudUser);
   } catch (error) {
     console.warn("Firebase setup failed", error);
     cloud.available = false;
-    renderLoginGate("Online sign-in failed to initialise.", true);
+    renderLoginGate(firebaseErrorMessage(error, "Online sign-in failed to initialise."), false);
     renderCloudStatus("Online unavailable", "Sign in", true);
   }
 }
 
 async function handleCloudUser(user) {
+  window.clearTimeout(authStateTimer);
   cloud.user = user;
   cloud.loaded = false;
   if (!user) {
@@ -1177,7 +1186,7 @@ async function handleCloudUser(user) {
     renderCloudStatus(`Cloud save: ${user.displayName || user.email || "signed in"}`, "Sign out");
   } catch (error) {
     console.warn("Cloud load failed", error);
-    renderLoginGate("Could not load your online planner. Try signing in again.", false);
+    renderLoginGate(firebaseErrorMessage(error, "Could not load your online planner. Try Reset sign-in, then sign in again."), false);
     renderCloudStatus("Cloud unavailable", "Sign out");
   }
 }
@@ -1363,6 +1372,7 @@ function renderLoginGate(message, disabled = false) {
 
 async function toggleCloudAuth() {
   if (!cloud.available || !cloud.auth) {
+    renderLoginGate("Online sign-in is unavailable here. Open the Vercel site and check Firebase setup.", false);
     renderCloudStatus("Firebase not connected yet", "Sign in");
     return;
   }
@@ -1371,12 +1381,56 @@ async function toggleCloudAuth() {
     return;
   }
   const provider = new window.firebase.auth.GoogleAuthProvider();
+  provider.setCustomParameters({ prompt: "select_account" });
   try {
+    renderLoginGate("Opening Google sign-in...", true);
     await cloud.auth.signInWithPopup(provider);
   } catch (error) {
     console.warn("Popup sign-in failed; trying redirect", error);
-    await cloud.auth.signInWithRedirect(provider);
+    if (error?.code === "auth/unauthorized-domain") {
+      renderLoginGate(firebaseErrorMessage(error), false);
+      return;
+    }
+    try {
+      renderLoginGate("Redirecting to Google sign-in...", true);
+      await cloud.auth.signInWithRedirect(provider);
+    } catch (redirectError) {
+      console.warn("Redirect sign-in failed", redirectError);
+      renderLoginGate(firebaseErrorMessage(redirectError), false);
+    }
   }
+}
+
+async function resetCloudSignIn() {
+  renderLoginGate("Resetting sign-in...", true);
+  try {
+    if (cloud.auth) await cloud.auth.signOut();
+  } catch (error) {
+    console.warn("Sign-out reset failed", error);
+  }
+  try {
+    window.sessionStorage.clear();
+  } catch (error) {
+    console.warn("Session reset failed", error);
+  }
+  renderLoginGate("Sign-in reset. Try Continue with Google again.", false);
+}
+
+function firebaseErrorMessage(error, fallback = "Google sign-in failed. Try again.") {
+  const code = error?.code || "";
+  if (code === "auth/unauthorized-domain") {
+    return "This website domain is not authorised in Firebase Authentication.";
+  }
+  if (code === "auth/popup-blocked") {
+    return "The Google pop-up was blocked. Allow pop-ups or try again.";
+  }
+  if (code === "auth/popup-closed-by-user") {
+    return "The Google sign-in window was closed before finishing.";
+  }
+  if (code === "permission-denied" || code === "firestore/permission-denied") {
+    return "Online save is blocked by Firebase rules. Publish the latest Firestore rules.";
+  }
+  return error?.message ? `${fallback} (${code || error.message})` : fallback;
 }
 
 function uid(prefix) {
@@ -4970,8 +5024,9 @@ els.addActivity.addEventListener("click", () => {
   render();
 });
 
-els.cloudAuth.addEventListener("click", toggleCloudAuth);
-els.loginGoogle.addEventListener("click", toggleCloudAuth);
+els.cloudAuth?.addEventListener("click", toggleCloudAuth);
+els.loginGoogle?.addEventListener("click", toggleCloudAuth);
+els.loginReset?.addEventListener("click", resetCloudSignIn);
 
 window.addEventListener("beforeunload", saveStateSafely);
 window.addEventListener("popstate", () => {

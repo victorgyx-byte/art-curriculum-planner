@@ -108,6 +108,13 @@ button:disabled {
   font-size: 15px;
 }
 
+.login-reset {
+  justify-self: start;
+  min-height: 38px;
+  padding-inline: 14px;
+  font-size: 13px;
+}
+
 .login-status {
   min-height: 20px;
   font-size: 12px;
@@ -2912,6 +2919,10 @@ button:disabled {
   }
 
   .login-button {
+    width: 100%;
+  }
+
+  .login-reset {
     width: 100%;
   }
 
