@@ -2010,6 +2010,14 @@ function openWorkspaceSetup() {
 }
 
 async function openWorkspacePlan(planId) {
+  if (!planId) return;
+  if (planId === activePlanId()) {
+    state.currentScreen = "timeline";
+    state.unitOverviewOpen = false;
+    state.lessonOverviewOpen = false;
+    render();
+    return;
+  }
   await switchPlan(planId, { targetScreen: "timeline" });
 }
 
