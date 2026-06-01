@@ -773,6 +773,7 @@ const els = {
   confirmLessonBoard: document.querySelector("#confirm-lesson-board"),
   editLessonBoard: document.querySelector("#edit-lesson-board"),
   saveLessonBottom: document.querySelector("#save-lesson-bottom"),
+  lessonTopSaveStatus: document.querySelector("#lesson-top-save-status"),
   lessonSaveStatus: document.querySelector("#lesson-save-status"),
   lessonTitle: document.querySelector("#lesson-title"),
   lessonDuration: document.querySelector("#lesson-duration"),
@@ -1916,6 +1917,16 @@ function showSaveStatus(message) {
   }, 1600);
 }
 
+function saveTimeLabel() {
+  return new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+
+function setSaveStatus(statusElements, message) {
+  statusElements.filter(Boolean).forEach((element) => {
+    element.textContent = message;
+  });
+}
+
 function screenFromLocation() {
   const hash = window.location.hash.replace("#", "");
   if (hash === "workspace") return "workspace";
@@ -2444,30 +2455,34 @@ async function saveCloudStateNow() {
   }
 }
 
-async function commitPlanSaveNow({ statusElement, buttons = [], successMessage = "Saved online" } = {}) {
+async function commitPlanSaveNow({ statusElement, statusElements = [], buttons = [], successMessage = "Saved online" } = {}) {
   const buttonList = buttons.filter(Boolean);
+  const statusList = [statusElement, ...statusElements].filter(Boolean);
   const originalLabels = buttonList.map((button) => button.textContent);
   buttonList.forEach((button) => {
     button.disabled = true;
     button.textContent = "Saving...";
   });
-  if (statusElement) statusElement.textContent = "Saving online...";
+  setSaveStatus(statusList, "Saving online now...");
+  if (cloud.user) renderCloudStatus("Saving online now...", "Sign out", true);
   saveState();
   const savedOnline = await saveCloudStateNow();
+  const time = saveTimeLabel();
   const message = savedOnline
-    ? successMessage
+    ? `${successMessage} at ${time}`
     : (cloud.available && cloud.user ? "Saved locally; online retry pending" : "Saved locally");
-  if (statusElement) statusElement.textContent = message;
+  setSaveStatus(statusList, message);
+  renderCloudStatus(message, cloud.user ? "Sign out" : "Sign in");
   buttonList.forEach((button, index) => {
     button.disabled = false;
-    button.textContent = savedOnline ? "Saved" : originalLabels[index];
+    button.textContent = savedOnline ? "Saved online" : originalLabels[index];
   });
   window.setTimeout(() => {
-    if (statusElement) statusElement.textContent = "";
+    setSaveStatus(statusList, "");
     buttonList.forEach((button, index) => {
       button.textContent = originalLabels[index];
     });
-  }, 1600);
+  }, 3500);
   return savedOnline;
 }
 
@@ -6697,6 +6712,7 @@ async function saveCurrentLesson() {
   render();
   await commitPlanSaveNow({
     statusElement: els.lessonSaveStatus,
+    statusElements: [els.lessonTopSaveStatus],
     buttons: [els.confirmLessonBoard, els.saveLessonBottom],
     successMessage: "Lesson saved online",
   });
