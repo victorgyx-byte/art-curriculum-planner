@@ -713,6 +713,8 @@ let workspaceDirectoryLoading = false;
 let planCatalogVerified = false;
 let cloudSaveBlocked = false;
 let cardDetailInsertAction = null;
+let lastPersistedContentHash = "";
+let lastLocalContentChangeAt = 0;
 
 const screenHashes = {
   workspace: "#workspace",
@@ -1890,6 +1892,32 @@ function planContentScore(planState) {
   }, 0);
 }
 
+function planStateForContentHash(planState) {
+  const clone = cleanCloudState(planState || {});
+  [
+    "currentScreen",
+    "selectedUnitId",
+    "selectedLessonId",
+    "selectedBoardZone",
+    "selectedLessonZone",
+    "unitOverviewOpen",
+    "lessonOverviewOpen",
+    "localSavedAtMs",
+    "cloudSavedAtMs",
+  ].forEach((key) => delete clone[key]);
+  (clone.units || []).forEach((unit) => {
+    (unit.lessons || []).forEach((lesson) => {
+      delete lesson.imageUploadStatus;
+      delete lesson.imageSaveNotice;
+    });
+  });
+  return clone;
+}
+
+function planStateContentHash(planState) {
+  return stateHash(planStateForContentHash(planState));
+}
+
 function applyLoadedPlanState(planState, snapshotId, snapshotData = {}) {
   state = normalizeState(planState);
   state.plan = normalizePlanMetadata({
@@ -1905,10 +1933,12 @@ function applyLoadedPlanState(planState, snapshotId, snapshotData = {}) {
   localStorage.setItem(ACTIVE_PLAN_STORAGE_KEY, activePlanId());
   localStorage.setItem(planStateStorageKey(), JSON.stringify(state));
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  localStorage.setItem(lastGoodPlanStateStorageKey(), JSON.stringify(state));
+  localStorage.setItem(lastGoodPlanStateStorageKey(), JSON.stringify(cleanCloudState(state)));
+  lastPersistedContentHash = planStateContentHash(state);
+  lastLocalContentChangeAt = 0;
 }
 
-function saveState() {
+function saveState(options = {}) {
   if (saveWritesPaused) return;
   if (cloud.available && !cloud.user && els.loginGate && !els.loginGate.classList.contains("hidden")) return;
   const storedPlanId = localStorage.getItem(ACTIVE_PLAN_STORAGE_KEY);
@@ -1919,7 +1949,15 @@ function saveState() {
   if (state.currentScreen === "workspace" && !planMetaById(activePlanId())) return;
   state.plan = normalizePlanMetadata(state.plan);
   state.cardLibrary = normalizeCardLibrary(state.cardLibrary);
-  state.localSavedAtMs = Date.now();
+  const currentContentHash = planStateContentHash(state);
+  const hasContentChange = currentContentHash !== lastPersistedContentHash || options.forceCloud;
+  if (options.localOnly && !hasContentChange) return;
+  if (!hasContentChange && !options.forceLocal) return;
+  if (hasContentChange) {
+    state.localSavedAtMs = Date.now();
+    lastPersistedContentHash = currentContentHash;
+    lastLocalContentChangeAt = state.localSavedAtMs;
+  }
   savePlanToCatalog(state.plan);
   const currentWorkspace = currentWorkspaceMeta();
   saveWorkspaceToCatalog({
@@ -1933,8 +1971,10 @@ function saveState() {
   localStorage.setItem(ACTIVE_PLAN_STORAGE_KEY, activePlanId());
   localStorage.setItem(planStateStorageKey(), JSON.stringify(state));
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  localStorage.setItem(lastGoodPlanStateStorageKey(), JSON.stringify(state));
-  scheduleCloudSave();
+  if (hasContentChange && planContentScore(state) > 0) {
+    localStorage.setItem(lastGoodPlanStateStorageKey(), JSON.stringify(cleanCloudState(state)));
+  }
+  if (!options.localOnly && hasContentChange) scheduleCloudSave();
 }
 
 function saveStateSafely() {
@@ -2469,7 +2509,7 @@ function scheduleCloudSave() {
   cloudSaveTimer = window.setTimeout(saveCloudStateNow, 900);
 }
 
-async function saveCloudStateNow() {
+async function saveCloudStateNow(options = {}) {
   window.clearTimeout(cloudSaveTimer);
   if (!cloud.available || !cloud.user || !cloud.db) return false;
   if (state.currentScreen === "workspace") return false;
@@ -2482,6 +2522,27 @@ async function saveCloudStateNow() {
   try {
     state.localSavedAtMs = Date.now();
     const cleanState = cleanCloudState(state);
+    const remoteSnapshot = await cloudPlanRef().get();
+    const remoteState = remoteSnapshot.exists ? remoteSnapshot.data()?.state : null;
+    if (!options.allowScoreDrop && remoteState && Array.isArray(remoteState.units)) {
+      const normalizedRemote = normalizeState(remoteState);
+      const remoteHash = planStateContentHash(normalizedRemote);
+      const localHash = planStateContentHash(cleanState);
+      const remoteScore = planContentScore(normalizedRemote);
+      const localScore = planContentScore(cleanState);
+      const recentLocalEdit = lastLocalContentChangeAt && Date.now() - lastLocalContentChangeAt < RECENT_EDIT_WINDOW_MS;
+      if (remoteHash !== localHash && remoteScore - localScore > REMOTE_SCORE_DROP_GUARD && !recentLocalEdit) {
+        const snapshotData = remoteSnapshot.data() || {};
+        localStorage.setItem(lastGoodPlanStateStorageKey(), JSON.stringify(normalizedRemote));
+        cloudSaveBlocked = true;
+        cloudSyncPaused = true;
+        applyLoadedPlanState(normalizedRemote, activePlanId(), snapshotData);
+        cloudSyncPaused = false;
+        render();
+        renderCloudStatus("Recovered fuller online lesson version. Saving paused to prevent overwrite.", "Sign out");
+        return false;
+      }
+    }
     cleanState.cloudSavedAtMs = Date.now();
     cleanState.localSavedAtMs = state.localSavedAtMs;
     await cloudPlanRef().set({
@@ -2499,6 +2560,7 @@ async function saveCloudStateNow() {
     localStorage.setItem(lastGoodPlanStateStorageKey(), JSON.stringify(cleanState));
     await createPlanSnapshot("autosave", cleanState, { onlyIfDue: true });
     cloudSaveBlocked = false;
+    lastPersistedContentHash = planStateContentHash(state);
     renderCloudStatus(`Cloud saved: ${cloud.user.displayName || cloud.user.email || "signed in"}`, "Sign out");
     return true;
   } catch (error) {
@@ -7137,6 +7199,7 @@ window.addEventListener("popstate", () => {
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "hidden") saveStateSafely();
 });
+lastPersistedContentHash = planStateContentHash(state);
 window.setInterval(saveStateSafely, 2000);
 
 window.__ART_APP_BOOTED__ = true;
