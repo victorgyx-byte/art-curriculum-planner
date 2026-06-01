@@ -25,8 +25,40 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.createdBy == request.auth.uid;
     }
 
+    function inviteIdFor(workspaceId) {
+      return workspaceId + "__" + request.auth.token.email;
+    }
+
+    function matchingPendingInvite(workspaceId) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/invites/$(inviteIdFor(workspaceId)))
+        && get(/databases/$(database)/documents/invites/$(inviteIdFor(workspaceId))).data.email == request.auth.token.email
+        && get(/databases/$(database)/documents/invites/$(inviteIdFor(workspaceId))).data.status == "pending";
+    }
+
     match /users/{userId} {
       allow read, write: if signedIn() && request.auth.uid == userId;
+    }
+
+    match /invites/{inviteId} {
+      allow read: if signedIn()
+        && (resource.data.email == request.auth.token.email
+          || isWorkspaceOwner(resource.data.workspaceId));
+      allow create: if signedIn()
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.status == "pending"
+        && request.resource.data.role == "editor"
+        && isWorkspaceOwner(request.resource.data.workspaceId);
+      allow update: if signedIn()
+        && ((isWorkspaceOwner(resource.data.workspaceId))
+          || (resource.data.email == request.auth.token.email
+            && resource.data.status == "pending"
+            && request.resource.data.status == "accepted"
+            && request.resource.data.acceptedBy == request.auth.uid
+            && request.resource.data.workspaceId == resource.data.workspaceId
+            && request.resource.data.email == resource.data.email
+            && request.resource.data.role == resource.data.role));
+      allow delete: if signedIn() && isWorkspaceOwner(resource.data.workspaceId);
     }
 
     match /workspaces/{workspaceId} {
@@ -39,7 +71,11 @@ service cloud.firestore {
       match /members/{memberId} {
         allow read: if isWorkspaceMember(workspaceId) || isOwnTeacherWorkspace(workspaceId);
         allow create, update: if (isWorkspaceCreator(workspaceId) && memberId == request.auth.uid)
-          || isWorkspaceOwner(workspaceId);
+          || isWorkspaceOwner(workspaceId)
+          || (memberId == request.auth.uid
+            && matchingPendingInvite(workspaceId)
+            && request.resource.data.role == get(/databases/$(database)/documents/invites/$(inviteIdFor(workspaceId))).data.role
+            && request.resource.data.email == request.auth.token.email);
         allow delete: if isWorkspaceOwner(workspaceId);
       }
 

@@ -384,8 +384,13 @@ let cloudSaveTimer = null;
 let authStateTimer = null;
 let cloudSyncPaused = false;
 let historySyncPaused = false;
+let workspaceMembers = [];
+let workspaceInvites = [];
+let workspaceDirectoryWorkspaceId = "";
+let workspaceDirectoryLoading = false;
 
 const screenHashes = {
+  workspace: "#workspace",
   timeline: "#timeline",
   board: "#unit",
   lesson: "#lesson",
@@ -398,6 +403,21 @@ const els = {
   loginGoogle: document.querySelector("#login-google"),
   loginReset: document.querySelector("#login-reset"),
   loginStatus: document.querySelector("#login-status"),
+  workspaceScreen: document.querySelector("#workspace-screen"),
+  plannerWorkspace: document.querySelector("#planner-workspace"),
+  workspaceHome: document.querySelector("#workspace-home"),
+  plannerKicker: document.querySelector("#planner-kicker"),
+  plannerTitle: document.querySelector("#planner-title"),
+  modeSwitch: document.querySelector("#mode-switch"),
+  workspaceCardGrid: document.querySelector("#workspace-card-grid"),
+  planCardGrid: document.querySelector("#plan-card-grid"),
+  workspacePlanHeading: document.querySelector("#workspace-plan-heading"),
+  teamManagementPanel: document.querySelector("#team-management-panel"),
+  teamInviteForm: document.querySelector("#team-invite-form"),
+  inviteEmail: document.querySelector("#invite-email"),
+  sendInvite: document.querySelector("#send-invite"),
+  memberList: document.querySelector("#member-list"),
+  inviteList: document.querySelector("#invite-list"),
   libraryEyebrow: document.querySelector("#library-eyebrow"),
   libraryTitle: document.querySelector("#library-title"),
   workspaceSelect: document.querySelector("#workspace-select"),
@@ -611,7 +631,32 @@ function normalizeWorkspaceMetadata(workspace = {}) {
     name: workspace.name || "My Workspace",
     type: workspace.type || "personal",
     role: workspace.role || "owner",
+    createdBy: workspace.createdBy || "",
   };
+}
+
+function normalizeEmail(email = "") {
+  return email.trim().toLowerCase();
+}
+
+function emailKey(email = "") {
+  return normalizeEmail(email).replace(/[^a-z0-9_.@+-]/g, "_");
+}
+
+function inviteDocId(workspaceId, email) {
+  return `${workspaceId}__${emailKey(email)}`;
+}
+
+function currentWorkspaceMeta() {
+  return workspaceCatalog.find((workspace) => workspace.id === activeWorkspaceId()) || normalizeWorkspaceMetadata();
+}
+
+function currentWorkspaceRole() {
+  return currentWorkspaceMeta().role || "owner";
+}
+
+function canManageActiveWorkspace() {
+  return currentWorkspaceRole() === "owner";
 }
 
 function normalizeCardLibrary(cardLibrary, options = {}) {
@@ -771,7 +816,7 @@ async function persistCurrentPlanBeforeSwitch() {
 
 async function switchPlan(planId, options = {}) {
   if (!planId || (planId === activePlanId() && !options.force)) return;
-  const currentScreen = state.currentScreen;
+  const currentScreen = options.targetScreen || state.currentScreen;
   if (!options.skipPersist) await persistCurrentPlanBeforeSwitch();
   localStorage.setItem(ACTIVE_PLAN_STORAGE_KEY, planId);
   const catalogPlan = planMetaById(planId);
@@ -831,6 +876,9 @@ async function switchWorkspace(workspaceId) {
   await persistCurrentPlanBeforeSwitch();
   localStorage.setItem(ACTIVE_WORKSPACE_STORAGE_KEY, workspaceId);
   setWorkspaceSharedLibrary(loadWorkspaceSharedLibrary(workspaceId));
+  workspaceDirectoryWorkspaceId = "";
+  workspaceMembers = [];
+  workspaceInvites = [];
   if (cloud.loaded) {
     await cloud.db.collection("users").doc(cloud.user.uid).set({
       lastWorkspaceId: workspaceId,
@@ -840,6 +888,10 @@ async function switchWorkspace(workspaceId) {
   if (cloud.loaded) await loadCloudWorkspaceLibrary();
   if (cloud.loaded) await loadCloudPlanCatalog();
   const nextPlan = firstPlanForActiveWorkspace();
+  if (state.currentScreen === "workspace") {
+    render();
+    return;
+  }
   if (nextPlan) {
     await switchPlan(nextPlan.id, { skipPersist: true, force: true });
     return;
@@ -903,6 +955,40 @@ async function createTeamWorkspace(name) {
   state.currentScreen = "timeline";
   saveState();
   await saveCloudStateNow();
+  render();
+}
+
+async function createWorkspaceInvite(email) {
+  if (!cloud.user || !cloud.db || !canManageActiveWorkspace()) return;
+  const normalizedEmail = normalizeEmail(email);
+  if (!normalizedEmail || !normalizedEmail.includes("@")) {
+    renderCloudStatus("Enter a valid teacher email", "Sign out");
+    return;
+  }
+  const workspace = currentWorkspaceMeta();
+  const inviteId = inviteDocId(workspace.id, normalizedEmail);
+  await cloud.db.collection("invites").doc(inviteId).set({
+    workspaceId: workspace.id,
+    workspaceName: workspace.name,
+    email: normalizedEmail,
+    role: "editor",
+    status: "pending",
+    createdBy: cloud.user.uid,
+    createdAt: window.firebase.firestore.FieldValue.serverTimestamp(),
+    acceptedBy: "",
+    acceptedAt: null,
+  }, { merge: true });
+  els.inviteEmail.value = "";
+  workspaceDirectoryWorkspaceId = "";
+  renderCloudStatus(`Invite ready for ${normalizedEmail}`, "Sign out");
+  render();
+}
+
+async function removeWorkspaceInvite(inviteId) {
+  if (!cloud.user || !cloud.db || !canManageActiveWorkspace() || !inviteId) return;
+  await cloud.db.collection("invites").doc(inviteId).delete();
+  workspaceDirectoryWorkspaceId = "";
+  renderCloudStatus("Invite removed", "Sign out");
   render();
 }
 
@@ -1081,7 +1167,13 @@ function saveState() {
   state.plan = normalizePlanMetadata(state.plan);
   state.cardLibrary = normalizeCardLibrary(state.cardLibrary);
   savePlanToCatalog(state.plan);
-  saveWorkspaceToCatalog({ id: activeWorkspaceId(), name: workspaceLabel(), type: activeWorkspaceId().startsWith(TEAM_WORKSPACE_PREFIX) ? "team" : "personal" });
+  const currentWorkspace = currentWorkspaceMeta();
+  saveWorkspaceToCatalog({
+    id: activeWorkspaceId(),
+    name: workspaceLabel(),
+    type: activeWorkspaceId().startsWith(TEAM_WORKSPACE_PREFIX) ? "team" : "personal",
+    role: currentWorkspace.role,
+  });
   saveWorkspaceSharedLibrary();
   localStorage.setItem(ACTIVE_WORKSPACE_STORAGE_KEY, activeWorkspaceId());
   localStorage.setItem(ACTIVE_PLAN_STORAGE_KEY, activePlanId());
@@ -1107,6 +1199,7 @@ function showSaveStatus(message) {
 
 function screenFromLocation() {
   const hash = window.location.hash.replace("#", "");
+  if (hash === "workspace") return "workspace";
   if (hash === "unit" || hash === "board") return "board";
   if (hash === "lesson") return "lesson";
   return "timeline";
@@ -1175,11 +1268,14 @@ async function handleCloudUser(user) {
   renderCloudStatus("Loading cloud save...", "Sign out", true);
   try {
     await ensureCloudWorkspace(user);
+    await acceptPendingInvites(user);
     await loadCloudWorkspaceCatalog();
     await loadCloudWorkspaceLibrary();
     await loadCloudPlanCatalog();
     await loadCloudState();
     cloud.loaded = true;
+    state.currentScreen = "workspace";
+    workspaceDirectoryWorkspaceId = "";
     els.loginGate.classList.add("hidden");
     els.appShell.classList.remove("hidden");
     render();
@@ -1227,6 +1323,44 @@ async function ensureCloudWorkspace(user) {
   if (!localStorage.getItem(ACTIVE_WORKSPACE_STORAGE_KEY)) localStorage.setItem(ACTIVE_WORKSPACE_STORAGE_KEY, workspaceId);
 }
 
+async function acceptPendingInvites(user) {
+  const email = normalizeEmail(user.email || "");
+  if (!email) return;
+  const snapshot = await cloud.db
+    .collection("invites")
+    .where("email", "==", email)
+    .where("status", "==", "pending")
+    .get();
+  for (const doc of snapshot.docs) {
+    const invite = doc.data() || {};
+    if (!invite.workspaceId) continue;
+    const workspaceId = invite.workspaceId;
+    const role = invite.role === "owner" ? "owner" : "editor";
+    await cloud.db.collection("workspaces").doc(workspaceId).collection("members").doc(user.uid).set({
+      role,
+      email,
+      displayName: user.displayName || "",
+      updatedAt: window.firebase.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+    await cloud.db.collection("users").doc(user.uid).set({
+      workspaces: {
+        [workspaceId]: {
+          id: workspaceId,
+          name: invite.workspaceName || "Shared Workspace",
+          type: "team",
+          role,
+        },
+      },
+      updatedAt: window.firebase.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+    await doc.ref.set({
+      status: "accepted",
+      acceptedBy: user.uid,
+      acceptedAt: window.firebase.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+  }
+}
+
 async function loadCloudWorkspaceCatalog() {
   const userSnapshot = await cloud.db.collection("users").doc(cloud.user.uid).get();
   const userData = userSnapshot.exists ? userSnapshot.data() || {} : {};
@@ -1245,11 +1379,44 @@ async function loadCloudWorkspaceLibrary() {
   const workspaceSnapshot = await cloud.db.collection("workspaces").doc(cloudWorkspaceId()).get();
   const sharedLibrary = workspaceSnapshot.exists ? workspaceSnapshot.data()?.sharedCardLibrary : null;
   setWorkspaceSharedLibrary(sharedLibrary || loadWorkspaceSharedLibrary());
-  if (!sharedLibrary) await saveCloudWorkspaceLibrary();
+  if (!sharedLibrary && canManageActiveWorkspace()) await saveCloudWorkspaceLibrary();
+}
+
+function ensureWorkspaceDirectoryLoaded() {
+  if (!cloud.loaded || !cloud.db) return;
+  const workspaceId = activeWorkspaceId();
+  if (workspaceDirectoryWorkspaceId === workspaceId || workspaceDirectoryLoading) return;
+  workspaceDirectoryLoading = true;
+  loadCloudWorkspaceDirectory(workspaceId)
+    .catch((error) => {
+      console.warn("Workspace directory load failed", error);
+      workspaceMembers = [];
+      workspaceInvites = [];
+    })
+    .finally(() => {
+      workspaceDirectoryWorkspaceId = workspaceId;
+      workspaceDirectoryLoading = false;
+      render();
+    });
+}
+
+async function loadCloudWorkspaceDirectory(workspaceId = activeWorkspaceId()) {
+  const membersSnapshot = await cloud.db.collection("workspaces").doc(workspaceId).collection("members").get();
+  workspaceMembers = membersSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+  workspaceInvites = [];
+  if (canManageActiveWorkspace()) {
+    const invitesSnapshot = await cloud.db
+      .collection("invites")
+      .where("workspaceId", "==", workspaceId)
+      .where("status", "==", "pending")
+      .get();
+    workspaceInvites = invitesSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+  }
 }
 
 async function saveCloudWorkspaceLibrary() {
   if (!cloud.available || !cloud.user || !cloud.db) return;
+  if (!canManageActiveWorkspace()) return;
   await cloud.db.collection("workspaces").doc(cloudWorkspaceId()).set({
     sharedCardLibrary: normalizeCardLibrary(workspaceSharedLibrary, { includeShared: true }),
     updatedAt: window.firebase.firestore.FieldValue.serverTimestamp(),
@@ -1531,6 +1698,7 @@ function render() {
   syncHistoryToScreen();
   renderScreens();
   renderPlanControls();
+  renderWorkspaceHome();
   renderUnitList();
   renderUnitSetup();
   renderPlanSetup();
@@ -1543,18 +1711,32 @@ function render() {
   renderLessonBoard();
   renderEditor();
   renderOverlayButtons();
-  saveState();
+  if (state.currentScreen === "workspace") {
+    saveWorkspaceCatalog();
+    savePlanCatalog();
+    saveWorkspaceSharedLibrary();
+  } else {
+    saveState();
+  }
 }
 
 function renderScreens() {
+  const showWorkspace = state.currentScreen === "workspace";
   const showTimeline = state.currentScreen === "timeline";
   const showBoard = state.currentScreen === "board";
   const showLesson = state.currentScreen === "lesson";
+  els.workspaceScreen.classList.toggle("hidden", !showWorkspace);
+  els.plannerWorkspace.classList.toggle("hidden", showWorkspace);
   els.timelineScreen.classList.toggle("hidden", !showTimeline);
   els.boardScreen.classList.toggle("hidden", !showBoard);
   els.lessonScreen.classList.toggle("hidden", !showLesson);
   els.workspace.classList.toggle("timeline-mode", showTimeline);
   els.cardLibraryPanel.classList.toggle("hidden", showTimeline);
+  els.workspaceHome.classList.toggle("hidden", showWorkspace);
+  els.modeSwitch.classList.toggle("hidden", showWorkspace);
+  els.resetDemo.classList.toggle("hidden", showWorkspace);
+  els.plannerKicker.textContent = showWorkspace ? "Workspace" : workspaceLabel();
+  els.plannerTitle.textContent = showWorkspace ? "Art Curriculum Planner" : activePlanTitle();
   els.modeButtons.forEach((button) => {
     button.classList.toggle("active", button.dataset.screen === state.currentScreen);
   });
@@ -1630,11 +1812,11 @@ function renderUnitSetup() {
 }
 
 function renderPlanControls() {
-  if (!els.planSelect || !els.workspaceSelect) return;
   if (!workspaceCatalog.some((workspace) => workspace.id === activeWorkspaceId())) {
-    saveWorkspaceToCatalog({ id: activeWorkspaceId(), name: workspaceLabel(), type: activeWorkspaceId().startsWith(TEAM_WORKSPACE_PREFIX) ? "team" : "personal" });
+    saveWorkspaceToCatalog({ id: activeWorkspaceId(), name: workspaceLabel(), type: activeWorkspaceId().startsWith(TEAM_WORKSPACE_PREFIX) ? "team" : "personal", role: currentWorkspaceRole() });
   }
   savePlanToCatalog(state.plan);
+  if (!els.planSelect || !els.workspaceSelect) return;
   els.workspaceSelect.innerHTML = workspaceCatalog
     .map((workspace) => `<option value="${escapeAttr(workspace.id)}">${escapeHtml(workspaceOptionLabel(workspace))}</option>`)
     .join("");
@@ -1653,6 +1835,115 @@ function workspaceOptionLabel(workspace) {
 function planOptionLabel(plan) {
   const meta = normalizePlanMetadata(plan);
   return [meta.title || "Untitled Plan", meta.subject, meta.teamName].filter(Boolean).join(" · ");
+}
+
+function renderWorkspaceHome() {
+  if (!els.workspaceScreen) return;
+  if (state.currentScreen !== "workspace") return;
+  ensureWorkspaceDirectoryLoaded();
+  const activeWorkspace = currentWorkspaceMeta();
+  els.workspacePlanHeading.textContent = `${activeWorkspace.name || "Workspace"} Plans`;
+  els.workspaceCardGrid.innerHTML = workspaceCatalog
+    .map((workspace) => {
+      const meta = normalizeWorkspaceMetadata(workspace);
+      const selected = meta.id === activeWorkspaceId() ? " selected" : "";
+      return `
+        <button class="workspace-card${selected}" type="button" data-workspace-id="${escapeAttr(meta.id)}">
+          <span class="workspace-card-eyebrow">${escapeHtml(meta.type === "team" ? "Team Workspace" : "Personal Workspace")}</span>
+          <strong>${escapeHtml(meta.name || "Workspace")}</strong>
+          <small>${escapeHtml(meta.role === "owner" ? "Owner" : "Editor")}</small>
+        </button>
+      `;
+    })
+    .join("");
+  const newWorkspaceCard = document.createElement("button");
+  newWorkspaceCard.className = "workspace-card create-card";
+  newWorkspaceCard.type = "button";
+  newWorkspaceCard.innerHTML = `<span class="workspace-card-eyebrow">New Team</span><strong>Create Team Workspace</strong><small>Invite colleagues by email</small>`;
+  newWorkspaceCard.addEventListener("click", openWorkspaceSetup);
+  els.workspaceCardGrid.append(newWorkspaceCard);
+  els.workspaceCardGrid.querySelectorAll("[data-workspace-id]").forEach((button) => {
+    button.addEventListener("click", () => switchWorkspace(button.dataset.workspaceId));
+  });
+
+  const plans = plansForActiveWorkspace();
+  els.planCardGrid.innerHTML = plans
+    .map((plan) => {
+      const meta = normalizePlanMetadata(plan);
+      return `
+        <button class="plan-card" type="button" data-plan-id="${escapeAttr(meta.id)}">
+          <span class="workspace-card-eyebrow">${escapeHtml(meta.subject || "Subject")}</span>
+          <strong>${escapeHtml(meta.title || "Untitled Plan")}</strong>
+          <small>${escapeHtml(activeWorkspace.name || "Workspace")}</small>
+        </button>
+      `;
+    })
+    .join("");
+  const newPlanCard = document.createElement("button");
+  newPlanCard.className = "plan-card create-card";
+  newPlanCard.type = "button";
+  newPlanCard.innerHTML = `<span class="workspace-card-eyebrow">New 2YIP</span><strong>Create 2YIP Plan</strong><small>Title and subject</small>`;
+  newPlanCard.addEventListener("click", openPlanSetup);
+  els.planCardGrid.append(newPlanCard);
+  els.planCardGrid.querySelectorAll("[data-plan-id]").forEach((button) => {
+    button.addEventListener("click", () => openWorkspacePlan(button.dataset.planId));
+  });
+
+  renderWorkspaceDirectory();
+}
+
+function renderWorkspaceDirectory() {
+  const canManage = canManageActiveWorkspace();
+  els.teamInviteForm.classList.toggle("hidden", !canManage);
+  els.memberList.innerHTML = workspaceDirectoryLoading
+    ? `<div class="workspace-empty">Loading members...</div>`
+    : workspaceMembers.length
+      ? workspaceMembers
+        .map((member) => `
+          <div class="member-row">
+            <span>${escapeHtml(member.displayName || member.email || "Member")}</span>
+            <strong>${escapeHtml(member.role || "editor")}</strong>
+          </div>
+        `)
+        .join("")
+      : `<div class="workspace-empty">No members loaded yet.</div>`;
+  els.inviteList.innerHTML = !canManage
+    ? `<div class="workspace-empty">Only owners can manage invites.</div>`
+    : workspaceDirectoryLoading
+      ? `<div class="workspace-empty">Loading invites...</div>`
+      : workspaceInvites.length
+        ? workspaceInvites
+          .map((invite) => `
+            <div class="invite-row">
+              <span>${escapeHtml(invite.email || "Pending invite")}</span>
+              <button class="ghost-button remove-invite" type="button" data-invite-id="${escapeAttr(invite.id)}">Remove</button>
+            </div>
+          `)
+          .join("")
+        : `<div class="workspace-empty">No pending invites.</div>`;
+  els.inviteList.querySelectorAll(".remove-invite").forEach((button) => {
+    button.addEventListener("click", () => removeWorkspaceInvite(button.dataset.inviteId));
+  });
+}
+
+function openPlanSetup() {
+  planSetupOpen = true;
+  els.newPlanTitle.value = "";
+  els.newPlanSubject.value = "Art";
+  if (els.newPlanTeam) els.newPlanTeam.value = "";
+  render();
+  window.setTimeout(() => els.newPlanTitle.focus(), 0);
+}
+
+function openWorkspaceSetup() {
+  workspaceSetupOpen = true;
+  els.newWorkspaceName.value = "";
+  render();
+  window.setTimeout(() => els.newWorkspaceName.focus(), 0);
+}
+
+async function openWorkspacePlan(planId) {
+  await switchPlan(planId, { targetScreen: "timeline" });
 }
 
 function renderPlanSetup() {
@@ -4463,12 +4754,7 @@ els.unitSetupModal.addEventListener("click", (event) => {
 });
 
 els.newPlan?.addEventListener("click", () => {
-  planSetupOpen = true;
-  els.newPlanTitle.value = "";
-  els.newPlanSubject.value = "Art";
-  els.newPlanTeam.value = "";
-  render();
-  window.setTimeout(() => els.newPlanTitle.focus(), 0);
+  openPlanSetup();
 });
 
 els.cancelPlanSetup?.addEventListener("click", () => {
@@ -4479,7 +4765,7 @@ els.cancelPlanSetup?.addEventListener("click", () => {
 els.createPlan?.addEventListener("click", async () => {
   const title = els.newPlanTitle.value.trim();
   const subject = els.newPlanSubject.value;
-  const teamName = els.newPlanTeam.value.trim();
+  const teamName = workspaceLabel();
   await persistCurrentPlanBeforeSwitch();
   state = createPlanState({ title, subject, teamName });
   state.currentScreen = "timeline";
@@ -4501,10 +4787,7 @@ els.planSelect?.addEventListener("change", (event) => {
 });
 
 els.newWorkspace?.addEventListener("click", () => {
-  workspaceSetupOpen = true;
-  els.newWorkspaceName.value = "";
-  render();
-  window.setTimeout(() => els.newWorkspaceName.focus(), 0);
+  openWorkspaceSetup();
 });
 
 els.cancelWorkspaceSetup?.addEventListener("click", () => {
@@ -4536,6 +4819,22 @@ els.workspaceSetupModal?.addEventListener("click", (event) => {
 
 els.workspaceSelect?.addEventListener("change", (event) => {
   switchWorkspace(event.target.value);
+});
+
+els.workspaceHome?.addEventListener("click", () => {
+  state.currentScreen = "workspace";
+  workspaceDirectoryWorkspaceId = "";
+  render();
+});
+
+els.sendInvite?.addEventListener("click", () => {
+  createWorkspaceInvite(els.inviteEmail.value);
+});
+
+els.inviteEmail?.addEventListener("keydown", (event) => {
+  if (event.key !== "Enter") return;
+  event.preventDefault();
+  createWorkspaceInvite(els.inviteEmail.value);
 });
 
 els.resetDemo.addEventListener("click", () => {

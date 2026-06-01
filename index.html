@@ -44,19 +44,12 @@
     <div id="app-shell" class="app-shell hidden">
       <header class="topbar">
         <div>
-          <p class="eyebrow">Lower Secondary Art</p>
-          <h1>Art Curriculum Planner</h1>
-          <div class="workspace-switcher" aria-label="Workspace and plan selectors">
-            <label for="workspace-select">Workspace</label>
-            <select id="workspace-select" class="plan-select"></select>
-            <button id="new-workspace" class="ghost-button" type="button">New Team</button>
-            <label for="plan-select">Plan</label>
-            <select id="plan-select" class="plan-select"></select>
-            <button id="new-plan" class="ghost-button" type="button">New Plan</button>
-          </div>
+          <p id="planner-kicker" class="eyebrow">Workspace</p>
+          <h1 id="planner-title">Art Curriculum Planner</h1>
         </div>
         <div class="topbar-actions">
-          <div class="mode-switch" aria-label="Editor mode">
+          <button id="workspace-home" class="ghost-button" type="button">Workspace</button>
+          <div id="mode-switch" class="mode-switch" aria-label="Editor mode">
             <button class="mode-button active" data-screen="timeline" type="button">2YIP Timeline</button>
             <button class="mode-button" data-screen="board" type="button">Unit Board</button>
             <button class="mode-button" data-screen="lesson" type="button">Lesson Board</button>
@@ -69,7 +62,52 @@
         </div>
       </header>
 
-      <main class="workspace">
+      <section id="workspace-screen" class="workspace-home screen-panel" aria-label="Workspace home">
+        <div class="workspace-home-heading">
+          <div>
+            <p class="eyebrow">Workspaces</p>
+            <h2>Choose A Planning Workspace</h2>
+          </div>
+          <p>Pick a team, open a 2YIP plan, or create a new one.</p>
+        </div>
+
+        <div id="workspace-card-grid" class="workspace-card-grid"></div>
+
+        <section class="workspace-home-section">
+          <div class="workspace-section-heading">
+            <div>
+              <p class="eyebrow">2YIP Plans</p>
+              <h2 id="workspace-plan-heading">Plans</h2>
+            </div>
+          </div>
+          <div id="plan-card-grid" class="plan-card-grid"></div>
+        </section>
+
+        <section id="team-management-panel" class="team-management-panel">
+          <div class="workspace-section-heading">
+            <div>
+              <p class="eyebrow">Team</p>
+              <h2>Members And Invites</h2>
+            </div>
+          </div>
+          <div id="team-invite-form" class="team-invite-form">
+            <input id="invite-email" class="text-input" type="email" placeholder="teacher@email.com" />
+            <button id="send-invite" class="primary-button" type="button">Invite Editor</button>
+          </div>
+          <div class="team-columns">
+            <div>
+              <h3>Active Members</h3>
+              <div id="member-list" class="member-list"></div>
+            </div>
+            <div>
+              <h3>Pending Invites</h3>
+              <div id="invite-list" class="invite-list"></div>
+            </div>
+          </div>
+        </section>
+      </section>
+
+      <main id="planner-workspace" class="workspace hidden">
         <section class="library-panel" aria-label="Planning library">
           <section class="unit-list-panel" aria-label="Saved units">
             <div class="panel-heading compact-heading">
@@ -440,8 +478,7 @@
           <option value="Other">Other</option>
         </select>
 
-        <label class="field-label" for="new-plan-team">Team Name</label>
-        <input id="new-plan-team" class="text-input" type="text" placeholder="e.g. Aesthetics Department" />
+        <input id="new-plan-team" type="hidden" />
 
         <div class="unit-setup-actions">
           <button id="cancel-plan-setup" class="ghost-button" type="button">Cancel</button>
@@ -484,6 +521,6 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-    <script src="app.js?v=20260601-workspace-access-fix"></script>
+    <script src="app.js?v=20260601-workspace-home"></script>
   </body>
 </html>
