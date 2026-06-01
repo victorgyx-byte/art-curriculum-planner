@@ -2397,6 +2397,26 @@ button:disabled {
   margin-top: 8px;
 }
 
+.image-upload-status {
+  min-height: 20px;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.image-upload-status.uploading {
+  color: var(--accent);
+}
+
+.image-upload-status.success {
+  color: #2d7d73;
+}
+
+.image-upload-status.error {
+  color: #9b3d2e;
+}
+
 .lesson-inherited-chips {
   display: grid;
   gap: 8px;

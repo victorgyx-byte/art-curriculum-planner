@@ -20,6 +20,8 @@ const TEAM_WORKSPACE_PREFIX = "team-workspace";
 const CLOUD_PLAN_ID = "main-planner-state";
 const SUGGESTION_VERSION = 3;
 const SNAPSHOT_INTERVAL_MS = 5 * 60 * 1000;
+const REMOTE_SCORE_DROP_GUARD = 120;
+const RECENT_EDIT_WINDOW_MS = 90 * 1000;
 const CLOUD_IMAGE_MAX_CHARS = 320000;
 const CLOUD_IMAGE_TOTAL_MAX_CHARS = 620000;
 const IMAGE_PREVIEW_MAX_SIDE = 1100;
@@ -681,6 +683,7 @@ let cloud = {
   available: false,
   auth: null,
   db: null,
+  storage: null,
   user: null,
   loaded: false,
   status: "Local save",
@@ -788,6 +791,7 @@ const els = {
   lessonImageUpload: document.querySelector("#lesson-image-upload"),
   chooseLessonImage: document.querySelector("#choose-lesson-image"),
   removeLessonImage: document.querySelector("#remove-lesson-image"),
+  lessonImageStatus: document.querySelector("#lesson-image-status"),
   lessonInheritedChips: document.querySelector("#lesson-inherited-chips"),
   lessonPlanningBoard: document.querySelector("#lesson-planning-board"),
   mobileLessonTabs: document.querySelector("#mobile-lesson-tabs"),
@@ -1715,9 +1719,12 @@ function normalizeLessons(lessons, unit = {}) {
       description: lesson.description || lesson.details || "",
       objectives: lesson.objectives || "",
       duration: lesson.duration || "",
+      imageUrl: lesson.imageUrl || "",
+      imagePath: lesson.imagePath || "",
       imageDataUrl: lesson.imageDataUrl || "",
       imageName: lesson.imageName || "",
       imageSaveNotice: lesson.imageSaveNotice || "",
+      imageUploadStatus: lesson.imageUploadStatus || "",
       structures: Array.isArray(lesson.structures) ? lesson.structures : [],
       otherStructure: lesson.otherStructure || "",
       otherConfirmed: Boolean(lesson.otherConfirmed || lesson.otherStructure),
@@ -1810,9 +1817,12 @@ function createLesson(unit) {
     description: "",
     objectives: "",
     duration: "",
+    imageUrl: "",
+    imagePath: "",
     imageDataUrl: "",
     imageName: "",
     imageSaveNotice: "",
+    imageUploadStatus: "",
     structures: [],
     otherStructure: "",
     otherConfirmed: false,
@@ -1989,6 +1999,7 @@ function initCloudSync() {
     cloud.available = true;
     cloud.auth = window.firebase.auth();
     cloud.db = window.firebase.firestore();
+    cloud.storage = window.firebase.storage ? window.firebase.storage() : null;
     cloud.db.settings({ ignoreUndefinedProperties: true });
     renderLoginGate("Checking sign-in...", true);
     renderCloudStatus("Checking sign-in...", "Sign in", true);
@@ -2531,14 +2542,13 @@ async function commitPlanSaveNow({ statusElement, statusElements = [], buttons =
 
 function cleanCloudState(value) {
   const cleanState = JSON.parse(JSON.stringify(value));
-  let imageChars = 0;
   (cleanState.units || []).forEach((unit) => {
     (unit.lessons || []).forEach((lesson) => {
-      const imageLength = lesson.imageDataUrl?.length || 0;
-      imageChars += imageLength;
-      if (imageLength > CLOUD_IMAGE_MAX_CHARS || imageChars > CLOUD_IMAGE_TOTAL_MAX_CHARS) {
+      if (lesson.imageDataUrl) {
         lesson.imageDataUrl = "";
-        lesson.imageSaveNotice = "Image was too large for online save. Re-upload a smaller reference image.";
+        if (!lesson.imageUrl) {
+          lesson.imageSaveNotice = "Image preview is stored only on this device. Upload again to save it online.";
+        }
       }
     });
   });
@@ -2587,6 +2597,77 @@ async function compressImageFile(file) {
     return bestDataUrl;
   } finally {
     URL.revokeObjectURL(objectUrl);
+  }
+}
+
+function dataUrlToBlob(dataUrl) {
+  const [header, payload] = dataUrl.split(",");
+  const mimeType = header.match(/data:(.*?);base64/)?.[1] || "image/jpeg";
+  const binary = atob(payload || "");
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return new Blob([bytes], { type: mimeType });
+}
+
+function safeStorageFileName(name = "lesson-reference.jpg") {
+  const cleaned = name
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9.]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+  return cleaned || "lesson-reference.jpg";
+}
+
+function lessonImageStoragePath(lesson, fileName) {
+  return [
+    "workspaces",
+    activeWorkspaceId(),
+    "plans",
+    activePlanId(),
+    "lessons",
+    lesson.id,
+    `${Date.now()}-${safeStorageFileName(fileName)}`,
+  ].join("/");
+}
+
+function verifyCloudImageUploadReady() {
+  const planMeta = planMetaById(activePlanId());
+  if (!cloud.available || !cloud.user || !cloud.storage) {
+    throw new Error("Cloud image upload is not ready. Check that Firebase Storage is enabled.");
+  }
+  if (!planCatalogVerified || !planMeta || planMeta.deletedAt || planMeta.stale || state.plan?.id !== activePlanId() || state.plan?.workspaceId !== activeWorkspaceId()) {
+    throw new Error("Plan is not verified yet. Reopen this 2YIP before uploading an image.");
+  }
+}
+
+async function uploadLessonImageDataUrl(lesson, file, dataUrl) {
+  verifyCloudImageUploadReady();
+  const blob = dataUrlToBlob(dataUrl);
+  const path = lessonImageStoragePath(lesson, file.name);
+  const ref = cloud.storage.ref(path);
+  const upload = await ref.put(blob, {
+    contentType: blob.type || "image/jpeg",
+    customMetadata: {
+      workspaceId: activeWorkspaceId(),
+      planId: activePlanId(),
+      lessonId: lesson.id,
+    },
+  });
+  const downloadUrl = await upload.ref.getDownloadURL();
+  return { downloadUrl, path, sizeLabel: imageSizeLabel(dataUrl) };
+}
+
+async function deleteCloudStoragePath(path) {
+  if (!path || !cloud.storage) return false;
+  try {
+    await cloud.storage.ref(path).delete();
+    return true;
+  } catch (error) {
+    console.warn("Cloud image delete failed", error);
+    return false;
   }
 }
 
@@ -4841,6 +4922,7 @@ function lessonNumber(unit, lesson) {
 
 function lessonConfirmedSummary(unit, lesson) {
   const structures = lessonDisplayStructures(lesson);
+  const lessonImageSrc = lesson.imageUrl || lesson.imageDataUrl;
   return `
     <section class="lap-summary lesson-document">
       <div class="unit-overview-heading lesson-overview-heading">
@@ -4849,7 +4931,7 @@ function lessonConfirmedSummary(unit, lesson) {
           <h2>${escapeHtml(`${unit.title || "Untitled Unit"} · ${lessonNumber(unit, lesson)}`)}</h2>
         </div>
       </div>
-      ${lesson.imageDataUrl ? `<img class="lap-summary-image" src="${escapeAttr(lesson.imageDataUrl)}" alt="${escapeAttr(lesson.imageName || "Lesson reference image")}" />` : ""}
+      ${lessonImageSrc ? `<img class="lap-summary-image" src="${escapeAttr(lessonImageSrc)}" alt="${escapeAttr(lesson.imageName || "Lesson reference image")}" />` : ""}
       <dl class="lap-summary-list lesson-summary-list">
         <dt>Lesson Title</dt><dd>${escapeHtml(lesson.title || "Not set")}</dd>
         <dt>Lesson Description</dt><dd>${escapeHtml(lesson.description || "Not set")}</dd>
@@ -4912,10 +4994,32 @@ function lessonActivityOverviewHtml(step, index) {
 }
 
 function renderLessonImage(lesson) {
-  els.lessonImagePreview.innerHTML = lesson.imageDataUrl
-    ? `<img src="${escapeAttr(lesson.imageDataUrl)}" alt="${escapeAttr(lesson.imageName || "Lesson reference image")}" /><span>${escapeHtml(lesson.imageName || "Uploaded image")} · ${escapeHtml(imageSizeLabel(lesson.imageDataUrl))}</span>${lesson.imageSaveNotice ? `<span>${escapeHtml(lesson.imageSaveNotice)}</span>` : ""}`
+  const imageSrc = lesson.imageUrl || lesson.imageDataUrl;
+  const imageMeta = [
+    lesson.imageName || "Uploaded image",
+    lesson.imageUrl ? "saved online" : "",
+    lesson.imageDataUrl ? imageSizeLabel(lesson.imageDataUrl) : "",
+  ].filter(Boolean).join(" · ");
+  els.lessonImagePreview.innerHTML = imageSrc
+    ? `<img src="${escapeAttr(imageSrc)}" alt="${escapeAttr(lesson.imageName || "Lesson reference image")}" /><span>${escapeHtml(imageMeta)}</span>`
     : `<span>${escapeHtml(lesson.imageSaveNotice || "No image uploaded")}</span>`;
-  els.removeLessonImage.disabled = !lesson.imageDataUrl;
+  renderLessonImageStatus(lesson);
+  els.removeLessonImage.disabled = !imageSrc && !lesson.imagePath;
+}
+
+function renderLessonImageStatus(lesson) {
+  if (!els.lessonImageStatus) return;
+  const message = lesson.imageUploadStatus || lesson.imageSaveNotice || "";
+  const lowerMessage = message.toLowerCase();
+  els.lessonImageStatus.textContent = message;
+  els.lessonImageStatus.className = `image-upload-status${lowerMessage.includes("failed") || lowerMessage.includes("not ready") || lowerMessage.includes("could not") || lowerMessage.includes("pending") ? " error" : ""}`;
+}
+
+function setLessonImageStatus(lesson, message, tone = "") {
+  if (lesson) lesson.imageUploadStatus = message;
+  if (!els.lessonImageStatus) return;
+  els.lessonImageStatus.textContent = message;
+  els.lessonImageStatus.className = `image-upload-status${tone ? ` ${tone}` : ""}`;
 }
 
 function renderLessonPlanningBoard(lesson) {
@@ -6847,34 +6951,61 @@ els.lessonImageUpload.addEventListener("change", async (event) => {
   const lesson = selectedLesson();
   const file = event.target.files?.[0];
   if (!lesson || !file) return;
-  renderCloudStatus("Preparing image for online save...", cloud.user ? "Sign out" : "Sign in", true);
+  const previousPath = lesson.imagePath || "";
+  renderCloudStatus("Uploading image to cloud...", cloud.user ? "Sign out" : "Sign in", true);
+  setLessonImageStatus(lesson, "Checking cloud image upload...", "uploading");
   try {
+    verifyCloudImageUploadReady();
+    setLessonImageStatus(lesson, "Compressing image for cloud upload...", "uploading");
     const dataUrl = await compressImageFile(file);
-    lesson.imageDataUrl = dataUrl.length <= CLOUD_IMAGE_MAX_CHARS ? dataUrl : "";
+    setLessonImageStatus(lesson, "Uploading image to cloud...", "uploading");
+    const uploaded = await uploadLessonImageDataUrl(lesson, file, dataUrl);
+    lesson.imageUrl = uploaded.downloadUrl;
+    lesson.imagePath = uploaded.path;
+    lesson.imageDataUrl = "";
     lesson.imageName = file.name;
-    lesson.imageSaveNotice = dataUrl.length <= CLOUD_IMAGE_MAX_CHARS
-      ? `Compressed for online save (${imageSizeLabel(dataUrl)}).`
-      : "Image is still too large after compression. Try a smaller image.";
+    lesson.imageSaveNotice = `Image uploaded online (${uploaded.sizeLabel}).`;
+    setLessonImageStatus(lesson, "Saving image link to lesson...", "uploading");
     saveState();
+    const savedOnline = await saveCloudStateNow();
+    if (previousPath && previousPath !== uploaded.path) {
+      deleteCloudStoragePath(previousPath);
+    }
+    const message = savedOnline
+      ? "Image uploaded and saved online."
+      : "Image uploaded; lesson link saved locally, online retry pending.";
+    lesson.imageUploadStatus = message;
+    lesson.imageSaveNotice = message;
     render();
-    renderCloudStatus(dataUrl.length <= CLOUD_IMAGE_MAX_CHARS ? "Image ready for online save" : "Image too large; not attached", cloud.user ? "Sign out" : "Sign in");
+    setLessonImageStatus(lesson, message, savedOnline ? "success" : "error");
+    renderCloudStatus(message, cloud.user ? "Sign out" : "Sign in");
   } catch (error) {
     console.warn("Image upload failed", error);
-    lesson.imageSaveNotice = error?.message || "Image could not be uploaded.";
+    const message = error?.message || "Image upload failed.";
+    lesson.imageUploadStatus = message;
+    lesson.imageSaveNotice = message;
     render();
-    renderCloudStatus("Image could not be prepared", cloud.user ? "Sign out" : "Sign in");
+    setLessonImageStatus(lesson, message, "error");
+    renderCloudStatus(message, cloud.user ? "Sign out" : "Sign in");
   } finally {
     event.target.value = "";
   }
 });
 
-els.removeLessonImage.addEventListener("click", () => {
+els.removeLessonImage.addEventListener("click", async () => {
   const lesson = selectedLesson();
   if (!lesson) return;
+  const previousPath = lesson.imagePath || "";
+  setLessonImageStatus(lesson, "Removing image...", "uploading");
   lesson.imageDataUrl = "";
+  lesson.imageUrl = "";
+  lesson.imagePath = "";
   lesson.imageName = "";
-  lesson.imageSaveNotice = "";
+  lesson.imageSaveNotice = "Image removed.";
+  lesson.imageUploadStatus = "Image removed.";
   saveState();
+  if (previousPath) await deleteCloudStoragePath(previousPath);
+  if (cloud.loaded) await saveCloudStateNow();
   render();
 });
 
