@@ -433,6 +433,7 @@ const els = {
   workspace: document.querySelector(".workspace"),
   cardLibraryPanel: document.querySelector(".card-library-panel"),
   boardScreen: document.querySelector("#board-screen"),
+  unitBoardLanding: document.querySelector("#unit-board-landing"),
   lessonScreen: document.querySelector("#lesson-screen"),
   lessonLanding: document.querySelector("#lesson-landing"),
   lessonEditor: document.querySelector("#lesson-editor"),
@@ -611,6 +612,12 @@ function normalizeState(candidate) {
     suggestionVersion: SUGGESTION_VERSION,
     activities: unit.activities || [],
   }));
+  if (!normalized.units.some((unit) => unit.id === normalized.selectedUnitId)) {
+    normalized.selectedUnitId = normalized.units[0]?.id || "";
+  }
+  if (!normalized.units.some((unit) => unit.lessons?.some((lesson) => lesson.id === normalized.selectedLessonId))) {
+    normalized.selectedLessonId = "";
+  }
   return normalized;
 }
 
@@ -2204,7 +2211,16 @@ function termWeekLabel(localWeek) {
 
 function renderBoard() {
   const unit = selectedUnit();
-  if (!unit) return;
+  if (!unit) {
+    renderEmptyUnitBoard();
+    return;
+  }
+  els.unitBoardLanding.classList.add("hidden");
+  els.boardHeading.classList.remove("hidden");
+  els.unitBoard.classList.remove("hidden");
+  els.mobileBoardTabs.classList.remove("hidden");
+  els.mobileUnitCardPicker.classList.remove("hidden");
+  els.lessonBoard.classList.remove("hidden");
   if (!document.querySelector(`.board-zone[data-zone="${state.selectedBoardZone}"]`)) {
     state.selectedBoardZone = "meaning";
   }
@@ -2316,6 +2332,18 @@ function renderBoard() {
   renderLessons(unit);
   renderMobileBoardTabs();
   renderMobileUnitCardPicker(unit);
+}
+
+function renderEmptyUnitBoard() {
+  els.unitBoardLanding.classList.remove("hidden");
+  els.boardHeading.classList.add("hidden");
+  els.unitBoard.classList.add("hidden");
+  els.mobileBoardTabs.classList.add("hidden");
+  els.mobileUnitCardPicker.classList.add("hidden");
+  els.lessonBoard.classList.add("hidden");
+  els.unitOverview.classList.add("hidden");
+  els.clearBoard.classList.add("hidden");
+  els.arrangeBoard.classList.add("hidden");
 }
 
 function renderSuggestions(unit) {
