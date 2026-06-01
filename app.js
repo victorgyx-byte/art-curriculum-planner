@@ -778,6 +778,7 @@ const els = {
   lessonDuration: document.querySelector("#lesson-duration"),
   lessonDescription: document.querySelector("#lesson-description"),
   lessonObjectives: document.querySelector("#lesson-objectives"),
+  lessonMeaningBrief: document.querySelector("#lesson-meaning-brief"),
   lessonImagePreview: document.querySelector("#lesson-image-preview"),
   lessonImageUpload: document.querySelector("#lesson-image-upload"),
   chooseLessonImage: document.querySelector("#choose-lesson-image"),
@@ -4049,6 +4050,7 @@ function renderLessonBoard() {
   els.lessonDuration.textContent = lessonDurationLabel(lesson);
   if (document.activeElement !== els.lessonDescription) els.lessonDescription.value = lesson.description || "";
   if (document.activeElement !== els.lessonObjectives) els.lessonObjectives.value = lesson.objectives || "";
+  renderLessonMeaningReference(unit);
   renderLessonImage(lesson);
   renderLessonPlanningBoard(lesson);
   renderMobileLessonTabs();
@@ -4721,6 +4723,25 @@ function renderLessonPlanningBoard(lesson) {
       const target = document.querySelector(`.lesson-zone[data-lesson-zone="${card.zone || lessonZoneForType(card.type)}"] .zone-cards`);
       target?.append(node);
     });
+}
+
+function renderLessonMeaningReference(unit) {
+  if (!els.lessonMeaningBrief) return;
+  const groups = [
+    ["Big Idea", overviewValues(unit, "bigIdeas")],
+    ["Guiding Question", guidingQuestionValues(unit)],
+    ["Theme", themeValues(unit)],
+  ];
+  els.lessonMeaningBrief.innerHTML = `
+    <div class="lesson-meaning-grid">
+      ${groups.map(([label, values]) => `
+        <div class="lesson-meaning-item">
+          <span>${escapeHtml(label)}</span>
+          <p>${escapeHtml(values.join("; ") || "Not set")}</p>
+        </div>
+      `).join("")}
+    </div>
+  `;
 }
 
 function lessonPlanningCardTitle(card) {
