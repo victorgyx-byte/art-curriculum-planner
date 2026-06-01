@@ -1590,6 +1590,7 @@ async function handleCloudUser(user) {
   renderLoginGate("Loading your planner...", true);
   renderCloudStatus("Loading cloud save...", "Sign out", true);
   try {
+    const requestedScreen = screenFromLocation();
     await ensureCloudWorkspace(user);
     await acceptPendingInvites(user);
     await loadCloudWorkspaceCatalog();
@@ -1597,7 +1598,8 @@ async function handleCloudUser(user) {
     const planCatalogLoaded = await loadCloudPlanCatalog();
     await loadCloudState();
     cloud.loaded = true;
-    state.currentScreen = "workspace";
+    state.currentScreen = requestedScreen === "workspace" || !firstPlanForActiveWorkspace() ? "workspace" : requestedScreen;
+    if (state.currentScreen === "lesson") state.lessonOverviewOpen = false;
     workspaceDirectoryWorkspaceId = "";
     els.loginGate.classList.add("hidden");
     els.appShell.classList.remove("hidden");
