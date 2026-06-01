@@ -45,7 +45,10 @@
         <div>
           <p class="eyebrow">Lower Secondary Art</p>
           <h1>Art Curriculum Planner</h1>
-          <div class="plan-switcher" aria-label="Plan selector">
+          <div class="workspace-switcher" aria-label="Workspace and plan selectors">
+            <label for="workspace-select">Workspace</label>
+            <select id="workspace-select" class="plan-select"></select>
+            <button id="new-workspace" class="ghost-button" type="button">New Team</button>
             <label for="plan-select">Plan</label>
             <select id="plan-select" class="plan-select"></select>
             <button id="new-plan" class="ghost-button" type="button">New Plan</button>
@@ -442,6 +445,23 @@
         <div class="unit-setup-actions">
           <button id="cancel-plan-setup" class="ghost-button" type="button">Cancel</button>
           <button id="create-plan" class="primary-button" type="button">Create Plan</button>
+        </div>
+      </section>
+    </div>
+
+    <div id="workspace-setup-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="workspace-setup-title">
+      <section class="unit-setup-modal">
+        <div>
+          <p class="eyebrow">New Team</p>
+          <h2 id="workspace-setup-title">Create Team Workspace</h2>
+        </div>
+
+        <label class="field-label" for="new-workspace-name">Team / Workspace Name</label>
+        <input id="new-workspace-name" class="text-input" type="text" placeholder="e.g. Aesthetics Department" />
+
+        <div class="unit-setup-actions">
+          <button id="cancel-workspace-setup" class="ghost-button" type="button">Cancel</button>
+          <button id="create-workspace" class="primary-button" type="button">Create Workspace</button>
         </div>
       </section>
     </div>

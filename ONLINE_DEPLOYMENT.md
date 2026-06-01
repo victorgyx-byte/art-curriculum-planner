@@ -22,10 +22,16 @@ users/{uid}
   displayName
   email
   lastWorkspaceId
+  workspaces.{workspaceId}
+    id
+    name
+    type
+    role
 
 workspaces/{workspaceId}
   name
   schoolName
+  type: personal | team
   createdBy
   createdAt
 
@@ -69,10 +75,11 @@ For the MVP, `state` stores the current app state as one document field. Each pl
 ## Current Code Step
 
 - Google sign-in opens the teacher's personal workspace.
+- Teachers can create a team workspace and switch between workspaces.
 - The plan selector can create and switch between multiple 2YIP plans.
-- Firestore plan documents are discovered into a local plan catalog after sign-in.
+- Firestore workspace and plan documents are discovered into local catalogs after sign-in.
 - Each plan stores its own `cardLibrary`, making subject-specific and team-specific card sets possible.
 
 ## Next Code Step
 
-Add team/workspace management screens so an HOD can invite teachers into a shared workspace and assign roles (`owner`, `teacher`, `viewer`) instead of every user only seeing their personal workspace.
+Add team membership management so an HOD can invite teachers into a shared workspace and assign roles (`owner`, `teacher`, `viewer`) from the UI.

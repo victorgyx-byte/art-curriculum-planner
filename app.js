@@ -6,9 +6,12 @@ const BOARD_SNAP = 28;
 const TIMELINE_HEADER_HEIGHT = 76;
 const TIMELINE_LANE_HEIGHT = 150;
 const STORAGE_KEY = "art-curriculum-editor-v1";
+const ACTIVE_WORKSPACE_STORAGE_KEY = "art-curriculum-active-workspace-id";
+const WORKSPACE_CATALOG_STORAGE_KEY = "art-curriculum-workspace-catalog";
 const ACTIVE_PLAN_STORAGE_KEY = "art-curriculum-active-plan-id";
 const PLAN_CATALOG_STORAGE_KEY = "art-curriculum-plan-catalog";
 const CLOUD_WORKSPACE_PREFIX = "teacher-workspace";
+const TEAM_WORKSPACE_PREFIX = "team-workspace";
 const CLOUD_PLAN_ID = "main-planner-state";
 const SUGGESTION_VERSION = 2;
 const hiddenPlanningCards = new Set(["Communication, Collaboration and Information Skills"]);
@@ -355,6 +358,7 @@ const defaultState = {
   ],
 };
 
+let workspaceCatalog = loadWorkspaceCatalog();
 let planCatalog = loadPlanCatalog();
 let state = loadState();
 let dragPayload = null;
@@ -362,6 +366,7 @@ let timelineDrag = null;
 let boardHeaderEditing = { title: false, performanceTask: false };
 let unitSetupOpen = false;
 let planSetupOpen = false;
+let workspaceSetupOpen = false;
 let cloudSaveTimer = null;
 let cloudSyncPaused = false;
 let historySyncPaused = false;
@@ -388,6 +393,8 @@ const els = {
   loginStatus: document.querySelector("#login-status"),
   libraryEyebrow: document.querySelector("#library-eyebrow"),
   libraryTitle: document.querySelector("#library-title"),
+  workspaceSelect: document.querySelector("#workspace-select"),
+  newWorkspace: document.querySelector("#new-workspace"),
   planSelect: document.querySelector("#plan-select"),
   newPlan: document.querySelector("#new-plan"),
   unitList: document.querySelector("#unit-list"),
@@ -469,6 +476,10 @@ const els = {
   newPlanTeam: document.querySelector("#new-plan-team"),
   cancelPlanSetup: document.querySelector("#cancel-plan-setup"),
   createPlan: document.querySelector("#create-plan"),
+  workspaceSetupModal: document.querySelector("#workspace-setup-modal"),
+  newWorkspaceName: document.querySelector("#new-workspace-name"),
+  cancelWorkspaceSetup: document.querySelector("#cancel-workspace-setup"),
+  createWorkspace: document.querySelector("#create-workspace"),
   cloudPanel: document.querySelector("#cloud-panel"),
   cloudStatus: document.querySelector("#cloud-status"),
   cloudAuth: document.querySelector("#cloud-auth"),
@@ -583,6 +594,16 @@ function normalizePlanMetadata(plan = {}) {
     subject: plan.subject || "Art",
     teamId: plan.teamId || "",
     teamName: plan.teamName || "",
+    workspaceId: plan.workspaceId || activeWorkspaceId(),
+  };
+}
+
+function normalizeWorkspaceMetadata(workspace = {}) {
+  return {
+    id: workspace.id || activeWorkspaceId(),
+    name: workspace.name || "My Workspace",
+    type: workspace.type || "personal",
+    role: workspace.role || "owner",
   };
 }
 
@@ -606,8 +627,32 @@ function activeCardLibrary() {
   return Array.isArray(state.cardLibrary) && state.cardLibrary.length ? state.cardLibrary : defaultCardLibrary;
 }
 
-function planStateStorageKey(planId = activePlanId()) {
-  return `${STORAGE_KEY}:${planId || CLOUD_PLAN_ID}`;
+function planStateStorageKey(planId = activePlanId(), workspaceId = activeWorkspaceId()) {
+  return `${STORAGE_KEY}:${workspaceId || "local-workspace"}:${planId || CLOUD_PLAN_ID}`;
+}
+
+function loadWorkspaceCatalog() {
+  try {
+    const catalog = JSON.parse(localStorage.getItem(WORKSPACE_CATALOG_STORAGE_KEY));
+    return Array.isArray(catalog) ? catalog : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveWorkspaceCatalog() {
+  localStorage.setItem(WORKSPACE_CATALOG_STORAGE_KEY, JSON.stringify(workspaceCatalog));
+}
+
+function saveWorkspaceToCatalog(workspace = {}) {
+  const normalized = normalizeWorkspaceMetadata(workspace);
+  const existing = workspaceCatalog.find((entry) => entry.id === normalized.id);
+  if (existing) {
+    Object.assign(existing, normalized);
+  } else {
+    workspaceCatalog.push(normalized);
+  }
+  saveWorkspaceCatalog();
 }
 
 function loadPlanCatalog() {
@@ -625,7 +670,7 @@ function savePlanCatalog() {
 
 function savePlanToCatalog(plan = state.plan) {
   const normalized = normalizePlanMetadata(plan);
-  const existing = planCatalog.find((entry) => entry.id === normalized.id);
+  const existing = planCatalog.find((entry) => entry.id === normalized.id && entry.workspaceId === normalized.workspaceId);
   if (existing) {
     Object.assign(existing, normalized);
   } else {
@@ -641,6 +686,7 @@ function mergeCloudPlanIntoCatalog(planId, data = {}) {
     subject: data.subject || data.state?.plan?.subject || "Art",
     teamId: data.teamId || data.state?.plan?.teamId || "",
     teamName: data.teamName || data.state?.plan?.teamName || "",
+    workspaceId: cloudWorkspaceId(),
   });
 }
 
@@ -653,6 +699,7 @@ function createPlanState({ title, subject, teamName }) {
       subject: subject || "Art",
       teamId: teamName ? slugify(teamName) : "",
       teamName: teamName || "",
+      workspaceId: activeWorkspaceId(),
     },
     cardLibrary: cloneLibraryForSubject(subject || "Art"),
     units: [],
@@ -673,7 +720,7 @@ function loadLocalPlanState(planId) {
 }
 
 function planMetaById(planId) {
-  return planCatalog.find((plan) => plan.id === planId) || null;
+  return planCatalog.find((plan) => plan.id === planId && planBelongsToActiveWorkspace(plan)) || null;
 }
 
 async function persistCurrentPlanBeforeSwitch() {
@@ -681,10 +728,10 @@ async function persistCurrentPlanBeforeSwitch() {
   if (cloud.loaded) await saveCloudStateNow();
 }
 
-async function switchPlan(planId) {
-  if (!planId || planId === activePlanId()) return;
+async function switchPlan(planId, options = {}) {
+  if (!planId || (planId === activePlanId() && !options.force)) return;
   const currentScreen = state.currentScreen;
-  await persistCurrentPlanBeforeSwitch();
+  if (!options.skipPersist) await persistCurrentPlanBeforeSwitch();
   localStorage.setItem(ACTIVE_PLAN_STORAGE_KEY, planId);
   const catalogPlan = planMetaById(planId);
   let nextState = loadLocalPlanState(planId);
@@ -722,6 +769,95 @@ async function switchPlan(planId) {
   state = normalizeState(nextState);
   state.currentScreen = currentScreen || "timeline";
   saveState();
+  render();
+}
+
+function plansForActiveWorkspace() {
+  return planCatalog.filter(planBelongsToActiveWorkspace);
+}
+
+function planBelongsToActiveWorkspace(plan) {
+  if (plan.workspaceId) return plan.workspaceId === activeWorkspaceId();
+  return activeWorkspaceId() === personalWorkspaceId();
+}
+
+function firstPlanForActiveWorkspace() {
+  return plansForActiveWorkspace()[0] || null;
+}
+
+async function switchWorkspace(workspaceId) {
+  if (!workspaceId || workspaceId === activeWorkspaceId()) return;
+  await persistCurrentPlanBeforeSwitch();
+  localStorage.setItem(ACTIVE_WORKSPACE_STORAGE_KEY, workspaceId);
+  if (cloud.loaded) {
+    await cloud.db.collection("users").doc(cloud.user.uid).set({
+      lastWorkspaceId: workspaceId,
+      updatedAt: window.firebase.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+  }
+  if (cloud.loaded) await loadCloudPlanCatalog();
+  const nextPlan = firstPlanForActiveWorkspace();
+  if (nextPlan) {
+    await switchPlan(nextPlan.id, { skipPersist: true, force: true });
+    return;
+  }
+  state = createPlanState({
+    title: `${workspaceLabel(workspaceId)} 2YIP`,
+    subject: "Art",
+    teamName: workspaceLabel(workspaceId),
+  });
+  state.currentScreen = "timeline";
+  localStorage.setItem(ACTIVE_PLAN_STORAGE_KEY, activePlanId());
+  saveState();
+  render();
+  if (cloud.loaded) await saveCloudStateNow();
+}
+
+function workspaceLabel(workspaceId = activeWorkspaceId()) {
+  return workspaceCatalog.find((workspace) => workspace.id === workspaceId)?.name || "Workspace";
+}
+
+async function createTeamWorkspace(name) {
+  if (!cloud.user || !cloud.db) return;
+  const trimmedName = name.trim() || "New Team";
+  const workspaceId = `${TEAM_WORKSPACE_PREFIX}-${cloud.user.uid}-${slugify(trimmedName)}-${Math.random().toString(36).slice(2, 6)}`;
+  const workspace = {
+    id: workspaceId,
+    name: trimmedName,
+    type: "team",
+    role: "owner",
+  };
+  const workspaceRef = cloud.db.collection("workspaces").doc(workspaceId);
+  await workspaceRef.set({
+    name: trimmedName,
+    schoolName: "",
+    type: "team",
+    createdBy: cloud.user.uid,
+    updatedAt: window.firebase.firestore.FieldValue.serverTimestamp(),
+  });
+  await workspaceRef.collection("members").doc(cloud.user.uid).set({
+    role: "owner",
+    email: cloud.user.email || "",
+    displayName: cloud.user.displayName || "",
+    updatedAt: window.firebase.firestore.FieldValue.serverTimestamp(),
+  });
+  await cloud.db.collection("users").doc(cloud.user.uid).set({
+    lastWorkspaceId: workspaceId,
+    workspaces: {
+      [workspaceId]: workspace,
+    },
+    updatedAt: window.firebase.firestore.FieldValue.serverTimestamp(),
+  }, { merge: true });
+  saveWorkspaceToCatalog(workspace);
+  localStorage.setItem(ACTIVE_WORKSPACE_STORAGE_KEY, workspaceId);
+  state = createPlanState({
+    title: `${trimmedName} Art 2YIP`,
+    subject: "Art",
+    teamName: trimmedName,
+  });
+  state.currentScreen = "timeline";
+  saveState();
+  await saveCloudStateNow();
   render();
 }
 
@@ -897,7 +1033,10 @@ function syncLessonDescription(lesson, value) {
 }
 
 function saveState() {
+  state.plan = normalizePlanMetadata(state.plan);
   savePlanToCatalog(state.plan);
+  saveWorkspaceToCatalog({ id: activeWorkspaceId(), name: workspaceLabel(), type: activeWorkspaceId().startsWith(TEAM_WORKSPACE_PREFIX) ? "team" : "personal" });
+  localStorage.setItem(ACTIVE_WORKSPACE_STORAGE_KEY, activeWorkspaceId());
   localStorage.setItem(ACTIVE_PLAN_STORAGE_KEY, activePlanId());
   localStorage.setItem(planStateStorageKey(), JSON.stringify(state));
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -982,6 +1121,7 @@ async function handleCloudUser(user) {
   renderCloudStatus("Loading cloud save...", "Sign out", true);
   try {
     await ensureCloudWorkspace(user);
+    await loadCloudWorkspaceCatalog();
     await loadCloudPlanCatalog();
     await loadCloudState();
     cloud.loaded = true;
@@ -997,12 +1137,14 @@ async function handleCloudUser(user) {
 }
 
 async function ensureCloudWorkspace(user) {
-  const workspaceRef = cloud.db.collection("workspaces").doc(cloudWorkspaceId());
+  const workspaceId = personalWorkspaceId(user.uid);
+  const workspaceRef = cloud.db.collection("workspaces").doc(workspaceId);
   const memberRef = workspaceRef.collection("members").doc(user.uid);
   const userRef = cloud.db.collection("users").doc(user.uid);
   await workspaceRef.set({
-    name: "Art Curriculum Planner",
+    name: "My Planner",
     schoolName: "",
+    type: "personal",
     createdBy: user.uid,
     updatedAt: window.firebase.firestore.FieldValue.serverTimestamp(),
   }, { merge: true });
@@ -1015,9 +1157,34 @@ async function ensureCloudWorkspace(user) {
   await userRef.set({
     email: user.email || "",
     displayName: user.displayName || "",
-    lastWorkspaceId: cloudWorkspaceId(),
+    lastWorkspaceId: activeWorkspaceId(),
+    workspaces: {
+      [workspaceId]: {
+        id: workspaceId,
+        name: "My Planner",
+        type: "personal",
+        role: "owner",
+      },
+    },
     updatedAt: window.firebase.firestore.FieldValue.serverTimestamp(),
   }, { merge: true });
+  saveWorkspaceToCatalog({ id: workspaceId, name: "My Planner", type: "personal", role: "owner" });
+  if (!localStorage.getItem(ACTIVE_WORKSPACE_STORAGE_KEY)) localStorage.setItem(ACTIVE_WORKSPACE_STORAGE_KEY, workspaceId);
+}
+
+async function loadCloudWorkspaceCatalog() {
+  const userSnapshot = await cloud.db.collection("users").doc(cloud.user.uid).get();
+  const userData = userSnapshot.exists ? userSnapshot.data() || {} : {};
+  const workspaces = userData.workspaces || {};
+  Object.values(workspaces).forEach((workspace) => saveWorkspaceToCatalog(workspace));
+  saveWorkspaceToCatalog({ id: personalWorkspaceId(cloud.user.uid), name: "My Planner", type: "personal", role: "owner" });
+  if (!localStorage.getItem(ACTIVE_WORKSPACE_STORAGE_KEY) && userData.lastWorkspaceId) {
+    localStorage.setItem(ACTIVE_WORKSPACE_STORAGE_KEY, userData.lastWorkspaceId);
+  }
+  const activeId = activeWorkspaceId();
+  if (!workspaceCatalog.some((workspace) => workspace.id === activeId)) {
+    localStorage.setItem(ACTIVE_WORKSPACE_STORAGE_KEY, personalWorkspaceId(cloud.user.uid));
+  }
 }
 
 async function loadCloudPlanCatalog() {
@@ -1070,6 +1237,7 @@ async function saveCloudStateNow() {
       subject: state.plan?.subject || "Art",
       teamId: state.plan?.teamId || "",
       teamName: state.plan?.teamName || "",
+      workspaceId: activeWorkspaceId(),
       ownerId: cloud.user.uid,
       state: cleanState,
       updatedAt: window.firebase.firestore.FieldValue.serverTimestamp(),
@@ -1098,7 +1266,15 @@ function cloudPlanRefFor(planId) {
 }
 
 function cloudWorkspaceId() {
-  return `${CLOUD_WORKSPACE_PREFIX}-${cloud.user?.uid || "local"}`;
+  return activeWorkspaceId();
+}
+
+function personalWorkspaceId(uid = cloud.user?.uid || "local") {
+  return `${CLOUD_WORKSPACE_PREFIX}-${uid}`;
+}
+
+function activeWorkspaceId() {
+  return localStorage.getItem(ACTIVE_WORKSPACE_STORAGE_KEY) || personalWorkspaceId();
 }
 
 function activePlanId() {
@@ -1244,6 +1420,7 @@ function render() {
   renderUnitList();
   renderUnitSetup();
   renderPlanSetup();
+  renderWorkspaceSetup();
   renderLibrary();
   renderTimelineGrid();
   renderUnits();
@@ -1339,12 +1516,24 @@ function renderUnitSetup() {
 }
 
 function renderPlanControls() {
-  if (!els.planSelect) return;
+  if (!els.planSelect || !els.workspaceSelect) return;
+  if (!workspaceCatalog.some((workspace) => workspace.id === activeWorkspaceId())) {
+    saveWorkspaceToCatalog({ id: activeWorkspaceId(), name: workspaceLabel(), type: activeWorkspaceId().startsWith(TEAM_WORKSPACE_PREFIX) ? "team" : "personal" });
+  }
   savePlanToCatalog(state.plan);
-  els.planSelect.innerHTML = planCatalog
+  els.workspaceSelect.innerHTML = workspaceCatalog
+    .map((workspace) => `<option value="${escapeAttr(workspace.id)}">${escapeHtml(workspaceOptionLabel(workspace))}</option>`)
+    .join("");
+  els.workspaceSelect.value = activeWorkspaceId();
+  els.planSelect.innerHTML = plansForActiveWorkspace()
     .map((plan) => `<option value="${escapeAttr(plan.id)}">${escapeHtml(planOptionLabel(plan))}</option>`)
     .join("");
   els.planSelect.value = activePlanId();
+}
+
+function workspaceOptionLabel(workspace) {
+  const meta = normalizeWorkspaceMetadata(workspace);
+  return `${meta.name || "Workspace"}${meta.type === "team" ? " · Team" : ""}`;
 }
 
 function planOptionLabel(plan) {
@@ -1355,6 +1544,11 @@ function planOptionLabel(plan) {
 function renderPlanSetup() {
   if (!els.planSetupModal) return;
   els.planSetupModal.classList.toggle("hidden", !planSetupOpen);
+}
+
+function renderWorkspaceSetup() {
+  if (!els.workspaceSetupModal) return;
+  els.workspaceSetupModal.classList.toggle("hidden", !workspaceSetupOpen);
 }
 
 function renderLibrary() {
@@ -4186,6 +4380,44 @@ els.planSetupModal?.addEventListener("click", (event) => {
 
 els.planSelect?.addEventListener("change", (event) => {
   switchPlan(event.target.value);
+});
+
+els.newWorkspace?.addEventListener("click", () => {
+  workspaceSetupOpen = true;
+  els.newWorkspaceName.value = "";
+  render();
+  window.setTimeout(() => els.newWorkspaceName.focus(), 0);
+});
+
+els.cancelWorkspaceSetup?.addEventListener("click", () => {
+  workspaceSetupOpen = false;
+  render();
+});
+
+els.createWorkspace?.addEventListener("click", async () => {
+  if (!cloud.user) {
+    renderCloudStatus("Sign in before creating a team", "Sign in");
+    return;
+  }
+  workspaceSetupOpen = false;
+  renderCloudStatus("Creating team workspace...", "Sign out", true);
+  try {
+    await createTeamWorkspace(els.newWorkspaceName.value);
+    renderCloudStatus(`Workspace ready: ${workspaceLabel()}`, "Sign out");
+  } catch (error) {
+    console.warn("Workspace creation failed", error);
+    renderCloudStatus(`Team creation failed: ${error.code || error.message || "check rules"}`, "Sign out");
+  }
+});
+
+els.workspaceSetupModal?.addEventListener("click", (event) => {
+  if (event.target !== els.workspaceSetupModal) return;
+  workspaceSetupOpen = false;
+  render();
+});
+
+els.workspaceSelect?.addEventListener("change", (event) => {
+  switchWorkspace(event.target.value);
 });
 
 els.resetDemo.addEventListener("click", () => {
