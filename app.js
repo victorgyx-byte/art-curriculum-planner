@@ -18,7 +18,7 @@ const LAST_SNAPSHOT_META_STORAGE_KEY = "art-curriculum-last-snapshot-meta";
 const CLOUD_WORKSPACE_PREFIX = "teacher-workspace";
 const TEAM_WORKSPACE_PREFIX = "team-workspace";
 const CLOUD_PLAN_ID = "main-planner-state";
-const SUGGESTION_VERSION = 2;
+const SUGGESTION_VERSION = 3;
 const SNAPSHOT_INTERVAL_MS = 5 * 60 * 1000;
 const SHARED_CARD_TYPES = new Set(["cc21"]);
 const hiddenPlanningCards = new Set(["Communication, Collaboration and Information Skills"]);
@@ -80,12 +80,10 @@ const defaultCardLibrary = [
     title: "Artistic Processes",
     type: "artisticProcesses",
     items: [
-      "Observe, record and reflect",
-      "Gather and research",
-      "Generate visual possibilities",
-      "Experiment with materials and methods",
-      "Create artworks to communicate ideas",
-      "Evaluate and give feedback",
+      "AP1: Observe, record and reflect on what they see and experience",
+      "AP2: Gather and research on different types of visual and other information",
+      "AP3: Generate visual possibilities by experimenting with different materials, tools, methods, images and ideas",
+      "AP4: Create artworks to communicate ideas",
     ],
   },
   {
@@ -202,7 +200,7 @@ const libraryCardDetails = {
   },
   "Drawing: Observe": {
     tone: "teal",
-    title: "Through drawing | Observe",
+    title: "Through Drawing I Observe",
     detailLabel: "Elaboration",
     context: [
       "Observational drawing encourages students to go slow to explore, notice, sense-make and think about the stimulus more thoroughly.",
@@ -210,7 +208,7 @@ const libraryCardDetails = {
   },
   "Drawing: Think": {
     tone: "teal",
-    title: "Through drawing | Think",
+    title: "Through Drawing I Think",
     detailLabel: "Elaboration",
     context: [
       "Drawing can be used as a tool to generate, develop, organize, encode and communicate personal ideas.",
@@ -218,10 +216,55 @@ const libraryCardDetails = {
   },
   "Drawing: Imagine": {
     tone: "teal",
-    title: "Through drawing | Imagine",
+    title: "Through Drawing I Imagine",
     detailLabel: "Elaboration",
     context: [
       "Through drawing, students make marks on paper and are encouraged to imagine the possibilities of what the drawing can be.",
+    ],
+  },
+  "AP1: Observe, record and reflect on what they see and experience": {
+    tone: "process",
+    title: "Artistic Process 1: Observe, record and reflect on what they see and experience",
+    detailLabel: "",
+    context: [
+      "Students observe closely and accurately by examining from different perspectives and representing details and visual qualities of what they see around them and in artworks.",
+      "Students are curious about what they see by generating questions and ideas, taking initiative to learn more about visual phenomena and what they see around them and in artworks.",
+      "Students capture and present what they see and experience using various tools and strategies, such as quick sketching, photography, composing images with framing and focus, and describing what they see in oral and written forms.",
+      "Students evaluate and form personal ideas and opinions about what they see and experience.",
+      "Students share with others, give and receive feedback on their observations, ideas and opinions about what they see around them and in artworks.",
+    ],
+  },
+  "AP2: Gather and research on different types of visual and other information": {
+    tone: "process",
+    title: "Artistic Process 2: Gather and research on different types of visual and other information",
+    detailLabel: "",
+    context: [
+      "Students generate guiding questions and relevant areas for visual and informational research about a theme, topic or subject matter by themselves and with others.",
+      "Students search for relevant visual resources using conventional and digital means, including first-hand observation, sketching, close observation studies, photographs, print sources and digital sources.",
+      "Students evaluate, select and use visual and informational materials relevant to the focus and scope of their search.",
+      "Students evaluate their own and others' research processes.",
+    ],
+  },
+  "AP3: Generate visual possibilities by experimenting with different materials, tools, methods, images and ideas": {
+    tone: "process",
+    title: "Artistic Process 3: Generate visual possibilities by experimenting with different materials, tools, methods, images and ideas",
+    detailLabel: "",
+    context: [
+      "Students generate different visual ideas appropriate to intentions using multiple strategies, such as representing from various angles, magnifying details, playing with elements and principles of design, applying different artistic styles and inventing new strategies.",
+      "Students experiment with different art techniques, art materials and tools to achieve intentions or create new effects.",
+      "Students evaluate, select and develop ideas to express ideas and achieve intentions.",
+      "Students evaluate their own and others' use of visual strategies and experimentation.",
+    ],
+  },
+  "AP4: Create artworks to communicate ideas": {
+    tone: "process",
+    title: "Artistic Process 4: Create artworks to communicate ideas",
+    detailLabel: "",
+    context: [
+      "Students generate, formulate and express ideas for art making, such as in response to given themes.",
+      "Students use a range of materials and techniques associated with media such as drawing, painting, photography, design and sculpture to achieve desired outcomes.",
+      "Students conceptualise, plan and carry out ideas and processes to make artworks to express ideas, including devising plans, selecting visual strategies and monitoring their work processes.",
+      "Students evaluate their own and give feedback to others' art making processes and artworks based on given criteria.",
     ],
   },
 };
@@ -245,30 +288,37 @@ const inquiryActivityTypes = [
   "Reflect",
 ];
 
+const artisticProcessLabels = {
+  ap1: "AP1: Observe, record and reflect on what they see and experience",
+  ap2: "AP2: Gather and research on different types of visual and other information",
+  ap3: "AP3: Generate visual possibilities by experimenting with different materials, tools, methods, images and ideas",
+  ap4: "AP4: Create artworks to communicate ideas",
+};
+
 const loProcessSuggestions = [
   {
     lo: "LO1",
-    processes: ["Observe, record and reflect", "Gather and research"],
+    processes: [artisticProcessLabels.ap1, artisticProcessLabels.ap2],
   },
   {
     lo: "LO2",
-    processes: ["Gather and research", "Generate visual possibilities"],
+    processes: [artisticProcessLabels.ap2, artisticProcessLabels.ap3],
   },
   {
     lo: "LO3",
-    processes: ["Experiment with materials and methods"],
+    processes: [artisticProcessLabels.ap3, artisticProcessLabels.ap4],
   },
   {
     lo: "LO4",
-    processes: ["Create artworks to communicate ideas"],
+    processes: [artisticProcessLabels.ap4],
   },
   {
     lo: "LO5",
-    processes: ["Observe, record and reflect", "Evaluate and give feedback"],
+    processes: [artisticProcessLabels.ap1, artisticProcessLabels.ap4],
   },
   {
     lo: "LO6",
-    processes: ["Gather and research"],
+    processes: [artisticProcessLabels.ap1, artisticProcessLabels.ap2],
   },
 ];
 
@@ -320,10 +370,10 @@ const defaultState = {
       assessment: ["Diagnostic drawing check", "Portfolio review"],
       learningContent: {
         context: "School environment and everyday visual culture.",
-        artisticProcesses: "Observe, record, generate visual possibilities.",
+        artisticProcesses: "Observe, record and reflect; gather and research; generate visual possibilities.",
         visualQualities: "Line, texture, space, contrast.",
         contextCards: ["Topic / Subject Matter"],
-        artisticProcessCards: ["Observe, record and reflect", "Generate visual possibilities"],
+        artisticProcessCards: [artisticProcessLabels.ap1, artisticProcessLabels.ap3],
         visualQualityCards: ["Elements of Art", "Principles of Design"],
       },
       pedagogy: ["Inquiry Based Learning"],
@@ -412,10 +462,10 @@ const defaultState = {
       assessment: ["Formative critique"],
       learningContent: {
         context: "Objects, memory, community, and personal narratives.",
-        artisticProcesses: "Gather, research, select, develop ideas.",
+        artisticProcesses: "Gather and research; create artworks to communicate ideas.",
         visualQualities: "Colour, balance, emphasis, composition.",
         contextCards: ["Personal / Social / Cultural Meaning"],
-        artisticProcessCards: ["Gather and research", "Create artworks to communicate ideas"],
+        artisticProcessCards: [artisticProcessLabels.ap2, artisticProcessLabels.ap4],
         visualQualityCards: ["Elements of Art", "Principles of Design"],
       },
       pedagogy: ["Inquiry Based Learning", "Collaborative Art Making & Learning"],
@@ -2848,7 +2898,7 @@ function renderWorkspaceSetup() {
 }
 
 function cardDetailFor(payload) {
-  if (!payload || !["bigIdeas", "meaningText", "coreExperiences"].includes(payload.type)) return null;
+  if (!payload || !["bigIdeas", "meaningText", "coreExperiences", "artisticProcesses"].includes(payload.type)) return null;
   return libraryCardDetails[payload.label] || null;
 }
 
