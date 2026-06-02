@@ -54,6 +54,10 @@
             <button class="mode-button" data-screen="board" type="button">Unit Board</button>
             <button class="mode-button" data-screen="lesson" type="button">Lesson Board</button>
           </div>
+          <div id="lock-panel" class="lock-panel hidden" aria-live="polite">
+            <span id="lock-status">Read-only</span>
+            <button id="take-over-lock" class="ghost-button" type="button">Take Over Editing</button>
+          </div>
           <div id="cloud-panel" class="cloud-panel" aria-live="polite">
             <span id="cloud-status">Online save</span>
             <button id="cloud-auth" class="ghost-button" type="button">Sign in</button>
