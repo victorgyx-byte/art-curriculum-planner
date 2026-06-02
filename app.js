@@ -152,13 +152,11 @@ const defaultCardLibrary = [
     title: "Assessment Blocks",
     type: "assessment",
     items: [
-      "Diagnostic drawing check",
-      "Formative critique",
-      "Portfolio review",
-      "Weighted assessment",
-      "Self-assessment checklist",
-      "Reflection prompt",
-      "End-of-year evidence",
+      "Diagnostic Check",
+      "Formative Assessment",
+      "Summative Assessment",
+      "Self Assessment",
+      "Peer Assessment",
     ],
   },
   {
@@ -646,7 +644,7 @@ const defaultState = {
       media: ["Drawing"],
       coreExperiences: ["Drawing: Observe", "Portfolio: Document"],
       cc21: ["Critical, Adaptive and Inventive Thinking"],
-      assessment: ["Diagnostic drawing check", "Portfolio review"],
+      assessment: ["Diagnostic Check", "Formative Assessment"],
       learningContent: {
         context: "School environment and everyday visual culture.",
         artisticProcesses: "Observe, record and reflect; gather and research; generate visual possibilities.",
@@ -738,7 +736,7 @@ const defaultState = {
       media: ["Mixed Media", "Photography & Digital Imaging"],
       coreExperiences: ["Portfolio: Curate", "Portfolio: Reflect"],
       cc21: [],
-      assessment: ["Formative critique"],
+      assessment: ["Formative Assessment"],
       learningContent: {
         context: "Objects, memory, community, and personal narratives.",
         artisticProcesses: "Gather and research; create artworks to communicate ideas.",
@@ -5782,8 +5780,8 @@ function renderLessonSteps(lesson) {
     item.innerHTML = `
       <div class="lesson-card-header">
         <div>
-          <div class="lesson-number">Activity ${index + 1}</div>
-          ${step.confirmed ? "" : `<div class="lesson-subtitle">${isReflectionCheckpoint(step) ? "Reflection Checkpoint" : "Inquiry Activity"}</div>`}
+          <div class="lesson-number">${isReflectionCheckpoint(step) ? "Reflection Checkpoint" : `Activity ${index + 1}`}</div>
+          ${step.confirmed ? "" : `<div class="lesson-subtitle">${isReflectionCheckpoint(step) ? "5 minutes" : "Inquiry Activity"}</div>`}
         </div>
         <div class="lesson-actions">
           <button class="activity-move" data-direction="up" type="button" ${index === 0 ? "disabled" : ""} aria-label="Move Activity ${index + 1} up">↑</button>
@@ -5946,15 +5944,9 @@ function lessonActivityEditContent(step) {
 function reflectionCheckpointEditContent(step) {
   return `
     <div class="lesson-activity-grid reflection-checkpoint-grid">
-      <div class="lesson-activity-meta">
-        <div>
-          <span class="field-label">Activity Type</span>
-          <div class="lesson-fixed-field">Reflection Checkpoint</div>
-        </div>
-        <div>
-          <span class="field-label">Duration</span>
-          <div class="lesson-fixed-field">5 minutes</div>
-        </div>
+      <div>
+        <span class="field-label">Duration</span>
+        <div class="checkpoint-duration-text">5 minutes</div>
       </div>
       <label>
         <span class="field-label">Purpose</span>
@@ -5997,10 +5989,6 @@ function lessonActivityDisplayContent(step) {
 function reflectionCheckpointDisplayContent(step) {
   return `
     <div class="lesson-activity-display reflection-checkpoint-display">
-      <div>
-        <div class="lesson-activity-display-label">Activity Type</div>
-        <div class="lesson-activity-display-value">Reflection Checkpoint</div>
-      </div>
       <div>
         <div class="lesson-activity-display-label">Duration</div>
         <div class="lesson-activity-display-value">5 min</div>

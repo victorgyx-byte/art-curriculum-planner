@@ -2685,7 +2685,7 @@ button:disabled {
 }
 
 .reflection-checkpoint-grid {
-  grid-template-columns: minmax(170px, 0.7fr) minmax(190px, 0.8fr) minmax(260px, 1.6fr);
+  grid-template-columns: minmax(110px, 0.45fr) minmax(190px, 0.8fr) minmax(260px, 1.7fr);
 }
 
 .lesson-activity-meta {
@@ -2704,6 +2704,15 @@ button:disabled {
   font-weight: 850;
 }
 
+.checkpoint-duration-text {
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 900;
+}
+
 .lesson-activity-grid .field-label {
   margin-top: 0;
 }
@@ -2715,7 +2724,7 @@ button:disabled {
 }
 
 .reflection-checkpoint-display {
-  grid-template-columns: minmax(150px, 0.8fr) minmax(90px, 0.45fr) minmax(170px, 0.9fr) minmax(260px, 1.6fr);
+  grid-template-columns: minmax(90px, 0.45fr) minmax(170px, 0.9fr) minmax(260px, 1.7fr);
 }
 
 .lesson-activity-display-label {
