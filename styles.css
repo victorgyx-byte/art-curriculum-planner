@@ -3040,6 +3040,29 @@ button:disabled {
   border-left-color: #9c6b2f;
 }
 
+.board-card.not-featured-in-lessons {
+  border-color: rgba(176, 41, 41, 0.28);
+  border-left-color: #b02929;
+  background: #fff7f6;
+}
+
+.board-card.not-featured-in-lessons .board-card-type {
+  color: #9f2c2c;
+}
+
+.board-card-status {
+  display: inline-flex;
+  width: fit-content;
+  margin-top: 9px;
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: rgba(176, 41, 41, 0.1);
+  color: #9f2c2c;
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
 .board-card-type {
   color: var(--muted);
   font-size: 10.5px;

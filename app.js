@@ -1902,6 +1902,27 @@ function cardKey(card) {
   return `${card.type}:${card.label}`;
 }
 
+function unitLessonFeaturedCardKeys(unit) {
+  const keys = new Set();
+  (unit.lessons || []).forEach((lesson) => {
+    (lesson.boardCards || [])
+      .filter(isVisiblePlanningCard)
+      .forEach((card) => {
+        if (card.unitCardKey) keys.add(card.unitCardKey);
+        keys.add(cardKey(card));
+      });
+  });
+  return keys;
+}
+
+function unitCardNotFeaturedInAnyLesson(unit, card, featuredLessonCardKeys) {
+  const lessons = unit.lessons || [];
+  if (!lessons.length || !card || !lessonZoneAllowsType(lessonZoneForType(card.type), card.type)) return false;
+  if (featuredLessonCardKeys.has(cardKey(card))) return false;
+  if ((card.sourceLessonIds || []).some((lessonId) => lessons.some((lesson) => lesson.id === lessonId))) return false;
+  return true;
+}
+
 function createLesson(unit) {
   const number = (unit.lessons?.length || 0) + 1;
   return {
@@ -4150,23 +4171,27 @@ function renderBoard() {
   els.boardZones.forEach((zone) => {
     zone.querySelector(".zone-cards").innerHTML = "";
   });
+  const featuredLessonCardKeys = unitLessonFeaturedCardKeys(unit);
 
   unit.boardCards
     .slice()
     .sort((a, b) => (a.order || 0) - (b.order || 0))
     .forEach((card) => {
-    const node = document.createElement("article");
-    node.className = "board-card";
-    if (isTextCard(card.type) && card.confirmed && card.value?.trim()) node.classList.add("text-card-confirmed");
-    if (card.expanded) node.classList.add("expanded");
-    node.dataset.type = card.type;
-    node.dataset.cardId = card.id;
-    node.draggable = true;
-    node.innerHTML = `
+      const notFeatured = unitCardNotFeaturedInAnyLesson(unit, card, featuredLessonCardKeys);
+      const node = document.createElement("article");
+      node.className = "board-card";
+      if (notFeatured) node.classList.add("not-featured-in-lessons");
+      if (isTextCard(card.type) && card.confirmed && card.value?.trim()) node.classList.add("text-card-confirmed");
+      if (card.expanded) node.classList.add("expanded");
+      node.dataset.type = card.type;
+      node.dataset.cardId = card.id;
+      node.draggable = true;
+      node.innerHTML = `
       <button class="board-card-remove" type="button" title="Remove card">x</button>
       <div class="board-card-type">${escapeHtml(cardTypeLabel(card.type, card))}</div>
       ${isTextCard(card.type) ? "" : `<div class="board-card-title">${escapeHtml(card.label)}</div>`}
       ${isTextCard(card.type) ? textCardContent(card) : ""}
+      ${notFeatured ? `<div class="board-card-status">Not featured in any lessons</div>` : ""}
     `;
     node.querySelector(".board-card-remove").addEventListener("click", (event) => {
       event.stopPropagation();
