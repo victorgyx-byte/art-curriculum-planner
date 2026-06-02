@@ -3065,7 +3065,7 @@ function applyEditingMode() {
   els.appShell?.classList.toggle("plan-read-only", readOnly);
   [els.timelineScreen, els.boardScreen, els.lessonScreen, els.cardLibraryPanel, els.lessonPickerPanel].filter(Boolean).forEach((root) => {
     root.querySelectorAll("input, textarea, select, button").forEach((control) => {
-      const allowed = control.matches("#arrange-board, #edit-lesson-board, .overview-open-lesson, .lesson-open-board, .lesson-picker-unit, .lesson-picker-lesson");
+      const allowed = control.matches("#arrange-board, #edit-lesson-board, .back-to-planning, .copy-unit-overview, .export-unit-word, .export-lesson-word, .overview-open-lesson, .lesson-open-board, .lesson-picker-unit, .lesson-picker-lesson");
       control.disabled = readOnly && !allowed;
     });
   });
@@ -4232,6 +4232,7 @@ function renderUnitOverview(unit) {
       <div class="unit-overview-actions">
         <button class="ghost-button back-to-planning" type="button">Back To Unit</button>
         <button class="ghost-button copy-unit-overview" type="button">Copy for Google Docs</button>
+        <button class="ghost-button export-unit-word" type="button">Download Word</button>
       </div>
     </div>
     <article class="unit-document">
@@ -4267,6 +4268,9 @@ function renderUnitOverview(unit) {
   });
   els.unitOverview.querySelector(".copy-unit-overview").addEventListener("click", async () => {
     await copyUnitOverview(unit);
+  });
+  els.unitOverview.querySelector(".export-unit-word").addEventListener("click", () => {
+    exportUnitWord(unit);
   });
   els.unitOverview.querySelectorAll(".overview-open-lesson").forEach((button) => {
     button.addEventListener("click", () => {
@@ -4447,6 +4451,172 @@ async function copyUnitOverview(unit) {
       copyTextFallback(text);
     }
   }
+}
+
+function exportUnitWord(unit) {
+  const title = `${unit.title || "Untitled Unit"} Unit Plan`;
+  downloadWordDocument(`${safeDownloadName(unit.title || "unit-plan")}-unit-plan.doc`, title, unitWordExportHtml(unit));
+  showSaveStatus("Unit Word document downloaded");
+}
+
+function exportLessonWord(unit, lesson) {
+  const title = `${unit.title || "Untitled Unit"} ${lessonNumber(unit, lesson)}`;
+  downloadWordDocument(`${safeDownloadName(`${unit.title || "unit"}-${lessonNumber(unit, lesson)}`)}-lesson-plan.doc`, title, lessonWordExportHtml(unit, lesson));
+  setSaveStatus([els.lessonTopSaveStatus, els.lessonSaveStatus], "Lesson Word document downloaded");
+}
+
+function safeDownloadName(value = "art-plan") {
+  return String(value)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80) || "art-plan";
+}
+
+function downloadWordDocument(filename, title, bodyHtml) {
+  const html = wordDocumentHtml(title, bodyHtml);
+  const blob = new Blob([html], { type: "application/msword;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 500);
+}
+
+function wordDocumentHtml(title, bodyHtml) {
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${escapeHtml(title)}</title>
+  <style>
+    body { font-family: Arial, sans-serif; color: #222; line-height: 1.35; }
+    h1 { font-size: 24pt; margin: 0 0 12pt; }
+    h2 { font-size: 15pt; margin: 18pt 0 6pt; border-bottom: 1px solid #d8d0c4; padding-bottom: 4pt; }
+    h3 { font-size: 11pt; margin: 10pt 0 4pt; color: #6f6a61; text-transform: uppercase; }
+    p { margin: 0 0 8pt; }
+    ul, ol { margin-top: 4pt; }
+    table { width: 100%; border-collapse: collapse; margin: 8pt 0 14pt; }
+    th, td { border: 1px solid #d8d0c4; padding: 6pt; vertical-align: top; }
+    th { background: #f4efe7; text-align: left; }
+    .meta-table td:first-child { width: 28%; font-weight: bold; color: #6f6a61; }
+    .not-planned { color: #777; font-style: italic; }
+    img { max-width: 420px; height: auto; margin: 8pt 0 12pt; }
+  </style>
+</head>
+<body>
+${bodyHtml}
+</body>
+</html>`;
+}
+
+function unitWordExportHtml(unit) {
+  const sections = unitOverviewCopySections(unit);
+  return `
+    <h1>${escapeHtml(unit.title || "Untitled Unit")}</h1>
+    <table class="meta-table">
+      <tr><td>Performance Task / Evidence of Learning</td><td>${wordParagraph(unit.artTask || "Not yet planned")}</td></tr>
+      <tr><td>Lesson Count</td><td>${escapeHtml(unitLessonCountLabel(unit))}</td></tr>
+    </table>
+    ${sections.map(([title, groups]) => wordGroupedSection(title, groups)).join("")}
+    <h2>Lesson Sequence</h2>
+    ${unit.lessons?.length ? `
+      <table>
+        <tr><th>Lesson</th><th>Title</th><th>Description / Details</th><th>Activities</th></tr>
+        ${unit.lessons.map((lesson, index) => `
+          <tr>
+            <td>${index + 1}</td>
+            <td>${escapeHtml(lesson.title || "Untitled Lesson")}</td>
+            <td>${wordParagraph(lesson.description || lesson.details || "Not yet planned")}</td>
+            <td>${lesson.steps?.length ? `<ul>${lesson.steps.map((step) => `<li>${escapeHtml(lessonActivitySummaryText(step))}</li>`).join("")}</ul>` : `<span class="not-planned">Not yet planned</span>`}</td>
+          </tr>
+        `).join("")}
+      </table>
+    ` : `<p class="not-planned">Not yet planned</p>`}
+  `;
+}
+
+function lessonWordExportHtml(unit, lesson) {
+  const lessonImageSrc = lesson.imageUrl || lesson.imageDataUrl;
+  const structures = lessonDisplayStructures(lesson);
+  const meaningGroups = [
+    ["Big Idea(s)", overviewValues(unit, "bigIdeas")],
+    ["Guiding Question(s)", guidingQuestionValues(unit)],
+    ["Theme", themeValues(unit)],
+  ];
+  return `
+    <h1>${escapeHtml(`${unit.title || "Untitled Unit"} - ${lessonNumber(unit, lesson)}`)}</h1>
+    ${lessonImageSrc ? `<img src="${escapeAttr(lessonImageSrc)}" alt="${escapeAttr(lesson.imageName || "Lesson reference image")}">` : ""}
+    <table class="meta-table">
+      <tr><td>Lesson Title</td><td>${wordParagraph(lesson.title || "Not set")}</td></tr>
+      <tr><td>Lesson Description</td><td>${wordParagraph(lesson.description || "Not set")}</td></tr>
+      <tr><td>Lesson Objectives</td><td>${wordParagraph(lesson.objectives || "Not set")}</td></tr>
+      <tr><td>Lesson Duration</td><td>${escapeHtml(lessonDurationLabel(lesson))}</td></tr>
+    </table>
+    ${wordGroupedSection("Meaning Reference", meaningGroups)}
+    ${wordGroupedSection("Curricular Goals", [
+      ["Learning Outcomes", lessonOverviewValues(lesson, "learningOutcomes")],
+      ["21CC Emphasis", lessonOverviewValues(lesson, "cc21")],
+      ["21CC Lesson Goals", lessonOverviewValues(lesson, "cc21Goals")],
+    ])}
+    ${wordGroupedSection("Learning Content", [
+      ["Media / Art Forms", lessonOverviewValues(lesson, "media")],
+      ["Context", lessonOverviewValues(lesson, "context")],
+      ["Artistic Processes", lessonOverviewValues(lesson, "artisticProcesses")],
+      ["Visual Qualities", lessonOverviewValues(lesson, "visualQualities")],
+      ["Other Visual Qualities", lessonOverviewValues(lesson, "visualQualityText")],
+    ])}
+    ${wordGroupedSection("Core Learning Experiences", [["Core Learning Experiences", lessonOverviewValues(lesson, "coreExperiences")]])}
+    ${wordGroupedSection("Pedagogy and Teaching Actions", [
+      ["Pedagogy", lessonOverviewValues(lesson, "pedagogy")],
+      ["Teaching Actions", lessonOverviewValues(lesson, "teachingMoves")],
+    ])}
+    ${wordGroupedSection("Assessment", [["Assessment", lessonOverviewValues(lesson, "assessment")]])}
+    ${wordGroupedSection("Lesson Structure", [["Lesson Structure", structures]])}
+    <h2>Learning Activities</h2>
+    ${lesson.steps?.length ? `
+      <table>
+        <tr><th>Activity</th><th>Type</th><th>Duration</th><th>Details</th><th>Evidence for Assessment</th></tr>
+        ${lesson.steps.map((step, index) => `
+          <tr>
+            <td>${index + 1}</td>
+            <td>${escapeHtml(step.type || "Not set")}</td>
+            <td>${step.duration ? `${escapeHtml(String(step.duration))} minutes` : `<span class="not-planned">Not set</span>`}</td>
+            <td>${wordParagraph(step.description || "Not yet planned")}</td>
+            <td>${wordParagraph(step.evidence || "Not yet planned")}</td>
+          </tr>
+        `).join("")}
+      </table>
+    ` : `<p class="not-planned">Not yet planned</p>`}
+  `;
+}
+
+function wordGroupedSection(title, groups) {
+  return `
+    <h2>${escapeHtml(title)}</h2>
+    ${groups.map(([label, values]) => `
+      <h3>${escapeHtml(label)}</h3>
+      ${wordList(values)}
+    `).join("")}
+  `;
+}
+
+function wordList(values) {
+  const items = (values || []).filter(Boolean);
+  return items.length
+    ? `<ul>${items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`
+    : `<p class="not-planned">Not yet planned</p>`;
+}
+
+function wordParagraph(value) {
+  const lines = String(value || "").split(/\n+/).map((line) => line.trim()).filter(Boolean);
+  return lines.length
+    ? lines.map((line) => `<p>${escapeHtml(line)}</p>`).join("")
+    : `<p class="not-planned">Not yet planned</p>`;
 }
 
 function copyTextFallback(text) {
@@ -4669,6 +4839,9 @@ function renderLessonBoard() {
 
   if (showOverview) {
     els.lessonConfirmedView.innerHTML = lessonConfirmedSummary(unit, lesson);
+    els.lessonConfirmedView.querySelector(".export-lesson-word")?.addEventListener("click", () => {
+      exportLessonWord(unit, lesson);
+    });
     return;
   }
 
@@ -5233,6 +5406,9 @@ function lessonConfirmedSummary(unit, lesson) {
           <p class="eyebrow">Lesson Board</p>
           <h2>${escapeHtml(`${unit.title || "Untitled Unit"} · ${lessonNumber(unit, lesson)}`)}</h2>
         </div>
+        <div class="unit-overview-actions">
+          <button class="ghost-button export-lesson-word" type="button">Download Word</button>
+        </div>
       </div>
       ${lessonImageSrc ? `<img class="lap-summary-image" src="${escapeAttr(lessonImageSrc)}" alt="${escapeAttr(lesson.imageName || "Lesson reference image")}" />` : ""}
       <dl class="lap-summary-list lesson-summary-list">
@@ -5465,6 +5641,8 @@ function renderLessonSteps(lesson) {
   lesson.steps.forEach((step, index) => {
     const item = document.createElement("article");
     item.className = "lesson-step-card";
+    item.draggable = true;
+    item.dataset.stepId = step.id;
     if (step.confirmed) item.classList.add("confirmed");
     item.innerHTML = `
       <div class="lesson-card-header">
@@ -5473,12 +5651,20 @@ function renderLessonSteps(lesson) {
           ${step.confirmed ? "" : `<div class="lesson-subtitle">Inquiry Activity</div>`}
         </div>
         <div class="lesson-actions">
+          <button class="activity-move" data-direction="up" type="button" ${index === 0 ? "disabled" : ""} aria-label="Move Activity ${index + 1} up">↑</button>
+          <button class="activity-move" data-direction="down" type="button" ${index === lesson.steps.length - 1 ? "disabled" : ""} aria-label="Move Activity ${index + 1} down">↓</button>
           ${step.confirmed ? `<button class="activity-edit" type="button">Edit</button>` : `<button class="activity-confirm" type="button">Confirm</button>`}
           <button class="lesson-remove" type="button">Remove</button>
         </div>
       </div>
       ${step.confirmed ? lessonActivityDisplayContent(step) : lessonActivityEditContent(step)}
     `;
+    item.querySelectorAll(".activity-move").forEach((button) => {
+      button.addEventListener("click", () => {
+        moveLessonActivity(lesson, index, button.dataset.direction);
+      });
+    });
+    bindLessonActivityDragReorder(item, lesson, step);
     item.querySelector(".lesson-remove").addEventListener("click", async () => {
       const confirmed = window.confirm(`Remove Activity ${index + 1}? A recovery snapshot will be created first.`);
       if (!confirmed) return;
@@ -5514,6 +5700,70 @@ function renderLessonSteps(lesson) {
     });
     els.lessonSteps.append(item);
   });
+}
+
+function bindLessonActivityDragReorder(node, lesson, step) {
+  node.addEventListener("dragstart", (event) => {
+    const interactiveTarget = event.target.closest("button, input, textarea, select");
+    if (interactiveTarget && interactiveTarget !== node) {
+      event.preventDefault();
+      return;
+    }
+    dragPayload = { kind: "lessonActivityReorder", lessonId: lesson.id, stepId: step.id };
+    event.dataTransfer.setData("text/plain", JSON.stringify(dragPayload));
+    event.dataTransfer.setData("application/json", JSON.stringify(dragPayload));
+    event.dataTransfer.effectAllowed = "move";
+    node.classList.add("dragging");
+  });
+  node.addEventListener("dragover", (event) => {
+    const payload = readDragPayload(event);
+    if (payload?.kind !== "lessonActivityReorder" || payload.lessonId !== lesson.id || payload.stepId === step.id) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    node.classList.add("lesson-drop-target");
+    const rect = node.getBoundingClientRect();
+    const position = event.clientY > rect.top + rect.height / 2 ? "after" : "before";
+    node.classList.toggle("drop-after", position === "after");
+    node.classList.toggle("drop-before", position === "before");
+  });
+  node.addEventListener("dragleave", () => {
+    node.classList.remove("lesson-drop-target", "drop-before", "drop-after");
+  });
+  node.addEventListener("drop", (event) => {
+    const payload = readDragPayload(event);
+    const rect = node.getBoundingClientRect();
+    const position = event.clientY > rect.top + rect.height / 2 ? "after" : "before";
+    node.classList.remove("lesson-drop-target", "drop-before", "drop-after");
+    if (payload?.kind !== "lessonActivityReorder" || payload.lessonId !== lesson.id || payload.stepId === step.id) return;
+    event.preventDefault();
+    reorderLessonActivityRelative(lesson, payload.stepId, step.id, position);
+  });
+  node.addEventListener("dragend", () => {
+    node.classList.remove("dragging", "lesson-drop-target", "drop-before", "drop-after");
+    dragPayload = null;
+  });
+}
+
+function moveLessonActivity(lesson, index, direction) {
+  const targetIndex = direction === "up" ? index - 1 : index + 1;
+  if (!lesson.steps || targetIndex < 0 || targetIndex >= lesson.steps.length) return;
+  const [step] = lesson.steps.splice(index, 1);
+  lesson.steps.splice(targetIndex, 0, step);
+  saveState();
+  render();
+}
+
+function reorderLessonActivityRelative(lesson, movingStepId, targetStepId, position = "before") {
+  if (!lesson?.steps?.length) return;
+  const from = lesson.steps.findIndex((step) => step.id === movingStepId);
+  let to = lesson.steps.findIndex((step) => step.id === targetStepId);
+  if (from < 0 || to < 0 || from === to) return;
+  if (position === "after") to += 1;
+  const [step] = lesson.steps.splice(from, 1);
+  if (from < to) to -= 1;
+  lesson.steps.splice(to, 0, step);
+  saveState();
+  render();
 }
 
 function lessonActivityEditContent(step) {
