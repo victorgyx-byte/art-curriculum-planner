@@ -375,6 +375,11 @@ const inquiryActivityTypes = [
   "Reflect",
 ];
 
+const reflectionCheckpointPurposes = [
+  "Curricular goal",
+  "21CC learning goals",
+];
+
 const artisticProcessLabels = {
   ap1: "AP1: Observe, record and reflect on what they see and experience",
   ap2: "AP2: Gather and research on different types of visual and other information",
@@ -882,6 +887,7 @@ const els = {
   lessonBoardStructures: document.querySelector("#lesson-board-structures"),
   lessonSteps: document.querySelector("#lesson-steps"),
   addLessonStep: document.querySelector("#add-lesson-step"),
+  addReflectionCheckpoint: document.querySelector("#add-reflection-checkpoint"),
   lessonPickerPanel: document.querySelector(".lesson-picker-panel"),
   lessonNavPanel: document.querySelector("#lesson-nav-panel"),
   lessonNavList: document.querySelector("#lesson-nav-list"),
@@ -1835,15 +1841,25 @@ function normalizeLessons(lessons, unit = {}) {
 }
 
 function normalizeLessonSteps(steps) {
-  return steps.map((step) => ({
-    id: step.id || uid("step"),
-    type: inquiryActivityTypes.includes(step.type) ? step.type : "Connect & Wonder",
-    duration: step.duration || "",
-    description: step.description || "",
-    evidence: step.evidence || step.customisation || "",
-    customisation: step.customisation || "",
-    confirmed: Boolean(step.confirmed),
-  }));
+  return steps.map((step) => {
+    const kind = step.kind === "reflectionCheckpoint" ? "reflectionCheckpoint" : "activity";
+    const reflectionPurpose = reflectionCheckpointPurposes.includes(step.reflectionPurpose)
+      ? step.reflectionPurpose
+      : "Curricular goal";
+    const reflectionPrompt = step.reflectionPrompt || (kind === "reflectionCheckpoint" ? step.description || "" : "");
+    return {
+      id: step.id || uid("step"),
+      kind,
+      type: kind === "reflectionCheckpoint" ? "Reflection Checkpoint" : inquiryActivityTypes.includes(step.type) ? step.type : "Connect & Wonder",
+      duration: kind === "reflectionCheckpoint" ? 5 : step.duration || "",
+      description: kind === "reflectionCheckpoint" ? reflectionPrompt : step.description || "",
+      evidence: kind === "reflectionCheckpoint" ? reflectionPurpose : step.evidence || step.customisation || "",
+      customisation: step.customisation || "",
+      reflectionPurpose,
+      reflectionPrompt,
+      confirmed: Boolean(step.confirmed),
+    };
+  });
 }
 
 function visibleValues(values) {
@@ -1955,11 +1971,27 @@ function createLesson(unit) {
 function createLessonStep() {
   return {
     id: uid("step"),
+    kind: "activity",
     type: "Connect & Wonder",
     duration: "",
     description: "",
     evidence: "",
     customisation: "",
+    confirmed: false,
+  };
+}
+
+function createReflectionCheckpointStep() {
+  return {
+    id: uid("step"),
+    kind: "reflectionCheckpoint",
+    type: "Reflection Checkpoint",
+    duration: 5,
+    description: "",
+    evidence: "Curricular goal",
+    customisation: "",
+    reflectionPurpose: "Curricular goal",
+    reflectionPrompt: "",
     confirmed: false,
   };
 }
@@ -5743,6 +5775,7 @@ function renderLessonSteps(lesson) {
   lesson.steps.forEach((step, index) => {
     const item = document.createElement("article");
     item.className = "lesson-step-card";
+    if (isReflectionCheckpoint(step)) item.classList.add("reflection-checkpoint-card");
     item.draggable = true;
     item.dataset.stepId = step.id;
     if (step.confirmed) item.classList.add("confirmed");
@@ -5750,7 +5783,7 @@ function renderLessonSteps(lesson) {
       <div class="lesson-card-header">
         <div>
           <div class="lesson-number">Activity ${index + 1}</div>
-          ${step.confirmed ? "" : `<div class="lesson-subtitle">Inquiry Activity</div>`}
+          ${step.confirmed ? "" : `<div class="lesson-subtitle">${isReflectionCheckpoint(step) ? "Reflection Checkpoint" : "Inquiry Activity"}</div>`}
         </div>
         <div class="lesson-actions">
           <button class="activity-move" data-direction="up" type="button" ${index === 0 ? "disabled" : ""} aria-label="Move Activity ${index + 1} up">↑</button>
@@ -5798,6 +5831,16 @@ function renderLessonSteps(lesson) {
     });
     item.querySelector(".step-evidence")?.addEventListener("input", (event) => {
       step.evidence = event.target.value;
+      saveState();
+    });
+    item.querySelector(".checkpoint-purpose")?.addEventListener("change", (event) => {
+      step.reflectionPurpose = event.target.value;
+      step.evidence = event.target.value;
+      saveState();
+    });
+    item.querySelector(".checkpoint-prompt")?.addEventListener("input", (event) => {
+      step.reflectionPrompt = event.target.value;
+      step.description = event.target.value;
       saveState();
     });
     els.lessonSteps.append(item);
@@ -5868,7 +5911,12 @@ function reorderLessonActivityRelative(lesson, movingStepId, targetStepId, posit
   render();
 }
 
+function isReflectionCheckpoint(step) {
+  return step?.kind === "reflectionCheckpoint" || step?.type === "Reflection Checkpoint";
+}
+
 function lessonActivityEditContent(step) {
+  if (isReflectionCheckpoint(step)) return reflectionCheckpointEditContent(step);
   return `
     <div class="lesson-activity-grid">
       <div class="lesson-activity-meta">
@@ -5895,7 +5943,35 @@ function lessonActivityEditContent(step) {
   `;
 }
 
+function reflectionCheckpointEditContent(step) {
+  return `
+    <div class="lesson-activity-grid reflection-checkpoint-grid">
+      <div class="lesson-activity-meta">
+        <div>
+          <span class="field-label">Activity Type</span>
+          <div class="lesson-fixed-field">Reflection Checkpoint</div>
+        </div>
+        <div>
+          <span class="field-label">Duration</span>
+          <div class="lesson-fixed-field">5 minutes</div>
+        </div>
+      </div>
+      <label>
+        <span class="field-label">Purpose</span>
+        <select class="text-input checkpoint-purpose" aria-label="Reflection checkpoint purpose">
+          ${reflectionCheckpointPurposes.map((purpose) => `<option value="${escapeAttr(purpose)}" ${step.reflectionPurpose === purpose ? "selected" : ""}>${escapeHtml(purpose)}</option>`).join("")}
+        </select>
+      </label>
+      <label>
+        <span class="field-label">Reflection Prompt</span>
+        <textarea class="text-area checkpoint-prompt" rows="2" aria-label="Reflection prompt">${escapeHtml(step.reflectionPrompt || step.description || "")}</textarea>
+      </label>
+    </div>
+  `;
+}
+
 function lessonActivityDisplayContent(step) {
+  if (isReflectionCheckpoint(step)) return reflectionCheckpointDisplayContent(step);
   return `
     <div class="lesson-activity-display">
       <div>
@@ -5918,6 +5994,29 @@ function lessonActivityDisplayContent(step) {
   `;
 }
 
+function reflectionCheckpointDisplayContent(step) {
+  return `
+    <div class="lesson-activity-display reflection-checkpoint-display">
+      <div>
+        <div class="lesson-activity-display-label">Activity Type</div>
+        <div class="lesson-activity-display-value">Reflection Checkpoint</div>
+      </div>
+      <div>
+        <div class="lesson-activity-display-label">Duration</div>
+        <div class="lesson-activity-display-value">5 min</div>
+      </div>
+      <div>
+        <div class="lesson-activity-display-label">Purpose</div>
+        <div class="lesson-activity-display-value">${escapeHtml(step.reflectionPurpose || step.evidence || "Curricular goal")}</div>
+      </div>
+      <div>
+        <div class="lesson-activity-display-label">Reflection Prompt</div>
+        <div class="lesson-activity-display-value">${escapeHtml(step.reflectionPrompt || step.description || "Not set")}</div>
+      </div>
+    </div>
+  `;
+}
+
 function lessonActivitySummaryHtml(step, index) {
   return `
     <div class="lap-step-summary">
@@ -5929,7 +6028,13 @@ function lessonActivitySummaryHtml(step, index) {
 }
 
 function lessonActivitySummaryText(step) {
-  const parts = [step.type || "Activity"];
+  const parts = [isReflectionCheckpoint(step) ? "Reflection Checkpoint" : step.type || "Activity"];
+  if (isReflectionCheckpoint(step)) {
+    parts.push("5 min");
+    parts.push(`Purpose: ${step.reflectionPurpose || step.evidence || "Curricular goal"}`);
+    if (step.reflectionPrompt || step.description) parts.push(step.reflectionPrompt || step.description);
+    return parts.join(" - ");
+  }
   if (step.duration) parts.push(`${step.duration} min`);
   if (step.description) parts.push(step.description);
   if (step.evidence) parts.push(`Evidence: ${step.evidence}`);
@@ -7762,6 +7867,18 @@ els.addLessonStep.addEventListener("click", () => {
   if (!lesson) return;
   lesson.steps = lesson.steps || [];
   lesson.steps.push(createLessonStep());
+  lesson.duration = lessonDurationLabel(lesson);
+  saveState();
+  render();
+});
+
+els.addReflectionCheckpoint.addEventListener("click", () => {
+  const lesson = selectedLesson();
+  if (!lesson) return;
+  lesson.steps = lesson.steps || [];
+  lesson.steps.push(createReflectionCheckpointStep());
+  lesson.duration = lessonDurationLabel(lesson);
+  saveState();
   render();
 });
 

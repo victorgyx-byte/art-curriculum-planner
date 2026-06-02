@@ -2617,6 +2617,12 @@ button:disabled {
   margin-bottom: 10px;
 }
 
+.activity-add-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .lesson-step-card {
   border: 1px dashed rgba(111, 106, 97, 0.46);
   border-radius: var(--radius);
@@ -2624,11 +2630,21 @@ button:disabled {
   background: #fffdfa;
 }
 
+.lesson-step-card.reflection-checkpoint-card {
+  padding: 10px;
+  background: #fff8f2;
+}
+
 .lesson-step-card.confirmed {
   border-style: solid;
   border-left: 5px solid var(--accent);
   background: #fff;
   box-shadow: 0 7px 16px rgba(42, 37, 29, 0.1);
+}
+
+.lesson-step-card.reflection-checkpoint-card.confirmed {
+  border-left-color: #b97621;
+  background: #fffaf3;
 }
 
 .activity-confirm,
@@ -2668,9 +2684,24 @@ button:disabled {
   align-items: start;
 }
 
+.reflection-checkpoint-grid {
+  grid-template-columns: minmax(170px, 0.7fr) minmax(190px, 0.8fr) minmax(260px, 1.6fr);
+}
+
 .lesson-activity-meta {
   display: grid;
   gap: 10px;
+}
+
+.lesson-fixed-field {
+  min-height: 38px;
+  border: 1px solid rgba(111, 106, 97, 0.22);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 850;
 }
 
 .lesson-activity-grid .field-label {
@@ -2681,6 +2712,10 @@ button:disabled {
   display: grid;
   grid-template-columns: minmax(150px, 0.8fr) minmax(90px, 0.45fr) minmax(220px, 1.4fr) minmax(220px, 1.4fr);
   gap: 10px;
+}
+
+.reflection-checkpoint-display {
+  grid-template-columns: minmax(150px, 0.8fr) minmax(90px, 0.45fr) minmax(170px, 0.9fr) minmax(260px, 1.6fr);
 }
 
 .lesson-activity-display-label {
@@ -3460,6 +3495,13 @@ button:disabled {
 
   .login-button {
     width: 100%;
+  }
+
+  .lesson-activity-grid,
+  .reflection-checkpoint-grid,
+  .lesson-activity-display,
+  .reflection-checkpoint-display {
+    grid-template-columns: 1fr;
   }
 
   .login-reset {
