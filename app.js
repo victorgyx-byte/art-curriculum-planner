@@ -860,6 +860,7 @@ const els = {
   lessonEditView: document.querySelector("#lesson-edit-view"),
   confirmLessonBoard: document.querySelector("#confirm-lesson-board"),
   editLessonBoard: document.querySelector("#edit-lesson-board"),
+  arrangeLessonBoard: document.querySelector("#arrange-lesson-board"),
   saveLessonBottom: document.querySelector("#save-lesson-bottom"),
   lessonTopSaveStatus: document.querySelector("#lesson-top-save-status"),
   lessonSaveStatus: document.querySelector("#lesson-save-status"),
@@ -907,6 +908,7 @@ const els = {
   saveUnit: document.querySelector("#save-unit"),
   saveStatus: document.querySelector("#save-status"),
   arrangeBoard: document.querySelector("#arrange-board"),
+  overviewUnit: document.querySelector("#overview-unit"),
   clearBoard: document.querySelector("#clear-board"),
   lessonBoard: document.querySelector(".lesson-board"),
   lessonList: document.querySelector("#lesson-list"),
@@ -3158,7 +3160,7 @@ function applyEditingMode() {
   els.appShell?.classList.toggle("plan-read-only", readOnly);
   [els.timelineScreen, els.boardScreen, els.lessonScreen, els.cardLibraryPanel, els.lessonPickerPanel].filter(Boolean).forEach((root) => {
     root.querySelectorAll("input, textarea, select, button").forEach((control) => {
-      const allowed = control.matches("#arrange-board, #edit-lesson-board, .back-to-planning, .copy-unit-overview, .export-unit-word, .export-lesson-word, .overview-open-lesson, .lesson-open-board, .lesson-picker-unit, .lesson-picker-lesson");
+      const allowed = control.matches("#overview-unit, #edit-lesson-board, .back-to-planning, .copy-unit-overview, .export-unit-word, .export-lesson-word, .overview-open-lesson, .lesson-open-board, .lesson-picker-unit, .lesson-picker-lesson");
       control.disabled = readOnly && !allowed;
     });
   });
@@ -4163,6 +4165,7 @@ function renderBoard() {
   els.unitOverview.classList.toggle("hidden", !showOverview);
   els.clearBoard.classList.add("hidden");
   els.arrangeBoard.classList.toggle("hidden", showOverview);
+  els.overviewUnit.classList.toggle("hidden", showOverview);
   if (showOverview) {
     renderUnitOverview(unit);
     return;
@@ -4277,6 +4280,7 @@ function renderEmptyUnitBoard() {
   els.unitOverview.classList.add("hidden");
   els.clearBoard.classList.add("hidden");
   els.arrangeBoard.classList.add("hidden");
+  els.overviewUnit.classList.add("hidden");
 }
 
 function renderSuggestions(unit) {
@@ -4932,6 +4936,7 @@ function renderLessonBoard() {
   els.lessonEditView.classList.toggle("hidden", showOverview);
   els.lessonConfirmedView.classList.toggle("hidden", !showOverview);
   els.confirmLessonBoard.classList.toggle("hidden", showOverview);
+  els.arrangeLessonBoard.classList.toggle("hidden", showOverview);
   els.editLessonBoard.textContent = showOverview ? "Back To Lesson" : "Overview";
 
   if (showOverview) {
@@ -6458,6 +6463,74 @@ function nextLessonCardOrder(lesson, zone) {
   return zoneCards.length ? Math.max(...zoneCards.map((card) => card.order || 0)) + 1 : 1;
 }
 
+function arrangeUnitBoardCards(unit) {
+  if (!unit) return;
+  arrangePlanningCards(unit.boardCards || [], {
+    zoneForType,
+    zoneAllowsType,
+    typeOrder: [
+      "bigIdeas",
+      "meaningText",
+      "media",
+      "context",
+      "artisticProcesses",
+      "visualQualities",
+      "visualQualityText",
+      "coreExperiences",
+      "learningOutcomes",
+      "cc21",
+      "pedagogy",
+      "assessment",
+    ],
+  });
+}
+
+function arrangeLessonBoardCards(lesson) {
+  if (!lesson) return;
+  arrangePlanningCards(lesson.boardCards || [], {
+    zoneForType: lessonZoneForType,
+    zoneAllowsType: lessonZoneAllowsType,
+    typeOrder: [
+      "learningOutcomes",
+      "cc21",
+      "cc21Goals",
+      "media",
+      "context",
+      "artisticProcesses",
+      "visualQualities",
+      "visualQualityText",
+      "coreExperiences",
+      "pedagogy",
+      "teachingMoves",
+      "assessment",
+    ],
+  });
+}
+
+function arrangePlanningCards(cards, options) {
+  const typeRank = new Map(options.typeOrder.map((type, index) => [type, index]));
+  const originalIndex = new Map(cards.map((card, index) => [card.id || `${card.type}:${card.label}:${index}`, index]));
+  cards.forEach((card) => {
+    const homeZone = options.zoneForType(card.type);
+    card.zone = options.zoneAllowsType(homeZone, card.type) ? homeZone : card.zone;
+  });
+  const zones = [...new Set(cards.map((card) => card.zone || options.zoneForType(card.type)))];
+  zones.forEach((zone) => {
+    cards
+      .filter((card) => (card.zone || options.zoneForType(card.type)) === zone)
+      .sort((a, b) => {
+        const typeDelta = (typeRank.get(a.type) ?? 99) - (typeRank.get(b.type) ?? 99);
+        if (typeDelta) return typeDelta;
+        const orderDelta = (a.order || 0) - (b.order || 0);
+        if (orderDelta) return orderDelta;
+        return (originalIndex.get(a.id) || 0) - (originalIndex.get(b.id) || 0);
+      })
+      .forEach((card, index) => {
+        card.order = index + 1;
+      });
+  });
+}
+
 function overlayChips(unit) {
   const active = state.overlays;
   const chips = [];
@@ -7438,6 +7511,14 @@ function nearestLessonZone(clientX, clientY) {
 
 els.arrangeBoard.addEventListener("click", () => {
   const unit = selectedUnit();
+  if (!unit || !canEditActivePlan()) return;
+  arrangeUnitBoardCards(unit);
+  saveState();
+  render();
+});
+
+els.overviewUnit.addEventListener("click", () => {
+  const unit = selectedUnit();
   if (!unit) return;
   state.unitOverviewOpen = true;
   render();
@@ -7593,6 +7674,15 @@ async function saveCurrentLesson() {
 els.confirmLessonBoard.addEventListener("click", saveCurrentLesson);
 
 els.saveLessonBottom.addEventListener("click", saveCurrentLesson);
+
+els.arrangeLessonBoard.addEventListener("click", () => {
+  const unit = selectedUnit();
+  const lesson = selectedLesson(unit);
+  if (!lesson || !canEditActivePlan()) return;
+  arrangeLessonBoardCards(lesson);
+  saveState();
+  render();
+});
 
 els.editLessonBoard.addEventListener("click", () => {
   const lesson = selectedLesson();
