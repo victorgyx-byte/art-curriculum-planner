@@ -37,6 +37,15 @@ const deprecatedArtisticProcessCards = new Set([
   "Create artworks to communicate ideas",
   "Evaluate and give feedback",
 ]);
+const assessmentLabelMap = {
+  "Diagnostic drawing check": "Diagnostic Check",
+  "Formative critique": "Formative Assessment",
+  "Portfolio review": "Formative Assessment",
+  "Weighted assessment": "Summative Assessment",
+  "Self-assessment checklist": "Self Assessment",
+  "Reflection prompt": "Self Assessment",
+  "End-of-year evidence": "Summative Assessment",
+};
 
 const defaultCardLibrary = [
   {
@@ -1034,6 +1043,7 @@ function normalizeState(candidate) {
     duration: Math.max(1, Number(unit.duration) || 1),
     guidingQuestions: unit.guidingQuestions || (unit.guidingQuestion ? [unit.guidingQuestion] : []),
     cc21: visibleValues(unit.cc21 || []),
+    assessment: normalizePlanningValues(unit.assessment || [], "assessment"),
     learningOutcomes: {
       primary: sortLearningOutcomes(unit.learningOutcomes?.primary || []),
       supporting: sortLearningOutcomes(unit.learningOutcomes?.supporting || []),
@@ -1147,6 +1157,7 @@ function normalizeCardLibrary(cardLibrary, options = {}) {
 }
 
 function mergeLibraryItems(defaultCategory, savedItems) {
+  if (defaultCategory.type === "assessment") return defaultCategory.items;
   const normalizedDefaults = defaultCategory.items
     .map((entry) => normalizeLibraryEntry(defaultCategory, entry))
     .filter((entry) => isCurrentLibraryEntry(entry));
@@ -1862,6 +1873,15 @@ function normalizeLessonSteps(steps) {
 
 function visibleValues(values) {
   return values.filter((value) => !hiddenPlanningCards.has(value));
+}
+
+function normalizePlanningValues(values, type) {
+  return uniqueReadableValues(visibleValues(values).map((value) => normalizePlanningLabel(value, type)));
+}
+
+function normalizePlanningLabel(value, type) {
+  if (type === "assessment") return assessmentLabelMap[value] || value;
+  return value;
 }
 
 function isVisiblePlanningCard(card) {
@@ -3989,9 +4009,11 @@ function renderLibrary() {
 }
 
 function normalizeLibraryEntry(category, entry) {
+  const type = typeof entry === "string" ? category.type : entry.type;
+  const label = typeof entry === "string" ? entry : entry.label;
   return {
-    label: typeof entry === "string" ? entry : entry.label,
-    type: typeof entry === "string" ? category.type : entry.type,
+    label: normalizePlanningLabel(label, type),
+    type,
   };
 }
 
@@ -6371,13 +6393,15 @@ function uniqueBoardCards(cards) {
   const seen = new Set();
   return cards
     .filter((card) => {
-      const key = allowsDuplicateBoardCard(card.type, card.label) ? `${card.id}:${card.type}:${card.label}` : `${card.type}:${card.label}`;
+      const label = normalizePlanningLabel(card.label, card.type);
+      const key = allowsDuplicateBoardCard(card.type, label) ? `${card.id}:${card.type}:${label}` : `${card.type}:${label}`;
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
     })
     .map((card, index) => ({
       ...card,
+      label: normalizePlanningLabel(card.label, card.type),
       zone: zoneAllowsType(card.zone, card.type) ? card.zone : zoneForType(card.type),
       order: Number.isFinite(card.order) ? card.order : index + 1,
       confirmed: isTextCard(card.type) ? Boolean(card.confirmed || card.value) : card.confirmed,
@@ -6390,7 +6414,8 @@ function uniqueLessonCards(cards) {
   const seen = new Set();
   return cards
     .filter((card) => {
-      const key = allowsDuplicateBoardCard(card.type, card.label) ? card.unitCardKey || `${card.id}:${card.type}:${card.label}` : `${card.type}:${card.label}`;
+      const label = normalizePlanningLabel(card.label, card.type);
+      const key = allowsDuplicateBoardCard(card.type, label) ? card.unitCardKey || `${card.id}:${card.type}:${label}` : `${card.type}:${label}`;
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
@@ -6398,7 +6423,7 @@ function uniqueLessonCards(cards) {
     .map((card, index) => ({
       id: card.id || uid("lesson-card"),
       type: card.type,
-      label: card.label,
+      label: normalizePlanningLabel(card.label, card.type),
       value: card.value || "",
       confirmed: Boolean(card.confirmed),
       zone: lessonZoneAllowsType(card.zone, card.type) ? card.zone : lessonZoneForType(card.type),
@@ -6767,6 +6792,7 @@ function renderHealth() {
         ${renderIncidenceGroup("Big Ideas", timelineUnits, "bigIdeas", libraryItemsByType("bigIdeas"))}
         ${renderIncidenceGroup("Learning Outcomes", timelineUnits, "learningOutcomes", libraryItemsByType("learningOutcomes"), { source: "lesson" })}
         ${renderIncidenceGroup("21CC Emphasis", timelineUnits, "cc21", libraryItemsByType("cc21"), { source: "lesson" })}
+        ${renderIncidenceGroup("21CC Learning Goals", timelineUnits, "cc21Goals", cc21LessonGoals.map((goal) => goal.label), { source: "lesson" })}
         ${renderIncidenceGroup("Core Learning Experiences", timelineUnits, "coreExperiences", libraryItemsByType("coreExperiences"), { source: "lesson" })}
         ${renderIncidenceGroup("Assessment", timelineUnits, "assessment", libraryItemsByType("assessment"), { source: "lesson" })}
         ${renderPedagogyGroup(timelineUnits)}
@@ -6901,6 +6927,7 @@ function incidenceValuesForLesson(lesson, type) {
 }
 
 function canonicalIncidenceLabel(value, type) {
+  value = normalizePlanningLabel(value, type);
   if (type === "pedagogy" && value === "Inquiry-Based Learning") return "Inquiry Based Learning";
   return value;
 }
