@@ -205,6 +205,78 @@ const libraryCardDetails = {
       "Art is inseparable from daily life. Almost everything around us had been put together using visual principles. Art is present as part of our daily living, from the design and ergonomics of things we use, to advertisements we see around us, to the design of everyday spaces we navigate through. Over time, many of these unique images, artefacts and dwelling spaces have come to represent the cultures from which they originate. Artists use their knowledge of how images work to communicate certain ideas and persuade people to take actions.",
     ],
   },
+  "Critical Thinking": {
+    tone: "orange",
+    title: "Critical Thinking",
+    detailLabel: "",
+    context: [
+      "Critical Thinking refers to the ability to exercise sound reasoning and metacognitive thinking to interpret and analyse information and evidence, draw conclusions, make decisions, and solve problems.",
+    ],
+  },
+  "Adaptive Thinking": {
+    tone: "orange",
+    title: "Adaptive Thinking",
+    detailLabel: "",
+    context: [
+      "Adaptive Thinking refers to the ability to apply learnt knowledge and skills strategically and with flexibility in different or new and evolving contexts.",
+    ],
+  },
+  "Inventive Thinking": {
+    tone: "orange",
+    title: "Inventive Thinking",
+    detailLabel: "",
+    context: [
+      "Inventive Thinking refers to the ability to frame, investigate and explore issues, generate innovative ideas, and evaluate them to form novel and useful responses.",
+    ],
+  },
+  "Communication Skills": {
+    tone: "orange",
+    title: "Communication",
+    detailLabel: "",
+    context: [
+      "Effective communication refers to the ability to convey information and exchange ideas clearly and coherently through multimodal ways for specific purposes, audiences and contexts.",
+    ],
+  },
+  "Collaboration Skills": {
+    tone: "orange",
+    title: "Collaboration",
+    detailLabel: "",
+    context: [
+      "Effective collaboration refers to the ability to work together in a respectful manner to share responsibilities and make collective decisions to meet shared goals.",
+    ],
+  },
+  "Information Skills": {
+    tone: "orange",
+    title: "Information Skills",
+    detailLabel: "",
+    context: [
+      "Information Skills refer to the ability to source for, select, evaluate and synthesise digital and non-digital information with discernment. It also entails ethical and responsible practices when using, sharing and creating information.",
+    ],
+  },
+  "Civic Literacy": {
+    tone: "orange",
+    title: "Civic Literacy",
+    detailLabel: "",
+    context: [
+      "Civic Literacy refers to the ability to understand the nation’s values, governance, context and realities, form one’s civic identity, and constructively engage with and contribute to one’s community and nation.",
+    ],
+  },
+  "Global Literacy": {
+    tone: "orange",
+    title: "Global Literacy",
+    detailLabel: "",
+    context: [
+      "Global Literacy refers to the ability to understand and think with discernment about world issues and interact responsibly and constructively with people from and beyond Singapore on such issues.",
+    ],
+  },
+  "Cross-cultural Literacy": {
+    tone: "orange",
+    title: "Cross-Cultural Literacy",
+    detailLabel: "",
+    context: [
+      "Cross-Cultural Literacy refers to the ability to sensitively understand, appreciate and interact with different social, cultural and religious communities and their perspectives.",
+    ],
+  },
   "Guiding Question": {
     tone: "orange",
     title: "Guiding Question",
@@ -3762,7 +3834,7 @@ function renderWorkspaceSetup() {
 }
 
 function cardDetailFor(payload) {
-  if (!payload || !["bigIdeas", "meaningText", "coreExperiences", "artisticProcesses", "cc21Goals"].includes(payload.type)) return null;
+  if (!payload || !["bigIdeas", "meaningText", "coreExperiences", "artisticProcesses", "cc21", "cc21Goals"].includes(payload.type)) return null;
   return libraryCardDetails[payload.label] || null;
 }
 
