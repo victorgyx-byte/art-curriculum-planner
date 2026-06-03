@@ -5004,7 +5004,7 @@ function renderLessons(unit) {
       <div class="lesson-card-header">
         <div>
           <div class="lesson-number">Lesson ${index + 1}</div>
-          <div class="lesson-subtitle">${lesson.confirmed ? "Confirmed" : "Lesson Structure"}</div>
+          ${lesson.confirmed ? "" : `<div class="lesson-subtitle">Lesson Structure</div>`}
         </div>
         <div class="lesson-actions">
           <button class="lesson-move" data-direction="up" type="button" ${index === 0 ? "disabled" : ""} aria-label="Move Lesson ${index + 1} up">↑</button>
