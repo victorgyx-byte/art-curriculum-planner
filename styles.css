@@ -1055,6 +1055,67 @@ button:disabled {
   --big-idea-strong: #6f5a98;
 }
 
+.big-idea-preview.tone-default {
+  --big-idea-soft: #f4f1ea;
+  --big-idea-strong: var(--line);
+}
+
+.big-idea-preview.tone-big-ideas,
+.big-idea-preview.tone-meaning {
+  --big-idea-soft: #e6f3f2;
+  --big-idea-strong: var(--accent);
+}
+
+.big-idea-preview.tone-learning-outcomes {
+  --big-idea-soft: #f6e8e5;
+  --big-idea-strong: var(--accent-2);
+}
+
+.big-idea-preview.tone-media {
+  --big-idea-soft: #fff1d7;
+  --big-idea-strong: var(--accent-3);
+}
+
+.big-idea-preview.tone-context {
+  --big-idea-soft: #eef0d9;
+  --big-idea-strong: #7a7f38;
+}
+
+.big-idea-preview.tone-artistic-processes {
+  --big-idea-soft: #f7e6dc;
+  --big-idea-strong: #c06d32;
+}
+
+.big-idea-preview.tone-visual-qualities {
+  --big-idea-soft: #f7e4eb;
+  --big-idea-strong: #bf5f82;
+}
+
+.big-idea-preview.tone-assessment {
+  --big-idea-soft: #e9edf7;
+  --big-idea-strong: var(--accent-4);
+}
+
+.big-idea-preview.tone-pedagogy {
+  --big-idea-soft: #e5eff7;
+  --big-idea-strong: #2d6e9f;
+}
+
+.big-idea-preview.tone-teaching-moves {
+  --big-idea-soft: #ece6f6;
+  --big-idea-strong: #6f5a98;
+}
+
+.big-idea-preview.tone-core-experiences {
+  --big-idea-soft: #e5f1eb;
+  --big-idea-strong: #34815d;
+}
+
+.big-idea-preview.tone-cc21 {
+  --big-idea-soft: #f4eadc;
+  --big-idea-strong: #9c6b2f;
+}
+
 .big-idea-detail-heading {
   display: grid;
   gap: 12px;
@@ -3043,6 +3104,10 @@ button:disabled {
   opacity: 0.58;
 }
 
+.board-card[data-type="bigIdeas"] {
+  border-left-color: var(--accent);
+}
+
 .board-card[data-type="learningOutcomes"] {
   border-left-color: var(--accent-2);
 }
@@ -3088,6 +3153,10 @@ button:disabled {
 }
 
 .board-card[data-type="cc21"] {
+  border-left-color: #9c6b2f;
+}
+
+.board-card[data-type="cc21Goals"] {
   border-left-color: #9c6b2f;
 }
 

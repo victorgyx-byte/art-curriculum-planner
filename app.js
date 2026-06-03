@@ -3962,22 +3962,22 @@ function renderWorkspaceSetup() {
 
 function cardPreviewTone(type) {
   const tones = {
-    bigIdeas: "yellow",
-    meaningText: "orange",
-    learningOutcomes: "purple",
-    media: "yellow",
-    context: "teal",
-    artisticProcesses: "process",
-    visualQualities: "pink",
-    visualQualityText: "pink",
-    coreExperiences: "teal",
-    teachingMoves: "orange",
-    assessment: "blue",
-    pedagogy: "orange",
-    cc21: "orange",
-    cc21Goals: "purple",
+    bigIdeas: "tone-big-ideas",
+    meaningText: "tone-meaning",
+    learningOutcomes: "tone-learning-outcomes",
+    media: "tone-media",
+    context: "tone-context",
+    artisticProcesses: "tone-artistic-processes",
+    visualQualities: "tone-visual-qualities",
+    visualQualityText: "tone-visual-qualities",
+    coreExperiences: "tone-core-experiences",
+    teachingMoves: "tone-teaching-moves",
+    assessment: "tone-assessment",
+    pedagogy: "tone-pedagogy",
+    cc21: "tone-cc21",
+    cc21Goals: "tone-cc21",
   };
-  return tones[type] || "blue";
+  return tones[type] || "tone-default";
 }
 
 function cardPreviewTitle(payload) {
@@ -4006,7 +4006,7 @@ function openCardDetail(payload, onInsert, options = {}) {
 
   const mode = options.mode || "insert";
   cardDetailInsertAction = mode === "insert" ? onInsert : null;
-  els.cardDetailPreview.className = `big-idea-preview ${detail.tone} no-label`;
+  els.cardDetailPreview.className = `big-idea-preview ${cardPreviewTone(payload.type)} no-label`;
   els.cardDetailTitle.textContent = detail.title;
   if (els.cardDetailLabel) {
     els.cardDetailLabel.textContent = "";
