@@ -284,6 +284,51 @@ const libraryCardDetails = {
       "Cross-Cultural Literacy refers to the ability to sensitively understand, appreciate and interact with different social, cultural and religious communities and their perspectives.",
     ],
   },
+  "Diagnostic Check": {
+    tone: "blue",
+    title: "Diagnostic Assessment",
+    detailLabel: "",
+    context: [
+      "Diagnostic assessment is normally used at the start of a unit to find out what students already know and where their misconceptions lie, so that teaching can be planned at the right level and pace. It supports developmentally appropriate teaching by giving you a clear picture of students' starting points before you begin.",
+      "Use what you find to adjust the sequence, depth, or pace of your unit plan. Share the findings with students too, so they are aware of their own starting points. Avoid using diagnostic information to label or limit students. Treat it as a springboard for learning, not a fixed judgement of ability.",
+    ],
+  },
+  "Formative Assessment": {
+    tone: "blue",
+    title: "Formative Assessment",
+    detailLabel: "",
+    context: [
+      "Formative assessment happens during teaching and learning to help students improve, rather than to assign grades. It can range from informal in-class strategies to more structured tasks, and is essential for helping students become self-directed learners who can monitor and take ownership of their own progress.",
+      "Plan specific moments in your unit where you will check for understanding, and plan what you will do with that information. Remember that formative assessment only works when the feedback loop is closed. Avoid letting these assessments quietly become high-stakes in students' eyes by keeping the focus firmly on learning and growth.",
+    ],
+  },
+  "Summative Assessment": {
+    tone: "blue",
+    title: "Summative Assessment",
+    detailLabel: "",
+    context: [
+      "Summative assessment is conducted normally at the end of a unit to report on what students have achieved. While its primary purpose is to measure learning, it can also be used formatively, for example, by having students reflect on their performance and identify next steps for improvement.",
+      "Be clear about the purpose and communicate it to students. Ensure the weighting and demand of the task are appropriate. Avoid over-inflating the perceived stakes, as this adds unnecessary pressure and anxiety for both students and teachers.",
+    ],
+  },
+  "Self Assessment": {
+    tone: "blue",
+    title: "Self-Assessment",
+    detailLabel: "",
+    context: [
+      "As one of the two key drivers of student assessment literacy, self-assessment involves students making judgements about their own learning and progress. It is at the heart of developing self-directed learners, as the process of reflecting on one's own work builds the metacognitive and self-regulatory skills students need for lifelong learning.",
+      "Give students structured tools to guide their reflection, such as co-constructed checklists or learning targets, and encourage them to think about not just what went wrong but why and what they will do differently. Self-assessment works best when students trust it is genuinely for their own growth. Keep it low-stakes and separate from grading.",
+    ],
+  },
+  "Peer Assessment": {
+    tone: "blue",
+    title: "Peer Assessment",
+    detailLabel: "",
+    context: [
+      "As one of the two key drivers of student assessment literacy, peer assessment involves students evaluating each other's work using clear criteria, acting as learning resources for one another. Beyond providing feedback, the process of assessing a peer's work deepens students' own understanding of what quality looks like and builds important collaborative skills.",
+      "Provide students with clear rubrics or criteria so their feedback is specific and useful, and build in time for them to act on what they receive. Students need to be explicitly taught how to give constructive feedback. Without this scaffolding, peer assessment can easily become superficial or unhelpful.",
+    ],
+  },
   "Guiding Question": {
     tone: "orange",
     title: "Guiding Question",
@@ -3908,7 +3953,7 @@ function renderWorkspaceSetup() {
 }
 
 function cardDetailFor(payload) {
-  if (!payload || !["bigIdeas", "meaningText", "coreExperiences", "artisticProcesses", "cc21", "cc21Goals"].includes(payload.type)) return null;
+  if (!payload || !["bigIdeas", "meaningText", "coreExperiences", "artisticProcesses", "cc21", "cc21Goals", "assessment"].includes(payload.type)) return null;
   return libraryCardDetails[payload.label] || null;
 }
 
