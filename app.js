@@ -1867,8 +1867,8 @@ function normalizeLessons(lessons, unit = {}) {
   return lessons.map((lesson, index) => {
     const removedUnitCardKeys = lesson.removedUnitCardKeys || [];
     const baseCards = lesson.lessonBoardInitialized
-      ? uniqueLessonCards((lesson.boardCards || []).filter(isVisiblePlanningCard))
-      : uniqueLessonCards([...(lesson.boardCards || []), ...lessonCardsFromUnit(unit, removedUnitCardKeys)]);
+      ? uniqueLessonCards((lesson.boardCards || []).filter((card) => isVisiblePlanningCard(card) && cardAllowedOnLessonBoard(card)))
+      : uniqueLessonCards([...(lesson.boardCards || []).filter(cardAllowedOnLessonBoard), ...lessonCardsFromUnit(unit, removedUnitCardKeys)]);
     return {
       id: lesson.id || uid("lesson"),
       title: lesson.title || `Lesson ${index + 1}`,
@@ -1946,7 +1946,7 @@ function lessonCardsFromUnit(unit, removedKeys = []) {
   const removed = new Set(removedKeys);
   return (unit.boardCards || [])
     .filter((card) => !card.lessonOrigin)
-    .filter((card) => lessonZoneAllowsType(lessonZoneForType(card.type), card.type))
+    .filter(cardAllowedOnLessonBoard)
     .filter((card) => !removed.has(cardKey(card)))
     .map((card, index) => ({
       id: uid("lesson-card"),
@@ -5115,6 +5115,7 @@ function renderLessonBoard() {
   if (document.activeElement !== els.lessonObjectives) els.lessonObjectives.value = lesson.objectives || "";
   renderLessonMeaningReference(unit);
   renderLessonImage(lesson);
+  lesson.boardCards = (lesson.boardCards || []).filter(cardAllowedOnLessonBoard);
   renderLessonPlanningBoard(lesson);
   renderMobileLessonTabs();
   renderMobileLessonCardPicker(unit, lesson);
@@ -5772,7 +5773,7 @@ function renderLessonPlanningBoard(lesson) {
 
   lesson.boardCards
     .slice()
-    .filter((card) => card.type !== "meaningText")
+    .filter(cardAllowedOnLessonBoard)
     .sort((a, b) => (a.order || 0) - (b.order || 0))
     .forEach((card) => {
       const node = document.createElement("article");
@@ -6415,6 +6416,7 @@ function removeBoardCard(unit, card) {
 
 function addLessonBoardCard(unit, lesson, payload, options = {}) {
   if (!lesson || !payload) return;
+  if (!cardAllowedOnLessonBoard(payload)) return;
   const requestedZone = options.zone || lessonZoneForType(payload.type);
   const zone = lessonZoneAllowsType(requestedZone, payload.type) ? requestedZone : lessonZoneForType(payload.type);
   const syncToUnit = !lessonOnlyCardTypes.has(payload.type);
@@ -6473,6 +6475,7 @@ function ensureUnitHasCard(unit, payload, options = {}) {
 function syncUnitCardToLessons(unit, unitCard) {
   if (!unit || !unitCard) return;
   if (unitCard.lessonOrigin) return;
+  if (!cardAllowedOnLessonBoard(unitCard)) return;
   unit.lessons?.forEach((lesson) => {
     lesson.removedUnitCardKeys = lesson.removedUnitCardKeys || [];
     if (lesson.removedUnitCardKeys.includes(cardKey(unitCard))) return;
@@ -6576,7 +6579,6 @@ function lessonZoneForType(type) {
     pedagogy: "pedagogy",
     teachingMoves: "pedagogy",
     assessment: "assessment",
-    meaningText: "content",
     media: "content",
     context: "content",
     artisticProcesses: "content",
@@ -6585,6 +6587,10 @@ function lessonZoneForType(type) {
     coreExperiences: "core",
   };
   return zones[type] || "content";
+}
+
+function cardAllowedOnLessonBoard(card) {
+  return Boolean(card && lessonZoneAllowsType(lessonZoneForType(card.type), card.type));
 }
 
 function lessonZoneDefinitions() {
@@ -6694,7 +6700,7 @@ function nextBoardOrder(unit, zone) {
 }
 
 function nextLessonCardOrder(lesson, zone) {
-  const zoneCards = lesson.boardCards.filter((card) => (card.zone || lessonZoneForType(card.type)) === zone);
+  const zoneCards = lesson.boardCards.filter((card) => cardAllowedOnLessonBoard(card) && (card.zone || lessonZoneForType(card.type)) === zone);
   return zoneCards.length ? Math.max(...zoneCards.map((card) => card.order || 0)) + 1 : 1;
 }
 
@@ -6722,7 +6728,8 @@ function arrangeUnitBoardCards(unit) {
 
 function arrangeLessonBoardCards(lesson) {
   if (!lesson) return;
-  arrangePlanningCards(lesson.boardCards || [], {
+  lesson.boardCards = (lesson.boardCards || []).filter(cardAllowedOnLessonBoard);
+  arrangePlanningCards(lesson.boardCards, {
     zoneForType: lessonZoneForType,
     zoneAllowsType: lessonZoneAllowsType,
     typeOrder: [
@@ -7716,7 +7723,7 @@ function placePayloadOnLessonBoard(lesson, payload, targetZone) {
   const unit = selectedUnit();
   if (payload.kind === "lessonCard") {
     const card = lesson.boardCards.find((candidate) => candidate.id === payload.cardId);
-    if (card) {
+    if (card && cardAllowedOnLessonBoard(card)) {
       const zone = lessonZoneAllowsType(targetZone, card.type) ? targetZone : lessonZoneForType(card.type);
       card.zone = zone;
       card.order = nextLessonCardOrder(lesson, zone);
@@ -7725,6 +7732,7 @@ function placePayloadOnLessonBoard(lesson, payload, targetZone) {
     return;
   }
   if (payload.kind === "boardCard") return;
+  if (!cardAllowedOnLessonBoard(payload)) return;
   addLessonBoardCard(unit, lesson, payload, {
     zone: lessonZoneAllowsType(targetZone, payload.type) ? targetZone : lessonZoneForType(payload.type),
   });
