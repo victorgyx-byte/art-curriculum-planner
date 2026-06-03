@@ -1072,6 +1072,7 @@ button:disabled {
   font-weight: 800;
   line-height: 1.12;
   text-align: center;
+  white-space: pre-line;
 }
 
 .big-idea-mark {

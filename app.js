@@ -339,7 +339,7 @@ const libraryCardDetails = {
   },
   "Drawing: Observe": {
     tone: "teal",
-    title: "Through Drawing I Observe",
+    title: "Through drawing...\nI observe",
     detailLabel: "Elaboration",
     context: [
       "Observational drawing encourages students to go slow to explore, notice, sense-make and think about the stimulus more thoroughly.",
@@ -347,7 +347,7 @@ const libraryCardDetails = {
   },
   "Drawing: Think": {
     tone: "teal",
-    title: "Through Drawing I Think",
+    title: "Through drawing...\nI think",
     detailLabel: "Elaboration",
     context: [
       "Drawing can be used as a tool to generate, develop, organize, encode and communicate personal ideas.",
@@ -355,7 +355,7 @@ const libraryCardDetails = {
   },
   "Drawing: Imagine": {
     tone: "teal",
-    title: "Through Drawing I Imagine",
+    title: "Through drawing...\nI imagine",
     detailLabel: "Elaboration",
     context: [
       "Through drawing, students make marks on paper and are encouraged to imagine the possibilities of what the drawing can be.",
