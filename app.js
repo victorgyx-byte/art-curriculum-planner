@@ -781,6 +781,7 @@ let deletedPlanCatalog = loadDeletedPlanCatalog();
 let state = loadState();
 let dragPayload = null;
 let timelineDrag = null;
+let timelineClick = { unitId: "", at: 0 };
 let boardHeaderEditing = { title: false, performanceTask: false };
 let unitSetupOpen = false;
 let planSetupOpen = false;
@@ -4117,7 +4118,7 @@ function renderUnits() {
       if (unitTimelineDuration(unit) <= 2) block.classList.add("compact");
       if (unit.id === state.selectedUnitId) block.classList.add("selected");
       if (overlaps.has(unit.id)) block.classList.add("overlap");
-      block.setAttribute("draggable", "true");
+      block.setAttribute("draggable", "false");
       block.setAttribute("role", "button");
       block.setAttribute("aria-pressed", String(unit.id === state.selectedUnitId));
       block.setAttribute("aria-label", `${unit.title || "Untitled Unit"} on timeline. Click to select, double click to open Unit Board.`);
@@ -4174,19 +4175,6 @@ function renderUnits() {
           state.currentScreen = "board";
         }
         render();
-      });
-      block.addEventListener("dragstart", (event) => {
-        if (event.target.closest(".unit-block-delete")) {
-          event.preventDefault();
-          return;
-        }
-        dragPayload = { kind: "timelineUnit", unitId: unit.id };
-        event.dataTransfer.setData("text/plain", JSON.stringify(dragPayload));
-        event.dataTransfer.setData("application/json", JSON.stringify(dragPayload));
-        event.dataTransfer.effectAllowed = "move";
-      });
-      block.addEventListener("dragend", () => {
-        dragPayload = null;
       });
       block.addEventListener("pointerdown", (event) => {
         if (event.target.closest(".unit-block-delete")) return;
@@ -6712,6 +6700,9 @@ function moveTimelinePointer(event) {
   if (!timelineDrag) return;
   const unit = state.units.find((candidate) => candidate.id === timelineDrag.unitId);
   if (!unit) return;
+  const movedPixels = Math.hypot(event.clientX - timelineDrag.startX, event.clientY - timelineDrag.startY);
+  if (movedPixels < 6 && !timelineDrag.moved) return;
+  timelineDrag.moved = true;
   const deltaWeeks = Math.round((event.clientX - timelineDrag.startX) / weekWidth());
   const year = timelineYearAtPoint(event.clientY) || timelineDrag.originalYear;
   unit.start = clampUnitStartInYear(unit, year, timelineDrag.originalLocalWeek + deltaWeeks);
@@ -6723,7 +6714,20 @@ function moveTimelinePointer(event) {
 function endTimelinePointer(event) {
   event.currentTarget.releasePointerCapture(timelineDrag.pointerId);
   const unit = state.units.find((candidate) => candidate.id === timelineDrag.unitId);
-  if (unit) packTimelineYear(timelineYearForStart(unit.start));
+  if (unit) {
+    state.selectedUnitId = unit.id;
+    if (timelineDrag.moved) packTimelineYear(timelineYearForStart(unit.start));
+    if (!timelineDrag.moved) {
+      const now = Date.now();
+      const isDoubleClick = timelineClick.unitId === unit.id && now - timelineClick.at < 420;
+      timelineClick = { unitId: unit.id, at: now };
+      if (isDoubleClick) {
+        state.unitOverviewOpen = false;
+        state.currentScreen = "board";
+        timelineClick = { unitId: "", at: 0 };
+      }
+    }
+  }
   timelineDrag = null;
   render();
 }
