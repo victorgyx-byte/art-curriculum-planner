@@ -337,6 +337,14 @@ const libraryCardDetails = {
       "Beginning with questions helps to ground the lesson unit in inquiry-led approaches.",
     ],
   },
+  "Theme": {
+    tone: "orange",
+    title: "Theme",
+    detailLabel: "",
+    context: [
+      "A central subject or narrative used to situate art learning within authentic, real-world contexts to make it more meaningful for students.",
+    ],
+  },
   "Drawing: Observe": {
     tone: "teal",
     title: "Through drawing...\nI observe",
