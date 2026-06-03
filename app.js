@@ -4118,8 +4118,12 @@ function renderUnits() {
       if (unit.id === state.selectedUnitId) block.classList.add("selected");
       if (overlaps.has(unit.id)) block.classList.add("overlap");
       block.setAttribute("draggable", "true");
+      block.setAttribute("role", "button");
+      block.setAttribute("aria-pressed", String(unit.id === state.selectedUnitId));
+      block.setAttribute("aria-label", `${unit.title || "Untitled Unit"} on timeline. Click to select, double click to open Unit Board.`);
+      block.tabIndex = 0;
       block.dataset.unitId = unit.id;
-      block.title = `${unit.title || "Untitled Unit"} · Sec ${year} · ${timelineWeekRangeLabel(unit)}`;
+      block.title = `${unit.title || "Untitled Unit"} · Sec ${year} · ${timelineWeekRangeLabel(unit)} · Click to select, double click to open Unit Board`;
       block.style.left = `${timelineLaneLabelWidth() + (timelineLocalWeek(unit.start) - 1) * width + 4}px`;
       block.style.width = `${unitTimelineDuration(unit) * width - 8}px`;
       block.style.top = `${TIMELINE_HEADER_HEIGHT + (year - 1) * TIMELINE_LANE_HEIGHT + 10}px`;
@@ -4151,6 +4155,24 @@ function renderUnits() {
       block.addEventListener("click", (event) => {
         if (event.target.closest(".unit-block-delete")) return;
         state.selectedUnitId = unit.id;
+        render();
+      });
+      block.addEventListener("dblclick", (event) => {
+        if (event.target.closest(".unit-block-delete")) return;
+        event.preventDefault();
+        state.selectedUnitId = unit.id;
+        state.unitOverviewOpen = false;
+        state.currentScreen = "board";
+        render();
+      });
+      block.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        state.selectedUnitId = unit.id;
+        if (event.key === "Enter") {
+          state.unitOverviewOpen = false;
+          state.currentScreen = "board";
+        }
         render();
       });
       block.addEventListener("dragstart", (event) => {

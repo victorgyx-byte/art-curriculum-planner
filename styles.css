@@ -1412,6 +1412,7 @@ button:disabled {
   overflow: hidden;
   touch-action: none;
   pointer-events: auto;
+  cursor: pointer;
 }
 
 .unit-block-delete {
@@ -1457,7 +1458,12 @@ button:disabled {
 }
 
 .unit-block.selected {
-  outline: 3px solid rgba(47, 111, 115, 0.35);
+  z-index: 4;
+  border-color: #2f6f73;
+  outline: 3px solid rgba(47, 111, 115, 0.38);
+  outline-offset: 3px;
+  background: #cde8e6;
+  box-shadow: 0 0 0 5px rgba(219, 238, 237, 0.82), 0 14px 24px rgba(39, 44, 38, 0.22);
 }
 
 .unit-block.overlap {
