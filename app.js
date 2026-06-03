@@ -3952,19 +3952,52 @@ function renderWorkspaceSetup() {
   els.workspaceSetupModal.classList.toggle("hidden", !workspaceSetupOpen);
 }
 
-function cardDetailFor(payload) {
-  if (!payload || !["bigIdeas", "meaningText", "coreExperiences", "artisticProcesses", "cc21", "cc21Goals", "assessment"].includes(payload.type)) return null;
-  return libraryCardDetails[payload.label] || null;
+function cardPreviewTone(type) {
+  const tones = {
+    bigIdeas: "yellow",
+    meaningText: "orange",
+    learningOutcomes: "purple",
+    media: "yellow",
+    context: "teal",
+    artisticProcesses: "process",
+    visualQualities: "pink",
+    visualQualityText: "pink",
+    coreExperiences: "teal",
+    teachingMoves: "orange",
+    assessment: "blue",
+    pedagogy: "orange",
+    cc21: "orange",
+    cc21Goals: "purple",
+  };
+  return tones[type] || "blue";
 }
 
-function openCardDetail(payload, onInsert) {
+function cardPreviewTitle(payload) {
+  if (!payload) return "Card";
+  if (isTextCard(payload.type) && payload.value?.trim()) return payload.value.trim();
+  return payload.label || cardTypeLabel(payload.type, payload);
+}
+
+function cardDetailFor(payload) {
+  if (!payload) return null;
+  const label = normalizePlanningLabel(payload.label || "", payload.type);
+  return libraryCardDetails[label] || {
+    tone: cardPreviewTone(payload.type),
+    title: cardPreviewTitle({ ...payload, label }),
+    detailLabel: "",
+    context: ["Coming soon."],
+  };
+}
+
+function openCardDetail(payload, onInsert, options = {}) {
   const detail = cardDetailFor(payload);
   if (!detail || !els.cardDetailModal) {
-    onInsert();
+    onInsert?.();
     return;
   }
 
-  cardDetailInsertAction = onInsert;
+  const mode = options.mode || "insert";
+  cardDetailInsertAction = mode === "insert" ? onInsert : null;
   els.cardDetailPreview.className = `big-idea-preview ${detail.tone} no-label`;
   els.cardDetailTitle.textContent = detail.title;
   if (els.cardDetailLabel) {
@@ -3972,6 +4005,10 @@ function openCardDetail(payload, onInsert) {
     els.cardDetailLabel.classList.add("hidden");
   }
   els.cardDetailContext.innerHTML = detail.context.map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`).join("");
+  els.cardDetailCancel?.classList.toggle("hidden", mode !== "insert");
+  if (els.cardDetailInsert) {
+    els.cardDetailInsert.textContent = mode === "insert" ? "Insert Into Board" : "Return To Board";
+  }
   els.cardDetailModal.classList.remove("hidden");
 }
 
@@ -3981,11 +4018,7 @@ function closeCardDetail() {
 }
 
 function handleLibraryCardClick(payload, onInsert) {
-  if (cardDetailFor(payload)) {
-    openCardDetail(payload, onInsert);
-    return;
-  }
-  onInsert();
+  openCardDetail(payload, onInsert, { mode: "insert" });
 }
 
 function renderLibrary() {
@@ -4305,16 +4338,16 @@ function renderBoard() {
     `;
     node.querySelector(".board-card-remove").addEventListener("click", (event) => {
       event.stopPropagation();
+      selectBoardZone(card.zone || zoneForType(card.type));
       removeBoardCard(unit, card);
       render();
     });
     node.addEventListener("click", (event) => {
       event.stopPropagation();
+      if (isInteractiveTarget(event.target)) return;
       const cardZone = card.zone || zoneForType(card.type);
-      if (state.selectedBoardZone !== cardZone && !event.target.closest("textarea, button, input")) {
-        state.selectedBoardZone = cardZone;
-        render();
-      }
+      selectBoardZone(cardZone);
+      openCardDetail(card, null, { mode: "view" });
     });
     node.addEventListener("dragstart", (event) => {
       if (event.target.closest("textarea, button, input")) {
@@ -4345,6 +4378,7 @@ function renderBoard() {
     if (confirmButton) {
       confirmButton.addEventListener("click", (event) => {
         event.stopPropagation();
+        selectBoardZone(card.zone || zoneForType(card.type));
         card.confirmed = true;
         syncMeaningTextCardsToUnit(unit);
         syncUnitCardToLessons(unit, card);
@@ -4355,6 +4389,7 @@ function renderBoard() {
     if (editButton) {
       editButton.addEventListener("click", (event) => {
         event.stopPropagation();
+        selectBoardZone(card.zone || zoneForType(card.type));
         card.confirmed = false;
         syncUnitCardToLessons(unit, card);
         render();
@@ -4364,6 +4399,7 @@ function renderBoard() {
     if (expandButton) {
       expandButton.addEventListener("click", (event) => {
         event.stopPropagation();
+        selectBoardZone(card.zone || zoneForType(card.type));
         card.expanded = !card.expanded;
         render();
       });
@@ -4915,6 +4951,15 @@ function updateBoardZoneSelection() {
   });
 }
 
+function selectBoardZone(zoneKey) {
+  if (!zoneKey) return;
+  state.selectedBoardZone = zoneKey;
+  renderLibrary();
+  updateBoardZoneSelection();
+  renderMobileBoardTabs();
+  renderMobileUnitCardPicker(selectedUnit());
+}
+
 function updateLessonZoneSelection() {
   els.lessonBoardZones.forEach((zone) => {
     const isSelected = zone.dataset.lessonZone === state.selectedLessonZone;
@@ -4922,6 +4967,16 @@ function updateLessonZoneSelection() {
     zone.setAttribute("aria-selected", String(isSelected));
     zone.tabIndex = 0;
   });
+}
+
+function selectLessonZone(zoneKey) {
+  if (!zoneKey) return;
+  state.selectedLessonZone = zoneKey;
+  renderLibrary();
+  updateLessonZoneSelection();
+  renderMobileLessonTabs();
+  const unit = selectedUnit();
+  renderMobileLessonCardPicker(unit, selectedLesson(unit));
 }
 
 function renderLessons(unit) {
@@ -5732,12 +5787,19 @@ function renderLessonPlanningBoard(lesson) {
       `;
       node.querySelector(".board-card-remove").addEventListener("click", (event) => {
         event.stopPropagation();
+        selectLessonZone(card.zone || lessonZoneForType(card.type));
         if (card.inherited) {
           lesson.removedUnitCardKeys = lesson.removedUnitCardKeys || [];
           addUnique(lesson.removedUnitCardKeys, card.unitCardKey || cardKey(card));
         }
         lesson.boardCards = lesson.boardCards.filter((candidate) => candidate.id !== card.id);
         render();
+      });
+      node.addEventListener("click", (event) => {
+        event.stopPropagation();
+        if (isInteractiveTarget(event.target)) return;
+        selectLessonZone(card.zone || lessonZoneForType(card.type));
+        openCardDetail(card, null, { mode: "view" });
       });
       node.addEventListener("dragstart", (event) => {
         if (event.target.closest("button")) {
