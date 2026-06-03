@@ -1,8 +1,8 @@
-# Art Curriculum Planner
+# Weave
 
-A web prototype for lower secondary art curriculum planning.
+A web prototype for curriculum, unit, and lesson planning.
 
-The planner supports:
+Weave supports:
 
 - 2YIP curriculum mapping for Sec 1 and Sec 2
 - Unit planning boards

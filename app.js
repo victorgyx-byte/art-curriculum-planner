@@ -3447,7 +3447,7 @@ function renderScreens() {
   els.modeSwitch.classList.toggle("hidden", showWorkspace);
   els.resetDemo?.classList.toggle("hidden", true);
   els.plannerKicker.textContent = showWorkspace ? "Workspace" : workspaceLabel();
-  els.plannerTitle.textContent = showWorkspace ? "Art Curriculum Planner" : activePlanTitle();
+  els.plannerTitle.textContent = showWorkspace ? "Weave" : activePlanTitle();
   els.modeButtons.forEach((button) => {
     button.classList.toggle("active", button.dataset.screen === state.currentScreen);
   });

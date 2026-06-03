@@ -1,4 +1,4 @@
-# Art Curriculum Planner Online Plan
+# Weave Online Plan
 
 ## Direction
 
