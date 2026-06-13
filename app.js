@@ -46,6 +46,10 @@ const assessmentLabelMap = {
   "Reflection prompt": "Self Assessment",
   "End-of-year evidence": "Summative Assessment",
 };
+const learningOutcomeLabelMap = {
+  "LO4: Develop personally relevant works of art independently or with others.":
+    "LO4: Develop personally relevant works of art independently or with others, with consideration for aesthetic qualities and social and cultural awareness.",
+};
 
 const defaultCardLibrary = [
   {
@@ -69,7 +73,7 @@ const defaultCardLibrary = [
       "LO1: Gather, record and present observations and personal experiences.",
       "LO2: Make connections to generate ideas and visuals.",
       "LO3: Explore and experiment with materials and techniques to communicate ideas.",
-      "LO4: Develop personally relevant works of art independently or with others.",
+      "LO4: Develop personally relevant works of art independently or with others, with consideration for aesthetic qualities and social and cultural awareness.",
       "LO5: Reflect, connect and share views on own and others' works of art.",
       "LO6: Value art as an avenue for self-discovery and understanding the world.",
     ],
@@ -1935,6 +1939,7 @@ function normalizePlanningValues(values, type) {
 
 function normalizePlanningLabel(value, type) {
   if (type === "assessment") return assessmentLabelMap[value] || value;
+  if (type === "learningOutcomes") return learningOutcomeLabelMap[value] || value;
   return value;
 }
 
@@ -6177,6 +6182,25 @@ function lessonActivitySummaryText(step) {
   return parts.join(" - ");
 }
 
+function lessonActivityCount(lesson) {
+  return (lesson.steps || []).filter((step) => !isReflectionCheckpoint(step)).length;
+}
+
+function lessonCheckpointCount(lesson) {
+  return (lesson.steps || []).filter(isReflectionCheckpoint).length;
+}
+
+function lessonEvidenceSummary(lesson) {
+  const evidence = (lesson.steps || [])
+    .map((step) => step.evidence)
+    .filter((value) => value && value !== "None" && value !== "Curricular goal" && value !== "21CC learning goals");
+  return uniqueReadableValues(evidence).slice(0, 2).join("; ");
+}
+
+function lessonCountLabel(count, singular, plural = `${singular}s`) {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
 function lessonEditContent(lesson) {
   return `
     <div class="lesson-structure-options">
@@ -6207,12 +6231,21 @@ function lessonOtherContent(lesson) {
 
 function lessonDisplayContent(lesson) {
   const structures = lessonDisplayStructures(lesson);
+  const activityCount = lessonActivityCount(lesson);
+  const checkpointCount = lessonCheckpointCount(lesson);
+  const evidence = lessonEvidenceSummary(lesson);
+  const meta = [
+    lessonDurationMinutes(lesson) ? lessonDurationLabel(lesson) : "",
+    activityCount ? lessonCountLabel(activityCount, "activity", "activities") : "",
+    checkpointCount ? lessonCountLabel(checkpointCount, "reflection checkpoint") : "",
+    evidence ? `Evidence: ${evidence}` : "",
+  ].filter(Boolean);
   return `
     <div class="lesson-display-structures">
       ${structures.length ? structures.map((label) => `<span class="lesson-display-chip">${escapeHtml(label)}</span>`).join("") : `<span class="lesson-display-empty">No structure selected</span>`}
     </div>
-    <div class="lesson-display-details">${escapeHtml(lesson.description || lesson.details || "No activity details added")}</div>
-    ${lesson.steps?.length ? `<div class="lesson-display-activities">${lesson.steps.map((step, index) => `<div><strong>Activity ${index + 1}:</strong> ${escapeHtml(lessonActivitySummaryText(step))}</div>`).join("")}</div>` : ""}
+    <div class="lesson-display-details">${escapeHtml(lesson.description || lesson.details || "No lesson description added")}</div>
+    ${meta.length ? `<div class="lesson-display-meta">${meta.map((item) => `<span>${escapeHtml(item)}</span>`).join("")}</div>` : ""}
   `;
 }
 
