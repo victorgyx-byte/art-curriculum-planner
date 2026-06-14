@@ -50,6 +50,10 @@ const learningOutcomeLabelMap = {
   "LO4: Develop personally relevant works of art independently or with others.":
     "LO4: Develop personally relevant works of art independently or with others, with consideration for aesthetic qualities and social and cultural awareness.",
 };
+const naturalSortCollator = new Intl.Collator(undefined, {
+  numeric: true,
+  sensitivity: "base",
+});
 
 const defaultCardLibrary = [
   {
@@ -4629,40 +4633,52 @@ function overviewValues(unit, type) {
     coreExperiences: unit.coreExperiences || [],
     artisticProcesses: unit.learningContent?.artisticProcessCards || [],
   }[type] || [];
-  const cardValues = (unit.boardCards || [])
+  const cardValues = sortedPlanningCards(unit.boardCards || [], {
+    zoneForType,
+    typeOrder: unitCardTypeOrder(),
+  })
     .filter((card) => card.type === type)
     .map((card) => readableCardValue(card));
-  return uniqueReadableValues(cardValues.length ? cardValues : base);
+  return sortedReadableValues(uniqueReadableValues(cardValues.length ? cardValues : base), type);
 }
 
 function contextOverviewValues(unit) {
-  const cardValues = (unit.boardCards || []).filter((card) => card.type === "context").map((card) => readableCardValue(card));
-  if (cardValues.length) return uniqueReadableValues(cardValues);
-  return uniqueReadableValues([
+  const cardValues = sortedPlanningCards(unit.boardCards || [], {
+    zoneForType,
+    typeOrder: unitCardTypeOrder(),
+  }).filter((card) => card.type === "context").map((card) => readableCardValue(card));
+  if (cardValues.length) return sortedReadableValues(uniqueReadableValues(cardValues), "context");
+  return sortedReadableValues(uniqueReadableValues([
     unit.learningContent?.context,
     ...(unit.learningContent?.contextCards || []),
-  ]);
+  ]), "context");
 }
 
 function visualQualityOverviewValues(unit) {
-  const cardValues = (unit.boardCards || [])
+  const cardValues = sortedPlanningCards(unit.boardCards || [], {
+    zoneForType,
+    typeOrder: unitCardTypeOrder(),
+  })
     .filter((card) => card.type === "visualQualities" || card.type === "visualQualityText")
     .map((card) => readableCardValue(card));
   if (cardValues.length) return uniqueReadableValues(cardValues);
-  return uniqueReadableValues([
+  return sortedReadableValues(uniqueReadableValues([
     unit.learningContent?.visualQualities,
     ...(unit.learningContent?.visualQualityCards || []),
-  ]);
+  ]), "visualQualities");
 }
 
 function themeValues(unit) {
-  const cardValues = (unit.boardCards || [])
+  const cardValues = sortedPlanningCards(unit.boardCards || [], {
+    zoneForType,
+    typeOrder: unitCardTypeOrder(),
+  })
     .filter((card) => card.type === "meaningText" && card.label === "Theme")
     .map((card) => readableCardValue(card));
-  if (cardValues.length) return uniqueReadableValues(cardValues);
-  return uniqueReadableValues([
+  if (cardValues.length) return sortedReadableValues(uniqueReadableValues(cardValues), "meaningText");
+  return sortedReadableValues(uniqueReadableValues([
     unit.theme,
-  ]);
+  ]), "meaningText");
 }
 
 function readableCardValue(card) {
@@ -5724,10 +5740,16 @@ function lessonOverviewGroups(lesson, groups) {
 }
 
 function lessonOverviewValues(lesson, type) {
-  return uniqueReadableValues(
-    (lesson.boardCards || [])
+  return sortedReadableValues(
+    uniqueReadableValues(
+      sortedPlanningCards(lesson.boardCards || [], {
+        zoneForType: lessonZoneForType,
+        typeOrder: lessonCardTypeOrder(),
+      })
       .filter((card) => card.type === type)
       .map((card) => readableCardValue(card)),
+    ),
+    type,
   );
 }
 
@@ -6726,9 +6748,14 @@ function guidingQuestionCardValues(unit) {
 }
 
 function guidingQuestionValues(unit) {
-  const cardValues = guidingQuestionCardValues(unit);
+  const cardValues = sortedPlanningCards(unit.boardCards || [], {
+    zoneForType,
+    typeOrder: unitCardTypeOrder(),
+  })
+    .filter((card) => card.type === "meaningText" && card.label === "Guiding Question" && card.value?.trim())
+    .map((card) => card.value.trim());
   if (cardValues.length) return cardValues;
-  return (unit.guidingQuestions || []).filter(Boolean);
+  return sortedReadableValues((unit.guidingQuestions || []).filter(Boolean), "meaningText");
 }
 
 function guidingQuestionSummary(unit) {
@@ -6750,20 +6777,7 @@ function arrangeUnitBoardCards(unit) {
   arrangePlanningCards(unit.boardCards || [], {
     zoneForType,
     zoneAllowsType,
-    typeOrder: [
-      "bigIdeas",
-      "meaningText",
-      "media",
-      "context",
-      "artisticProcesses",
-      "visualQualities",
-      "visualQualityText",
-      "coreExperiences",
-      "learningOutcomes",
-      "cc21",
-      "pedagogy",
-      "assessment",
-    ],
+    typeOrder: unitCardTypeOrder(),
   });
 }
 
@@ -6773,45 +6787,77 @@ function arrangeLessonBoardCards(lesson) {
   arrangePlanningCards(lesson.boardCards, {
     zoneForType: lessonZoneForType,
     zoneAllowsType: lessonZoneAllowsType,
-    typeOrder: [
-      "learningOutcomes",
-      "cc21",
-      "cc21Goals",
-      "media",
-      "context",
-      "artisticProcesses",
-      "visualQualities",
-      "visualQualityText",
-      "coreExperiences",
-      "pedagogy",
-      "teachingMoves",
-      "assessment",
-    ],
+    typeOrder: lessonCardTypeOrder(),
   });
 }
 
+function unitCardTypeOrder() {
+  return [
+    "bigIdeas",
+    "meaningText",
+    "media",
+    "context",
+    "artisticProcesses",
+    "visualQualities",
+    "visualQualityText",
+    "coreExperiences",
+    "learningOutcomes",
+    "cc21",
+    "pedagogy",
+    "assessment",
+  ];
+}
+
+function lessonCardTypeOrder() {
+  return [
+    "learningOutcomes",
+    "cc21",
+    "cc21Goals",
+    "media",
+    "context",
+    "artisticProcesses",
+    "visualQualities",
+    "visualQualityText",
+    "coreExperiences",
+    "pedagogy",
+    "teachingMoves",
+    "assessment",
+  ];
+}
+
 function arrangePlanningCards(cards, options) {
-  const typeRank = new Map(options.typeOrder.map((type, index) => [type, index]));
-  const originalIndex = new Map(cards.map((card, index) => [card.id || `${card.type}:${card.label}:${index}`, index]));
   cards.forEach((card) => {
     const homeZone = options.zoneForType(card.type);
     card.zone = options.zoneAllowsType(homeZone, card.type) ? homeZone : card.zone;
   });
   const zones = [...new Set(cards.map((card) => card.zone || options.zoneForType(card.type)))];
   zones.forEach((zone) => {
-    cards
-      .filter((card) => (card.zone || options.zoneForType(card.type)) === zone)
-      .sort((a, b) => {
-        const typeDelta = (typeRank.get(a.type) ?? 99) - (typeRank.get(b.type) ?? 99);
-        if (typeDelta) return typeDelta;
-        const orderDelta = (a.order || 0) - (b.order || 0);
-        if (orderDelta) return orderDelta;
-        return (originalIndex.get(a.id) || 0) - (originalIndex.get(b.id) || 0);
-      })
+    sortedPlanningCards(cards.filter((card) => (card.zone || options.zoneForType(card.type)) === zone), options)
       .forEach((card, index) => {
         card.order = index + 1;
       });
   });
+}
+
+function sortedPlanningCards(cards, options) {
+  const typeRank = new Map((options.typeOrder || []).map((type, index) => [type, index]));
+  return [...cards].sort((a, b) => {
+    const zoneDelta = compareNatural(options.zoneForType(a.type), options.zoneForType(b.type));
+    if (!options.ignoreZone && zoneDelta) return zoneDelta;
+    const typeDelta = (typeRank.get(a.type) ?? 99) - (typeRank.get(b.type) ?? 99);
+    if (typeDelta) return typeDelta;
+    return compareNatural(readableCardValue(a) || a.label || "", readableCardValue(b) || b.label || "");
+  });
+}
+
+function sortedReadableValues(values, type) {
+  const filtered = (values || []).filter(Boolean);
+  if (type === "learningOutcomes") return sortLearningOutcomes(filtered);
+  return [...filtered].sort(compareNatural);
+}
+
+function compareNatural(a, b) {
+  return naturalSortCollator.compare(String(a || ""), String(b || ""));
 }
 
 function overlayChips(unit) {
