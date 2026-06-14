@@ -1741,6 +1741,13 @@ button:disabled {
   text-transform: uppercase;
 }
 
+.lesson-screen .board-field-label {
+  color: rgba(111, 106, 97, 0.9);
+  font-size: 11px;
+  font-weight: 760;
+  letter-spacing: 0.04em;
+}
+
 .board-field-row {
   display: flex;
   align-items: flex-start;
@@ -2282,7 +2289,7 @@ button:disabled {
 
 .lesson-main-panel {
   overflow: auto;
-  padding: 16px;
+  padding: 18px 20px;
 }
 
 .lesson-picker-panel {
@@ -2303,6 +2310,12 @@ button:disabled {
   letter-spacing: 0;
 }
 
+.lesson-editor-heading h2 {
+  font-size: clamp(22px, 2.2vw, 30px);
+  font-weight: 820;
+  line-height: 1.12;
+}
+
 .lesson-landing h2 {
   color: var(--ink);
   font-size: 26px;
@@ -2319,7 +2332,7 @@ button:disabled {
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 16px;
+  margin-bottom: 18px;
 }
 
 .lesson-editor-actions,
@@ -2328,6 +2341,15 @@ button:disabled {
   gap: 8px;
   flex-wrap: wrap;
   justify-content: flex-end;
+}
+
+.lesson-editor-actions .primary-button,
+.lesson-editor-actions .ghost-button,
+.lesson-image-actions .ghost-button {
+  min-height: 34px;
+  padding: 6px 10px;
+  font-size: 13px;
+  font-weight: 720;
 }
 
 .lesson-bottom-actions {
@@ -2360,29 +2382,29 @@ button:disabled {
 }
 
 .lesson-meaning-brief {
-  margin-bottom: 12px;
+  margin-bottom: 18px;
 }
 
 .lesson-meaning-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
+  gap: 8px;
 }
 
 .lesson-meaning-item {
   min-width: 0;
-  border-left: 4px solid var(--accent);
+  border-left: 3px solid rgba(47, 111, 115, 0.78);
   border-radius: var(--radius);
-  padding: 9px 10px;
-  background: #fff;
-  box-shadow: var(--shadow-soft);
+  padding: 8px 10px;
+  background: rgba(255, 253, 250, 0.78);
+  box-shadow: none;
 }
 
 .lesson-meaning-item span {
   display: block;
   color: var(--muted);
   font-size: 11px;
-  font-weight: 900;
+  font-weight: 780;
   line-height: 1.2;
   text-transform: uppercase;
 }
@@ -2390,9 +2412,9 @@ button:disabled {
 .lesson-meaning-item p {
   margin: 4px 0 0;
   color: var(--ink);
-  font-size: 14px;
-  font-weight: 780;
-  line-height: 1.32;
+  font-size: 13px;
+  font-weight: 640;
+  line-height: 1.38;
 }
 
 .lesson-brief-card {
@@ -2400,7 +2422,8 @@ button:disabled {
   display: grid;
   gap: 4px;
   min-width: 0;
-  padding-right: 42px;
+  max-width: 82ch;
+  padding-right: 34px;
 }
 
 .lesson-brief-card:focus-within {
@@ -2420,9 +2443,9 @@ button:disabled {
 }
 
 .lesson-duration-display {
-  color: var(--ink);
-  font-size: 16px;
-  font-weight: 780;
+  color: #3a3731;
+  font-size: 15px;
+  font-weight: 620;
   line-height: 1.25;
 }
 
@@ -2442,48 +2465,50 @@ button:disabled {
 }
 
 .lesson-title-input {
-  font-size: clamp(26px, 3.2vw, 34px);
-  font-weight: 900;
-  line-height: 1.12;
+  font-size: clamp(25px, 3vw, 32px);
+  font-weight: 850;
+  line-height: 1.16;
   text-overflow: ellipsis;
 }
 
 .lesson-brief-textarea {
   min-height: 58px;
-  font-size: 16px;
-  font-weight: 780;
-  line-height: 1.35;
+  max-width: 72ch;
+  color: #35332e;
+  font-size: 15px;
+  font-weight: 520;
+  line-height: 1.48;
   resize: vertical;
 }
 
 .lesson-reference-card {
   align-content: start;
   min-height: 100%;
-  border: 1px solid var(--line);
+  border: 1px solid rgba(216, 208, 194, 0.78);
   border-radius: var(--radius);
   padding: 12px;
-  background: rgba(255, 253, 250, 0.92);
+  background: rgba(255, 253, 250, 0.72);
 }
 
 .lesson-edit-dot {
   position: absolute;
-  right: 0;
-  top: 25px;
+  right: 2px;
+  top: 24px;
   display: inline-grid;
   place-items: center;
-  width: 38px;
-  height: 38px;
-  border: 2px solid rgba(47, 111, 115, 0.22);
+  width: 30px;
+  height: 30px;
+  border: 1px solid rgba(47, 111, 115, 0.18);
   border-radius: 999px;
   background: #fff;
-  color: var(--accent);
-  font-size: 14px;
-  font-weight: 900;
+  color: rgba(47, 111, 115, 0.72);
+  font-size: 12px;
+  font-weight: 760;
   pointer-events: none;
 }
 
 .lesson-title-card .lesson-edit-dot {
-  top: 27px;
+  top: 31px;
 }
 
 .lap-section {
@@ -2503,10 +2528,10 @@ button:disabled {
   display: grid;
   place-items: center;
   gap: 8px;
-  min-height: 202px;
-  border: 1px dashed rgba(111, 106, 97, 0.46);
+  min-height: 180px;
+  border: 1px dashed rgba(111, 106, 97, 0.32);
   border-radius: var(--radius);
-  background: #fff;
+  background: rgba(255, 255, 255, 0.68);
   color: var(--muted);
   font-size: 13px;
   text-align: center;
@@ -2515,7 +2540,7 @@ button:disabled {
 .lesson-image-preview img {
   display: block;
   max-width: 100%;
-  max-height: 220px;
+  max-height: 190px;
   border-radius: var(--radius);
   object-fit: contain;
 }
@@ -2533,8 +2558,8 @@ button:disabled {
   min-height: 20px;
   margin-top: 8px;
   color: var(--muted);
-  font-size: 13px;
-  font-weight: 800;
+  font-size: 12px;
+  font-weight: 640;
 }
 
 .image-upload-status.uploading {
