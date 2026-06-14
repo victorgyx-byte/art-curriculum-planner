@@ -1997,8 +1997,9 @@ function ensureLessonInheritsUnitCards(unit, lesson) {
 }
 
 function cardKey(card) {
-  if (allowsDuplicateBoardCard(card.type, card.label) && card.id) return `${card.id}:${card.type}:${card.label}`;
-  return `${card.type}:${card.label}`;
+  const label = normalizePlanningLabel(card.label || "", card.type);
+  if (allowsDuplicateBoardCard(card.type, label) && card.id) return `${card.id}:${card.type}:${label}`;
+  return `${card.type}:${label}`;
 }
 
 function unitLessonFeaturedCardKeys(unit) {
@@ -4303,6 +4304,7 @@ function renderBoard() {
     renderEmptyUnitBoard();
     return;
   }
+  unit.boardCards = uniqueBoardCards(unit.boardCards || []);
   els.unitBoardLanding.classList.add("hidden");
   els.boardHeading.classList.remove("hidden");
   els.unitBoard.classList.remove("hidden");
@@ -5805,6 +5807,7 @@ function renderLessonPlanningBoard(lesson) {
   els.lessonBoardZones.forEach((zone) => {
     zone.querySelector(".zone-cards").innerHTML = "";
   });
+  lesson.boardCards = uniqueLessonCards(lesson.boardCards || []).filter(cardAllowedOnLessonBoard);
 
   lesson.boardCards
     .slice()
@@ -6413,16 +6416,22 @@ function cardTypeLabel(type, card = {}) {
 }
 
 function addBoardCard(unit, payload, point) {
+  const normalizedPayload = {
+    ...payload,
+    label: normalizePlanningLabel(payload.label || "", payload.type),
+  };
   const requestedZone = point?.zone || zoneForType(payload.type);
-  const zone = zoneAllowsType(requestedZone, payload.type) ? requestedZone : zoneForType(payload.type);
-  if (!allowsDuplicateBoardCard(payload.type, payload.label) && unit.boardCards.some((card) => card.type === payload.type && card.label === payload.label)) {
-    const existing = unit.boardCards.find((card) => card.type === payload.type && card.label === payload.label);
-    if (payload.type === "coreExperiences") {
-      addLibraryItemToUnit(unit, payload, { silent: true });
+  const zone = zoneAllowsType(requestedZone, normalizedPayload.type) ? requestedZone : zoneForType(normalizedPayload.type);
+  const incomingKey = cardKey(normalizedPayload);
+  if (!allowsDuplicateBoardCard(normalizedPayload.type, normalizedPayload.label) && unit.boardCards.some((card) => cardKey(card) === incomingKey)) {
+    const existing = unit.boardCards.find((card) => cardKey(card) === incomingKey);
+    if (normalizedPayload.type === "coreExperiences") {
+      addLibraryItemToUnit(unit, normalizedPayload, { silent: true });
       saveState();
       render();
       return;
     }
+    existing.label = normalizedPayload.label;
     existing.lessonOrigin = false;
     existing.sourceLessonIds = [];
     existing.zone = zone;
@@ -6434,16 +6443,16 @@ function addBoardCard(unit, payload, point) {
   }
   const card = {
     id: uid("card"),
-    type: payload.type,
-    label: payload.label,
+    type: normalizedPayload.type,
+    label: normalizedPayload.label,
     zone,
     order: nextBoardOrder(unit, zone),
-    value: defaultTextCardValue(unit, payload),
-    confirmed: Boolean(defaultTextCardValue(unit, payload)),
-    purpose: defaultPurpose(payload),
+    value: defaultTextCardValue(unit, normalizedPayload),
+    confirmed: Boolean(defaultTextCardValue(unit, normalizedPayload)),
+    purpose: defaultPurpose(normalizedPayload),
   };
   unit.boardCards.push(card);
-  addLibraryItemToUnit(unit, payload, { silent: true });
+  addLibraryItemToUnit(unit, normalizedPayload, { silent: true });
   syncUnitCardToLessons(unit, card);
   saveState();
   render();
@@ -6479,14 +6488,20 @@ function removeBoardCard(unit, card) {
 
 function addLessonBoardCard(unit, lesson, payload, options = {}) {
   if (!lesson || !payload) return;
-  if (!cardAllowedOnLessonBoard(payload)) return;
-  const requestedZone = options.zone || lessonZoneForType(payload.type);
-  const zone = lessonZoneAllowsType(requestedZone, payload.type) ? requestedZone : lessonZoneForType(payload.type);
-  const syncToUnit = !lessonOnlyCardTypes.has(payload.type);
-  const unitCard = syncToUnit ? ensureUnitHasCard(unit, payload, { source: "lesson", sourceLessonId: lesson.id }) : null;
+  const normalizedPayload = {
+    ...payload,
+    label: normalizePlanningLabel(payload.label || "", payload.type),
+  };
+  if (!cardAllowedOnLessonBoard(normalizedPayload)) return;
+  const requestedZone = options.zone || lessonZoneForType(normalizedPayload.type);
+  const zone = lessonZoneAllowsType(requestedZone, normalizedPayload.type) ? requestedZone : lessonZoneForType(normalizedPayload.type);
+  const syncToUnit = !lessonOnlyCardTypes.has(normalizedPayload.type);
+  const unitCard = syncToUnit ? ensureUnitHasCard(unit, normalizedPayload, { source: "lesson", sourceLessonId: lesson.id }) : null;
   const inheritedFromUnit = Boolean(unitCard && !unitCard.lessonOrigin);
-  const existing = lesson.boardCards.find((card) => card.type === payload.type && card.label === payload.label);
-  if (existing && !allowsDuplicateBoardCard(payload.type, payload.label)) {
+  const incomingKey = cardKey(normalizedPayload);
+  const existing = lesson.boardCards.find((card) => cardKey(card) === incomingKey);
+  if (existing && !allowsDuplicateBoardCard(normalizedPayload.type, normalizedPayload.label)) {
+    existing.label = normalizedPayload.label;
     existing.zone = zone;
     existing.inherited = inheritedFromUnit;
     existing.unitCardKey = inheritedFromUnit ? cardKey(unitCard) : "";
@@ -6496,8 +6511,8 @@ function addLessonBoardCard(unit, lesson, payload, options = {}) {
   }
   lesson.boardCards.push({
     id: uid("lesson-card"),
-    type: payload.type,
-    label: payload.label,
+    type: normalizedPayload.type,
+    label: normalizedPayload.label,
     zone,
     order: nextLessonCardOrder(lesson, zone),
     inherited: inheritedFromUnit,
@@ -6508,24 +6523,30 @@ function addLessonBoardCard(unit, lesson, payload, options = {}) {
 
 function ensureUnitHasCard(unit, payload, options = {}) {
   if (!unit || !payload) return null;
-  const existing = unit.boardCards.find((card) => card.type === payload.type && card.label === payload.label);
-  if (existing && !allowsDuplicateBoardCard(payload.type, payload.label)) {
+  const normalizedPayload = {
+    ...payload,
+    label: normalizePlanningLabel(payload.label || "", payload.type),
+  };
+  const incomingKey = cardKey(normalizedPayload);
+  const existing = unit.boardCards.find((card) => cardKey(card) === incomingKey);
+  if (existing && !allowsDuplicateBoardCard(normalizedPayload.type, normalizedPayload.label)) {
+    existing.label = normalizedPayload.label;
     if (options.source === "lesson" && existing.lessonOrigin && options.sourceLessonId) {
       existing.sourceLessonIds = existing.sourceLessonIds || [];
       addUnique(existing.sourceLessonIds, options.sourceLessonId);
     }
     return existing;
   }
-  const zone = zoneForType(payload.type);
+  const zone = zoneForType(normalizedPayload.type);
   const card = {
     id: uid("card"),
-    type: payload.type,
-    label: payload.label,
+    type: normalizedPayload.type,
+    label: normalizedPayload.label,
     zone,
     order: nextBoardOrder(unit, zone),
-    value: defaultTextCardValue(unit, payload),
-    confirmed: Boolean(defaultTextCardValue(unit, payload)),
-    purpose: defaultPurpose(payload),
+    value: defaultTextCardValue(unit, normalizedPayload),
+    confirmed: Boolean(defaultTextCardValue(unit, normalizedPayload)),
+    purpose: defaultPurpose(normalizedPayload),
     lessonOrigin: options.source === "lesson",
     sourceLessonIds: options.sourceLessonId ? [options.sourceLessonId] : [],
   };
