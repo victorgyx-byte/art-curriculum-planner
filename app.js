@@ -4500,7 +4500,7 @@ function renderUnitOverview(unit) {
     </div>
     <article class="unit-document">
       <dl class="lap-summary-list unit-summary-list">
-        <dt>Performance Task / Evidence of Learning</dt><dd>${escapeHtml(unit.artTask || "Not yet planned")}</dd>
+        <dt>Performance Task / Evidence of Learning</dt><dd>${renderTeacherText(unit.artTask || "Not yet planned")}</dd>
         <dt>Lesson Count</dt><dd>${escapeHtml(unitLessonCountLabel(unit))}</dd>
         <dt>Meaning</dt><dd>${unitOverviewInlineGroups([
           ["Big Idea(s)", overviewValues(unit, "bigIdeas")],
@@ -4590,7 +4590,7 @@ function lessonSequenceOverviewList(unit) {
       <div class="unit-summary-lesson">
         <div>
           <strong>Lesson ${index + 1}${lesson.title ? `: ${escapeHtml(lesson.title)}` : ""}</strong>
-          <p>${escapeHtml(description)}</p>
+          ${renderTeacherText(description)}
           ${structures.length ? `<p><strong>Structure:</strong> ${escapeHtml(structures.join(", "))}</p>` : ""}
           ${lesson.steps?.length ? `<ul>${lesson.steps.map((step) => `<li>${escapeHtml(lessonActivitySummaryText(step))}</li>`).join("")}</ul>` : ""}
         </div>
@@ -4612,7 +4612,7 @@ function lessonSequenceOverview(unit) {
           <article class="unit-document-lesson">
             <div>
               <h4>Lesson ${index + 1}${lesson.title ? `: ${escapeHtml(lesson.title)}` : ""}</h4>
-              <p>${escapeHtml(description || "Not yet planned")}</p>
+              ${renderTeacherText(description || "Not yet planned")}
               ${structures.length ? `<p><strong>Structure:</strong> ${escapeHtml(structures.join(", "))}</p>` : ""}
               ${lesson.steps?.length ? `<ul class="unit-document-activities">${lesson.steps.map((step) => `<li>${escapeHtml(lessonActivitySummaryText(step))}</li>`).join("")}</ul>` : ""}
             </div>
@@ -4775,6 +4775,9 @@ function wordDocumentHtml(title, bodyHtml) {
     h3 { font-size: 11pt; margin: 10pt 0 4pt; color: #6f6a61; text-transform: uppercase; }
     p { margin: 0 0 8pt; }
     ul, ol { margin-top: 4pt; }
+    .formatted-teacher-text p { margin: 0 0 8pt; }
+    .formatted-teacher-text ul, .formatted-teacher-text ol { margin: 4pt 0 8pt; padding-left: 18pt; }
+    .formatted-field-label { margin: 8pt 0 3pt; color: #6f6a61; font-size: 9pt; font-weight: bold; text-transform: uppercase; }
     table { width: 100%; border-collapse: collapse; margin: 8pt 0 14pt; }
     th, td { border: 1px solid #d8d0c4; padding: 6pt; vertical-align: top; }
     th { background: #f4efe7; text-align: left; }
@@ -4887,11 +4890,66 @@ function wordList(values) {
     : `<p class="not-planned">Not yet planned</p>`;
 }
 
+function renderTeacherText(value, options = {}) {
+  const fallback = options.fallback || "Not yet planned";
+  const text = String(value || "").replace(/\r\n?/g, "\n").trim();
+  if (!text) return `<p class="not-planned">${escapeHtml(fallback)}</p>`;
+
+  const blocks = [];
+  let paragraphLines = [];
+  let listType = "";
+  let listItems = [];
+
+  const flushParagraph = () => {
+    if (!paragraphLines.length) return;
+    blocks.push(`<p>${paragraphLines.map((line) => escapeHtml(line.trim())).filter(Boolean).join("<br>")}</p>`);
+    paragraphLines = [];
+  };
+
+  const flushList = () => {
+    if (!listItems.length) return;
+    const tag = listType === "ol" ? "ol" : "ul";
+    blocks.push(`<${tag}>${listItems.map((item) => `<li>${escapeHtml(item.trim())}</li>`).join("")}</${tag}>`);
+    listType = "";
+    listItems = [];
+  };
+
+  text.split("\n").forEach((rawLine) => {
+    const line = rawLine.trim();
+    if (!line) {
+      flushParagraph();
+      flushList();
+      return;
+    }
+
+    const numbered = line.match(/^(\d+)[.)]\s+(.+)$/);
+    const bulleted = line.match(/^[-*•]\s+(.+)$/);
+
+    if (numbered || bulleted) {
+      const nextType = numbered ? "ol" : "ul";
+      flushParagraph();
+      if (listType && listType !== nextType) flushList();
+      listType = nextType;
+      listItems.push(numbered ? numbered[2] : bulleted[1]);
+      return;
+    }
+
+    if (listItems.length) {
+      listItems[listItems.length - 1] = `${listItems[listItems.length - 1]} ${line}`;
+      return;
+    }
+
+    paragraphLines.push(line);
+  });
+
+  flushParagraph();
+  flushList();
+
+  return `<div class="formatted-teacher-text">${blocks.join("")}</div>`;
+}
+
 function wordParagraph(value) {
-  const lines = String(value || "").split(/\n+/).map((line) => line.trim()).filter(Boolean);
-  return lines.length
-    ? lines.map((line) => `<p>${escapeHtml(line)}</p>`).join("")
-    : `<p class="not-planned">Not yet planned</p>`;
+  return renderTeacherText(value);
 }
 
 function copyTextFallback(text) {
@@ -4911,7 +4969,7 @@ function unitOverviewCopyHtml(unit) {
   return `
     <h1>${escapeHtml(unit.title || "Untitled Unit")}</h1>
     <h2>Performance Task / Evidence of Learning</h2>
-    <p>${escapeHtml(unit.artTask || "Not yet planned")}</p>
+    ${renderTeacherText(unit.artTask || "Not yet planned")}
     <p><strong>Lesson Count:</strong> ${escapeHtml(unitLessonCountLabel(unit))}</p>
     ${unitOverviewCopySections(unit).map(([title, groups]) => `
       <h2>${escapeHtml(title)}</h2>
@@ -4921,7 +4979,7 @@ function unitOverviewCopyHtml(unit) {
       `).join("")}
     `).join("")}
     <h2>Lesson Sequence</h2>
-    ${unit.lessons?.length ? `<ol>${unit.lessons.map((lesson) => `<li><strong>${escapeHtml(lesson.title || "Untitled Lesson")}</strong><br>${escapeHtml(lesson.description || lesson.details || "Not yet planned")}${lesson.steps?.length ? `<ul>${lesson.steps.map((step) => `<li>${escapeHtml(lessonActivitySummaryText(step))}</li>`).join("")}</ul>` : ""}</li>`).join("")}</ol>` : "<p>Not yet planned</p>"}
+    ${unit.lessons?.length ? `<ol>${unit.lessons.map((lesson) => `<li><strong>${escapeHtml(lesson.title || "Untitled Lesson")}</strong>${renderTeacherText(lesson.description || lesson.details || "Not yet planned")}${lesson.steps?.length ? `<ul>${lesson.steps.map((step) => `<li>${escapeHtml(lessonActivitySummaryText(step))}</li>`).join("")}</ul>` : ""}</li>`).join("")}</ol>` : "<p>Not yet planned</p>"}
   `;
 }
 
@@ -5709,8 +5767,8 @@ function lessonConfirmedSummary(unit, lesson) {
       ${lessonImageSrc ? `<img class="lap-summary-image" src="${escapeAttr(lessonImageSrc)}" alt="${escapeAttr(lesson.imageName || "Lesson reference image")}" />` : ""}
       <dl class="lap-summary-list lesson-summary-list">
         <dt>Lesson Title</dt><dd>${escapeHtml(lesson.title || "Not set")}</dd>
-        <dt>Lesson Description</dt><dd>${escapeHtml(lesson.description || "Not set")}</dd>
-        <dt>Lesson Objectives</dt><dd>${escapeHtml(lesson.objectives || "Not set")}</dd>
+        <dt>Lesson Description</dt><dd>${renderTeacherText(lesson.description || "Not set", { fallback: "Not set" })}</dd>
+        <dt>Lesson Objectives</dt><dd>${renderTeacherText(lesson.objectives || "Not set", { fallback: "Not set" })}</dd>
         <dt>Lesson Duration</dt><dd>${escapeHtml(lessonDurationLabel(lesson))}</dd>
         <dt>Curricular Goals</dt><dd>${lessonOverviewGroups(lesson, [
           ["Learning Outcomes", "learningOutcomes"],
@@ -5766,9 +5824,9 @@ function lessonActivityOverviewHtml(step, index) {
       <div>
         <strong>Activity ${index + 1}${step.type ? `: ${escapeHtml(step.type)}` : ""}</strong>
         ${step.duration ? `<p><strong>Duration:</strong> ${escapeHtml(String(step.duration))} minutes</p>` : ""}
-        ${step.description ? `<p>${escapeHtml(step.description)}</p>` : `<p class="not-planned">Details not yet planned</p>`}
-        ${step.evidence ? `<p><strong>Evidence for Assessment:</strong> ${escapeHtml(step.evidence)}</p>` : ""}
-        ${step.customisation ? `<p><strong>Customisation:</strong> ${escapeHtml(step.customisation)}</p>` : ""}
+        ${step.description ? renderTeacherText(step.description) : `<p class="not-planned">Details not yet planned</p>`}
+        ${step.evidence ? `<div class="formatted-field-label">Evidence for Assessment</div>${renderTeacherText(step.evidence)}` : ""}
+        ${step.customisation ? `<div class="formatted-field-label">Customisation</div>${renderTeacherText(step.customisation)}` : ""}
       </div>
     </div>
   `;
@@ -6154,11 +6212,11 @@ function lessonActivityDisplayContent(step) {
       </div>
       <div>
         <div class="lesson-activity-display-label">Activity Details</div>
-        <div class="lesson-activity-display-value">${escapeHtml(step.description || "Not set")}</div>
+        <div class="lesson-activity-display-value">${renderTeacherText(step.description || "Not set", { fallback: "Not set" })}</div>
       </div>
       <div>
         <div class="lesson-activity-display-label">Evidence for Assessment</div>
-        <div class="lesson-activity-display-value">${escapeHtml(step.evidence || "Not set")}</div>
+        <div class="lesson-activity-display-value">${renderTeacherText(step.evidence || "Not set", { fallback: "Not set" })}</div>
       </div>
     </div>
   `;
@@ -6177,7 +6235,7 @@ function reflectionCheckpointDisplayContent(step) {
       </div>
       <div>
         <div class="lesson-activity-display-label">Reflection Prompt</div>
-        <div class="lesson-activity-display-value">${escapeHtml(step.reflectionPrompt || step.description || "Not set")}</div>
+        <div class="lesson-activity-display-value">${renderTeacherText(step.reflectionPrompt || step.description || "Not set", { fallback: "Not set" })}</div>
       </div>
     </div>
   `;
@@ -6187,8 +6245,8 @@ function lessonActivitySummaryHtml(step, index) {
   return `
     <div class="lap-step-summary">
       <strong>${index + 1}. ${escapeHtml(step.type || "Activity")}${step.duration ? ` · ${escapeHtml(step.duration)} min` : ""}</strong>
-      <br>${escapeHtml(step.description || "No activity detail")}
-      ${step.evidence ? `<br><span>Evidence: ${escapeHtml(step.evidence)}</span>` : ""}
+      ${renderTeacherText(step.description || "No activity detail", { fallback: "No activity detail" })}
+      ${step.evidence ? `<span>Evidence:</span>${renderTeacherText(step.evidence)}` : ""}
     </div>
   `;
 }

@@ -1554,6 +1554,7 @@ button:disabled {
   font-size: 12px;
   font-weight: 650;
   line-height: 1.25;
+  white-space: pre-line;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
@@ -1994,6 +1995,37 @@ button:disabled {
   margin: 0;
 }
 
+.formatted-teacher-text {
+  display: grid;
+  gap: 7px;
+  max-width: 84ch;
+  white-space: normal;
+}
+
+.formatted-teacher-text p {
+  margin: 0;
+}
+
+.formatted-teacher-text ul,
+.formatted-teacher-text ol {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding-left: 22px;
+}
+
+.formatted-teacher-text li {
+  padding-left: 2px;
+}
+
+.formatted-field-label {
+  margin: 8px 0 4px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
 .unit-summary-group + .unit-summary-group,
 .unit-summary-lesson + .unit-summary-lesson {
   margin-top: 10px;
@@ -2245,6 +2277,7 @@ button:disabled {
   font-size: 13px;
   font-weight: 700;
   line-height: 1.4;
+  white-space: pre-line;
   display: -webkit-box;
   overflow: hidden;
   -webkit-box-orient: vertical;
