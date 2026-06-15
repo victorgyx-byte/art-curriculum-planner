@@ -149,6 +149,10 @@ const defaultCardLibrary = [
       "Differentiated Instruction (DI)",
       "E-Pedagogy",
       "Collaborative Art Making & Learning",
+      "Experiential Learning",
+      "Embodied Learning",
+      "Disciplinary & Interdisciplinary Learning",
+      "Dialogic Talk",
     ],
   },
   {
@@ -335,6 +339,42 @@ const libraryCardDetails = {
     context: [
       "As one of the two key drivers of student assessment literacy, peer assessment involves students evaluating each other's work using clear criteria, acting as learning resources for one another. Beyond providing feedback, the process of assessing a peer's work deepens students' own understanding of what quality looks like and builds important collaborative skills.",
       "Provide students with clear rubrics or criteria so their feedback is specific and useful, and build in time for them to act on what they receive. Students need to be explicitly taught how to give constructive feedback. Without this scaffolding, peer assessment can easily become superficial or unhelpful.",
+    ],
+  },
+  "Experiential Learning": {
+    tone: "pedagogy",
+    title: "Experiential Learning",
+    detailLabel: "",
+    context: [
+      "Students engage directly with real-world environments, materials, or situations. The unit is designed around a cycle of experience, reflection, and application — helping students make meaningful connections between what they do and what they learn.",
+      "Unit Design Prompt: What concrete experience will anchor this unit, and how will students reflect and apply what they learn?",
+    ],
+  },
+  "Embodied Learning": {
+    tone: "pedagogy",
+    title: "Embodied Learning",
+    detailLabel: "",
+    context: [
+      "Physical and sensory engagement is not just an activity — it is the primary vehicle for understanding. Teachers design creative experiences where students use movement, gesture, or making to surface and express their thinking.",
+      "Unit Design Prompt: How will students use their bodies and senses to make meaning across this unit?",
+    ],
+  },
+  "Disciplinary & Interdisciplinary Learning": {
+    tone: "pedagogy",
+    title: "Disciplinary & Interdisciplinary Learning",
+    detailLabel: "",
+    context: [
+      "Students are immersed in the ways of thinking, questioning, and problem-solving characteristic of a discipline or across disciplines. Teachers design tasks that require students to apply disciplinary lenses to authentic, complex problems.",
+      "Unit Design Prompt: What disciplinary thinking or cross-disciplinary connections do you want students to develop in this unit?",
+    ],
+  },
+  "Dialogic Talk": {
+    tone: "pedagogy",
+    title: "Dialogic Talk",
+    detailLabel: "",
+    context: [
+      "Purposeful talk is the engine of learning. Teachers design structured opportunities for students to articulate, challenge, and refine their thinking through dialogue — moving beyond recitation towards genuine intellectual exchange.",
+      "Unit Design Prompt: What kinds of talk will you design for, and how will dialogue help students build understanding in this unit?",
     ],
   },
   "Guiding Question": {
