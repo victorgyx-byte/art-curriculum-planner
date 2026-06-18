@@ -932,7 +932,8 @@ button:disabled {
 
 .library-panel {
   display: grid;
-  align-content: start;
+  grid-template-rows: auto auto minmax(260px, 1fr);
+  align-content: stretch;
   gap: 14px;
   min-height: 0;
   max-height: calc(100vh - 112px);
@@ -974,7 +975,8 @@ button:disabled {
 .card-library-panel {
   display: flex;
   flex-direction: column;
-  max-height: min(56vh, 680px);
+  grid-row: 3;
+  max-height: none;
   min-height: 0;
   overflow: hidden;
 }
@@ -989,9 +991,10 @@ button:disabled {
 }
 
 .unit-list-panel {
+  grid-row: 1;
   display: flex;
   flex-direction: column;
-  max-height: min(38vh, 380px);
+  max-height: min(30vh, 320px);
   min-height: 0;
 }
 
@@ -1003,9 +1006,10 @@ button:disabled {
 }
 
 .lesson-nav-panel {
+  grid-row: 2;
   display: flex;
   flex-direction: column;
-  max-height: min(42vh, 420px);
+  max-height: min(30vh, 320px);
   min-height: 0;
 }
 
@@ -1758,7 +1762,7 @@ button:disabled {
 .analysis-card {
   border: 1px solid rgba(216, 208, 194, 0.86);
   border-radius: var(--radius);
-  padding: 10px;
+  padding: 12px;
   background: rgba(255, 253, 250, 0.84);
 }
 
@@ -1771,12 +1775,16 @@ button:disabled {
 
 .analysis-list {
   display: grid;
-  gap: 8px;
+  gap: 7px;
 }
 
 .analysis-row {
   display: grid;
-  gap: 4px;
+  grid-template-columns: minmax(0, 1fr) minmax(112px, 0.24fr);
+  gap: 8px;
+  align-items: center;
+  border-bottom: 1px solid rgba(216, 208, 194, 0.34);
+  padding: 2px 0 7px;
 }
 
 .analysis-row.empty {
@@ -1791,8 +1799,12 @@ button:disabled {
 .analysis-row-main span {
   color: var(--ink);
   font-size: 12px;
-  font-weight: 850;
-  line-height: 1.25;
+  font-weight: 650;
+  line-height: 1.32;
+}
+
+.analysis-row-main span strong {
+  font-weight: 950;
 }
 
 .analysis-row-main small {
@@ -1801,8 +1813,15 @@ button:disabled {
   font-weight: 750;
 }
 
+.analysis-row-status {
+  display: grid;
+  gap: 5px;
+  justify-items: end;
+}
+
 .analysis-bar {
-  height: 6px;
+  width: 100%;
+  height: 4px;
   overflow: hidden;
   border-radius: 999px;
   background: rgba(216, 208, 194, 0.62);
@@ -1815,6 +1834,154 @@ button:disabled {
   background: var(--accent);
 }
 
+.analysis-card-summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin: -2px 0 9px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.analysis-card-summary strong {
+  color: var(--accent);
+}
+
+.coverage-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  border-radius: 999px;
+  padding: 3px 8px;
+  background: rgba(219, 238, 237, 0.78);
+  color: var(--accent);
+  font-size: 10.5px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.coverage-pill.low {
+  background: rgba(255, 232, 187, 0.78);
+  color: #936515;
+}
+
+.coverage-pill.empty {
+  background: rgba(216, 208, 194, 0.52);
+  color: var(--muted);
+}
+
+.attention-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  border: 1px solid rgba(185, 118, 33, 0.26);
+  border-radius: var(--radius);
+  padding: 9px 10px;
+  background: rgba(255, 248, 242, 0.86);
+  color: #74501a;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.attention-strip strong {
+  color: var(--ink);
+  text-transform: uppercase;
+}
+
+.attention-strip span {
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.attention-strip.settled {
+  border-color: rgba(47, 111, 115, 0.2);
+  background: rgba(219, 238, 237, 0.46);
+  color: var(--accent);
+}
+
+.distribution-analysis-card {
+  min-height: 0;
+}
+
+.distribution-layout {
+  display: grid;
+  grid-template-columns: 118px minmax(0, 1fr);
+  gap: 14px;
+  align-items: center;
+}
+
+.distribution-donut {
+  display: grid;
+  place-items: center;
+  width: 96px;
+  aspect-ratio: 1;
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 20px rgba(255, 253, 250, 0.82);
+}
+
+.distribution-donut span {
+  display: grid;
+  place-items: center;
+  width: 54px;
+  aspect-ratio: 1;
+  border-radius: 999px;
+  background: rgba(255, 253, 250, 0.95);
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 950;
+}
+
+.distribution-caption {
+  display: block;
+  width: 96px;
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 10.5px;
+  font-weight: 850;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.analysis-card-collapsible {
+  padding: 0;
+}
+
+.analysis-card-collapsible details {
+  padding: 10px 12px;
+}
+
+.analysis-card-collapsible summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.analysis-card-collapsible summary small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 850;
+  text-transform: none;
+}
+
+.analysis-card-collapsible .analysis-card-summary {
+  margin-top: 10px;
+}
+
+.compact-analysis-list {
+  max-height: 300px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
 .pedagogy-analysis-card {
   grid-column: span 2;
 }
@@ -1824,6 +1991,10 @@ button:disabled {
   grid-template-columns: 112px minmax(0, 1fr);
   gap: 14px;
   align-items: center;
+}
+
+.pedagogy-chart-layout .analysis-row {
+  grid-template-columns: 1fr;
 }
 
 .pedagogy-pie {
@@ -2282,6 +2453,38 @@ button:disabled {
   gap: 6px;
   flex-wrap: wrap;
   justify-content: flex-end;
+}
+
+.lesson-step-card.confirmed .lesson-actions {
+  opacity: 0.58;
+  transition: opacity 0.16s ease;
+}
+
+.lesson-step-card.confirmed:hover .lesson-actions,
+.lesson-step-card.confirmed:focus-within .lesson-actions {
+  opacity: 1;
+}
+
+.lesson-flow-header {
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.lesson-flow-kicker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.lesson-flow-kicker span {
+  border-radius: 999px;
+  padding: 3px 8px;
+  background: rgba(219, 238, 237, 0.52);
 }
 
 .lesson-remove,
@@ -2993,16 +3196,28 @@ button:disabled {
   margin-top: 0;
 }
 
-.lesson-activity-display {
+.lesson-flow-content {
   display: grid;
-  grid-template-columns: minmax(150px, 0.8fr) minmax(90px, 0.45fr) minmax(220px, 1.4fr) minmax(220px, 1.4fr);
-  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 0.42fr);
+  gap: 14px;
+  align-items: start;
 }
 
-.reflection-checkpoint-display {
-  grid-template-columns: minmax(90px, 0.45fr) minmax(170px, 0.9fr) minmax(260px, 1.7fr);
+.reflection-flow-content {
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 0.32fr);
 }
 
+.lesson-flow-main,
+.lesson-flow-side {
+  min-width: 0;
+}
+
+.lesson-flow-side {
+  border-left: 1px solid rgba(216, 208, 194, 0.68);
+  padding-left: 14px;
+}
+
+.lesson-flow-label,
 .lesson-activity-display-label {
   color: var(--muted);
   font-size: 10.5px;
@@ -3010,12 +3225,26 @@ button:disabled {
   text-transform: uppercase;
 }
 
+.lesson-flow-text,
 .lesson-activity-display-value {
   margin-top: 4px;
   color: var(--ink);
   font-size: 13.5px;
-  font-weight: 780;
-  line-height: 1.35;
+  font-weight: 600;
+  line-height: 1.42;
+}
+
+.lesson-flow-main .lesson-flow-text {
+  font-size: 14.5px;
+  font-weight: 720;
+}
+
+.reflection-checkpoint-card.confirmed .lesson-flow-kicker span {
+  background: rgba(245, 223, 193, 0.72);
+}
+
+.reflection-checkpoint-card.confirmed .lesson-flow-main .lesson-flow-text {
+  font-size: 14px;
 }
 
 .unit-document-activities {
@@ -3756,12 +3985,33 @@ button:disabled {
     grid-template-columns: 1fr;
   }
 
+  .distribution-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .analysis-row {
+    grid-template-columns: 1fr;
+  }
+
+  .analysis-row-status {
+    justify-items: start;
+  }
+
   .lesson-activity-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .lesson-flow-content,
+  .reflection-flow-content,
   .lesson-activity-display {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .lesson-flow-side {
+    border-left: 0;
+    border-top: 1px solid rgba(216, 208, 194, 0.68);
+    padding-top: 10px;
+    padding-left: 0;
   }
 
   .lesson-planning-board .curricular-zone,
@@ -3823,6 +4073,8 @@ button:disabled {
 
   .lesson-activity-grid,
   .reflection-checkpoint-grid,
+  .lesson-flow-content,
+  .reflection-flow-content,
   .lesson-activity-display,
   .reflection-checkpoint-display {
     grid-template-columns: 1fr;
@@ -4156,6 +4408,7 @@ button:disabled {
     grid-template-columns: 1fr;
   }
 
+  .lesson-flow-content,
   .lesson-activity-display {
     grid-template-columns: 1fr;
   }

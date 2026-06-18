@@ -6118,11 +6118,16 @@ function renderLessonSteps(lesson) {
     item.draggable = true;
     item.dataset.stepId = step.id;
     if (step.confirmed) item.classList.add("confirmed");
+    const stepTitle = isReflectionCheckpoint(step) ? "Reflection Checkpoint" : `Activity ${index + 1}`;
+    const stepKind = isReflectionCheckpoint(step) ? (step.reflectionPurpose || step.evidence || "Curricular goal") : step.type || "Activity";
+    const stepDuration = isReflectionCheckpoint(step) ? "5 min" : step.duration ? `${step.duration} min` : "Duration not set";
     item.innerHTML = `
-      <div class="lesson-card-header">
+      <div class="lesson-card-header ${step.confirmed ? "lesson-flow-header" : ""}">
         <div>
-          <div class="lesson-number">${isReflectionCheckpoint(step) ? "Reflection Checkpoint" : `Activity ${index + 1}`}</div>
-          ${step.confirmed ? "" : `<div class="lesson-subtitle">${isReflectionCheckpoint(step) ? "5 minutes" : "Inquiry Activity"}</div>`}
+          <div class="lesson-number">${escapeHtml(stepTitle)}</div>
+          ${step.confirmed
+            ? `<div class="lesson-flow-kicker"><span>${escapeHtml(stepKind)}</span><span>${escapeHtml(stepDuration)}</span></div>`
+            : `<div class="lesson-subtitle">${isReflectionCheckpoint(step) ? "5 minutes" : "Inquiry Activity"}</div>`}
         </div>
         <div class="lesson-actions">
           <button class="activity-move" data-direction="up" type="button" ${index === 0 ? "disabled" : ""} aria-label="Move Activity ${index + 1} up">↑</button>
@@ -6306,42 +6311,30 @@ function reflectionCheckpointEditContent(step) {
 function lessonActivityDisplayContent(step) {
   if (isReflectionCheckpoint(step)) return reflectionCheckpointDisplayContent(step);
   return `
-    <div class="lesson-activity-display">
-      <div>
-        <div class="lesson-activity-display-label">Activity Type</div>
-        <div class="lesson-activity-display-value">${escapeHtml(step.type || "Not set")}</div>
+    <div class="lesson-flow-content">
+      <div class="lesson-flow-main">
+        <div class="lesson-flow-label">Activity details</div>
+        <div class="lesson-flow-text">${renderTeacherText(step.description || "Not set", { fallback: "Not set" })}</div>
       </div>
-      <div>
-        <div class="lesson-activity-display-label">Duration</div>
-        <div class="lesson-activity-display-value">${escapeHtml(step.duration ? `${step.duration} min` : "Not set")}</div>
-      </div>
-      <div>
-        <div class="lesson-activity-display-label">Activity Details</div>
-        <div class="lesson-activity-display-value">${renderTeacherText(step.description || "Not set", { fallback: "Not set" })}</div>
-      </div>
-      <div>
-        <div class="lesson-activity-display-label">Evidence for Assessment</div>
-        <div class="lesson-activity-display-value">${renderTeacherText(step.evidence || "Not set", { fallback: "Not set" })}</div>
-      </div>
+      <aside class="lesson-flow-side">
+        <div class="lesson-flow-label">Evidence</div>
+        <div class="lesson-flow-text">${renderTeacherText(step.evidence || "Not set", { fallback: "Not set" })}</div>
+      </aside>
     </div>
   `;
 }
 
 function reflectionCheckpointDisplayContent(step) {
   return `
-    <div class="lesson-activity-display reflection-checkpoint-display">
-      <div>
-        <div class="lesson-activity-display-label">Duration</div>
-        <div class="lesson-activity-display-value">5 min</div>
+    <div class="lesson-flow-content reflection-flow-content">
+      <div class="lesson-flow-main">
+        <div class="lesson-flow-label">Reflection prompt</div>
+        <div class="lesson-flow-text">${renderTeacherText(step.reflectionPrompt || step.description || "Not set", { fallback: "Not set" })}</div>
       </div>
-      <div>
-        <div class="lesson-activity-display-label">Purpose</div>
-        <div class="lesson-activity-display-value">${escapeHtml(step.reflectionPurpose || step.evidence || "Curricular goal")}</div>
-      </div>
-      <div>
-        <div class="lesson-activity-display-label">Reflection Prompt</div>
-        <div class="lesson-activity-display-value">${renderTeacherText(step.reflectionPrompt || step.description || "Not set", { fallback: "Not set" })}</div>
-      </div>
+      <aside class="lesson-flow-side">
+        <div class="lesson-flow-label">Purpose</div>
+        <div class="lesson-flow-text">${escapeHtml(step.reflectionPurpose || step.evidence || "Curricular goal")}</div>
+      </aside>
     </div>
   `;
 }
@@ -7209,11 +7202,12 @@ function renderHealth() {
         <p class="eyebrow">HOD Overview</p>
         <h3>Planning Incidence</h3>
       </div>
+      ${renderPlanningAttention(timelineUnits)}
       <div class="analysis-grid">
-        ${renderIncidenceGroup("Big Ideas", timelineUnits, "bigIdeas", libraryItemsByType("bigIdeas"))}
+        ${renderDistributionGroup("Big Ideas", timelineUnits, "bigIdeas", libraryItemsByType("bigIdeas"))}
         ${renderIncidenceGroup("Learning Outcomes", timelineUnits, "learningOutcomes", libraryItemsByType("learningOutcomes"), { source: "lesson" })}
         ${renderIncidenceGroup("21CC Emphasis", timelineUnits, "cc21", libraryItemsByType("cc21"), { source: "lesson" })}
-        ${renderIncidenceGroup("21CC Learning Goals", timelineUnits, "cc21Goals", cc21LessonGoals.map((goal) => goal.label), { source: "lesson" })}
+        ${renderIncidenceGroup("21CC Learning Goals", timelineUnits, "cc21Goals", cc21LessonGoals.map((goal) => goal.label), { source: "lesson", collapsible: true })}
         ${renderIncidenceGroup("Core Learning Experiences", timelineUnits, "coreExperiences", libraryItemsByType("coreExperiences"), { source: "lesson" })}
         ${renderIncidenceGroup("Assessment", timelineUnits, "assessment", libraryItemsByType("assessment"), { source: "lesson" })}
         ${renderPedagogyGroup(timelineUnits)}
@@ -7225,6 +7219,8 @@ function renderHealth() {
 function renderIncidenceGroup(title, units, type, expectedValues = [], options = {}) {
   const lessonBased = options.source === "lesson";
   const rows = lessonBased ? lessonIncidenceRows(units, type, expectedValues) : incidenceRows(units, type, expectedValues);
+  const notPlannedCount = rows.filter((row) => !row.unitCount).length;
+  const coveredCount = rows.length - notPlannedCount;
   if (!rows.length) {
     return `
       <article class="analysis-card">
@@ -7234,24 +7230,127 @@ function renderIncidenceGroup(title, units, type, expectedValues = [], options =
     `;
   }
   const maxTotal = Math.max(1, ...rows.map((row) => lessonBased ? row.lessonCount : row.weeks));
+  const content = `
+    <div class="analysis-card-summary">
+      <span>${coveredCount}/${rows.length} covered</span>
+      ${notPlannedCount ? `<strong>${notPlannedCount} need attention</strong>` : `<strong>Balanced coverage</strong>`}
+    </div>
+    <div class="analysis-list ${options.collapsible ? "compact-analysis-list" : ""}">
+      ${rows.map((row) => `
+        <div class="analysis-row ${row.unitCount ? "" : "empty"}">
+          <div class="analysis-row-main">
+            <span>${formatIncidenceLabel(row.label, type)}</span>
+            <small>${incidenceRowMeta(row, lessonBased)}</small>
+          </div>
+          <div class="analysis-row-status">
+            <span class="coverage-pill ${coverageClass(row, lessonBased)}">${coverageLabel(row, lessonBased)}</span>
+            ${row.unitCount ? `<div class="analysis-bar" aria-hidden="true"><span style="width: ${Math.max(8, ((lessonBased ? row.lessonCount : row.weeks) / maxTotal) * 100)}%"></span></div>` : ""}
+          </div>
+        </div>
+      `).join("")}
+    </div>
+  `;
+  if (options.collapsible) {
+    return `
+      <article class="analysis-card analysis-card-collapsible">
+        <details>
+          <summary>
+            <span>${escapeHtml(title)}</span>
+            <small>${coveredCount}/${rows.length} covered</small>
+          </summary>
+          ${content}
+        </details>
+      </article>
+    `;
+  }
   return `
     <article class="analysis-card">
       <h4>${escapeHtml(title)}</h4>
-      <div class="analysis-list">
-        ${rows.map((row) => `
-          <div class="analysis-row ${row.unitCount ? "" : "empty"}">
-            <div class="analysis-row-main">
-              <span>${escapeHtml(row.label)}</span>
-              <small>${incidenceRowMeta(row, lessonBased)}</small>
-            </div>
-            <div class="analysis-bar" aria-hidden="true">
-              <span style="width: ${row.unitCount ? Math.max(8, ((lessonBased ? row.lessonCount : row.weeks) / maxTotal) * 100) : 0}%"></span>
-            </div>
-          </div>
-        `).join("")}
-      </div>
+      ${content}
     </article>
   `;
+}
+
+function renderDistributionGroup(title, units, type, expectedValues = []) {
+  const rows = incidenceRows(units, type, expectedValues);
+  const activeRows = rows.filter((row) => row.unitCount);
+  const totalWeeks = activeRows.reduce((total, row) => total + row.weeks, 0);
+  const colors = ["#2f6f73", "#d49a2a", "#b5493a", "#7a5b9a", "#4d5f91"];
+  let cursor = 0;
+  const stops = activeRows.map((row, index) => {
+    const start = cursor;
+    const end = totalWeeks ? cursor + (row.weeks / totalWeeks) * 100 : cursor;
+    cursor = end;
+    return `${colors[index % colors.length]} ${start}% ${end}%`;
+  });
+  return `
+    <article class="analysis-card distribution-analysis-card">
+      <h4>${escapeHtml(title)}</h4>
+      ${activeRows.length ? `
+        <div class="distribution-layout">
+          <div>
+            <div class="distribution-donut" style="background: conic-gradient(${stops.join(", ")});" aria-hidden="true">
+              <span>${activeRows.length}/${rows.length}</span>
+            </div>
+            <small class="distribution-caption">ideas used</small>
+          </div>
+          <div class="analysis-list">
+            ${rows.map((row, index) => `
+              <div class="analysis-row ${row.unitCount ? "" : "empty"}">
+                <div class="analysis-row-main">
+                  <span><i class="analysis-swatch" style="background:${colors[index % colors.length]}"></i>${escapeHtml(row.label)}</span>
+                  <small>${incidenceRowMeta(row, false)}</small>
+                </div>
+                <span class="coverage-pill ${coverageClass(row, false)}">${coverageLabel(row, false)}</span>
+              </div>
+            `).join("")}
+          </div>
+        </div>
+      ` : `<p class="not-planned">Not yet planned</p>`}
+    </article>
+  `;
+}
+
+function renderPlanningAttention(units) {
+  const checks = [
+    ["Big Ideas", incidenceRows(units, "bigIdeas", libraryItemsByType("bigIdeas"))],
+    ["Learning Outcomes", lessonIncidenceRows(units, "learningOutcomes", libraryItemsByType("learningOutcomes"))],
+    ["21CC Emphasis", lessonIncidenceRows(units, "cc21", libraryItemsByType("cc21"))],
+    ["21CC Learning Goals", lessonIncidenceRows(units, "cc21Goals", cc21LessonGoals.map((goal) => goal.label))],
+  ];
+  const items = checks
+    .map(([label, rows]) => {
+      const notPlanned = rows.filter((row) => !row.unitCount).length;
+      return notPlanned ? `${notPlanned} ${label} not yet planned` : "";
+    })
+    .filter(Boolean);
+  if (!items.length) return `<div class="attention-strip settled">All tracked areas have some coverage.</div>`;
+  return `
+    <div class="attention-strip">
+      <strong>Needs attention</strong>
+      ${items.map((item) => `<span>${escapeHtml(item)}</span>`).join("")}
+    </div>
+  `;
+}
+
+function formatIncidenceLabel(label, type) {
+  const match = label.match(/^([A-Z]+ ?\d+|LO\d+):\s*(.+)$/);
+  if (!match) return escapeHtml(label);
+  return `<strong>${escapeHtml(match[1])}</strong> ${escapeHtml(match[2])}`;
+}
+
+function coverageLabel(row, lessonBased) {
+  if (!row.unitCount) return "Not planned";
+  const count = lessonBased ? row.lessonCount : row.weeks;
+  if (count <= 2) return "Low";
+  return "Covered";
+}
+
+function coverageClass(row, lessonBased) {
+  if (!row.unitCount) return "empty";
+  const count = lessonBased ? row.lessonCount : row.weeks;
+  if (count <= 2) return "low";
+  return "covered";
 }
 
 function incidenceRowMeta(row, lessonBased) {
