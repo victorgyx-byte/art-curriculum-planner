@@ -2033,13 +2033,69 @@ button:disabled {
   align-items: start;
 }
 
+.assessment-studio-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.34fr) minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.assessment-main-panel {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
 .assessment-matrix-panel,
+.assessment-editor-empty,
 .assessment-task-editor,
 .assessment-task-list-panel {
   border: 1px solid rgba(216, 208, 194, 0.86);
   border-radius: var(--radius);
   padding: 14px;
   background: rgba(255, 253, 250, 0.9);
+}
+
+.assessment-task-list-panel {
+  position: sticky;
+  top: 16px;
+  display: grid;
+  gap: 12px;
+  max-height: calc(100vh - 120px);
+  overflow: auto;
+}
+
+.assessment-rail-heading {
+  display: grid;
+  gap: 10px;
+}
+
+.assessment-rail-heading h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 24px;
+}
+
+.assessment-editor-empty {
+  display: grid;
+  gap: 10px;
+  min-height: 260px;
+  align-content: center;
+}
+
+.assessment-editor-empty h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 24px;
+}
+
+.assessment-editor-empty p {
+  max-width: 620px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 750;
+  line-height: 1.45;
 }
 
 .assessment-matrix {
@@ -2222,15 +2278,40 @@ button:disabled {
   background: #fff;
 }
 
+.assessment-empty-state {
+  display: grid;
+  gap: 10px;
+}
+
 .assessment-task-card.weighted {
   border-left-color: #d49a2a;
+}
+
+.assessment-task-card {
+  cursor: pointer;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
+}
+
+.assessment-task-card:hover,
+.assessment-task-card:focus-visible {
+  border-color: rgba(47, 111, 115, 0.38);
+  box-shadow: 0 12px 24px rgba(37, 35, 32, 0.08);
+  outline: none;
+}
+
+.assessment-task-card.selected {
+  border-color: rgba(47, 111, 115, 0.55);
+  border-left-color: var(--accent);
+  background: rgba(219, 238, 237, 0.42);
+  box-shadow: 0 14px 28px rgba(47, 111, 115, 0.12);
 }
 
 .assessment-task-card h3,
 .assessment-empty-state h3 {
   margin: 0;
   color: var(--ink);
-  font-size: 18px;
+  font-size: 17px;
+  line-height: 1.2;
 }
 
 .assessment-task-card p,
@@ -2273,8 +2354,31 @@ button:disabled {
   line-height: 1.4;
 }
 
-.rubric-placeholder {
-  margin-top: 12px;
+.assessment-task-actions {
+  flex-shrink: 0;
+}
+
+.assessment-rubric-placeholder {
+  display: grid;
+  gap: 6px;
+  border: 1px dashed rgba(216, 208, 194, 0.94);
+  border-radius: 12px;
+  padding: 14px;
+  background: rgba(246, 241, 233, 0.48);
+}
+
+.assessment-rubric-placeholder h4 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 17px;
+}
+
+.assessment-rubric-placeholder p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 750;
+  line-height: 1.4;
 }
 
 .board-heading {
@@ -4629,6 +4733,15 @@ button:disabled {
   .assessment-matrix-grid {
     min-width: 880px;
     grid-template-columns: minmax(210px, 1.2fr) repeat(8, minmax(78px, 0.7fr));
+  }
+
+  .assessment-studio-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .assessment-task-list-panel {
+    position: static;
+    max-height: none;
   }
 
   .activity-teaching-header,

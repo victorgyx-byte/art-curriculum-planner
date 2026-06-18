@@ -1265,6 +1265,7 @@ const defaultState = {
   showAllTeachingActions: false,
   assessmentTaskEditorOpen: false,
   editingAssessmentTaskId: "",
+  selectedAssessmentTaskId: "",
   collapsedCategories: {},
   overlays: {
     bigIdeas: true,
@@ -1513,6 +1514,7 @@ const els = {
   assessmentMatrix: document.querySelector("#assessment-matrix"),
   assessmentTaskList: document.querySelector("#assessment-task-list"),
   newAssessmentTask: document.querySelector("#new-assessment-task"),
+  assessmentEditorEmpty: document.querySelector("#assessment-editor-empty"),
   assessmentTaskEditor: document.querySelector("#assessment-task-editor"),
   assessmentTaskEditorTitle: document.querySelector("#assessment-task-editor-title"),
   assessmentTaskTitle: document.querySelector("#assessment-task-title"),
@@ -1674,6 +1676,7 @@ function normalizeState(candidate) {
   normalized.showAllTeachingActions = Boolean(normalized.showAllTeachingActions);
   normalized.assessmentTaskEditorOpen = Boolean(normalized.assessmentTaskEditorOpen);
   normalized.editingAssessmentTaskId = normalized.editingAssessmentTaskId || "";
+  normalized.selectedAssessmentTaskId = normalized.selectedAssessmentTaskId || "";
   normalized.selectedBoardZone = ["meaning", "alignment", "content", "core"].includes(normalized.selectedBoardZone)
     ? normalized.selectedBoardZone
     : "meaning";
@@ -2836,6 +2839,7 @@ function planStateForContentHash(planState) {
     "showAllTeachingActions",
     "assessmentTaskEditorOpen",
     "editingAssessmentTaskId",
+    "selectedAssessmentTaskId",
     "localSavedAtMs",
     "cloudSavedAtMs",
   ].forEach((key) => delete clone[key]);
@@ -6475,7 +6479,7 @@ function suggestedLessonCc21Outcomes(unit, lesson) {
 }
 
 function lessonItemsFromValues(type, values) {
-  return values.filter(Boolean).map((label) => ({ type, label }));
+  return normalizePlanningValues(values, type).map((label) => ({ type, label }));
 }
 
 function currentArtisticProcessValues(values) {
@@ -8270,9 +8274,39 @@ function renderHealth() {
 function renderAssessmentStudio() {
   if (!els.assessmentScreen) return;
   state.assessmentTasks = normalizeAssessmentTasks(state.assessmentTasks || []);
+  syncAssessmentSelection();
   renderAssessmentMatrix();
   renderAssessmentTaskEditor();
   renderAssessmentTaskList();
+}
+
+function syncAssessmentSelection() {
+  if (state.assessmentTaskEditorOpen && !state.editingAssessmentTaskId) {
+    state.selectedAssessmentTaskId = "";
+    return;
+  }
+  const selectedExists = state.assessmentTasks.some((task) => task.id === state.selectedAssessmentTaskId);
+  const editingExists = state.assessmentTasks.some((task) => task.id === state.editingAssessmentTaskId);
+  if (editingExists) {
+    state.selectedAssessmentTaskId = state.editingAssessmentTaskId;
+    state.assessmentTaskEditorOpen = true;
+    return;
+  }
+  if (selectedExists) {
+    state.editingAssessmentTaskId = state.selectedAssessmentTaskId;
+    state.assessmentTaskEditorOpen = true;
+    return;
+  }
+  const newestTask = state.assessmentTasks[state.assessmentTasks.length - 1];
+  if (newestTask) {
+    state.selectedAssessmentTaskId = newestTask.id;
+    state.editingAssessmentTaskId = newestTask.id;
+    state.assessmentTaskEditorOpen = true;
+    return;
+  }
+  state.selectedAssessmentTaskId = "";
+  state.editingAssessmentTaskId = "";
+  state.assessmentTaskEditorOpen = false;
 }
 
 function renderAssessmentMatrix() {
@@ -8342,6 +8376,7 @@ function renderAssessmentTaskEditor() {
   if (!els.assessmentTaskEditor) return;
   const open = Boolean(state.assessmentTaskEditorOpen);
   els.assessmentTaskEditor.classList.toggle("hidden", !open);
+  els.assessmentEditorEmpty?.classList.toggle("hidden", open);
   if (!open) return;
   const task = state.assessmentTasks.find((candidate) => candidate.id === state.editingAssessmentTaskId) || blankAssessmentTask();
   els.assessmentTaskEditorTitle.textContent = task.id ? "Edit Assessment Task" : "Create Assessment Task";
@@ -8412,6 +8447,7 @@ function renderAssessmentTaskList() {
       <div class="assessment-empty-state">
         <h3>No formal assessment tasks yet</h3>
         <p>Create an Assessment Task when a unit has a formal assessment moment, such as a weighted assessment, portfolio submission, or major performance task.</p>
+        <button class="primary-button" type="button" data-assessment-create>Create Assessment Task</button>
       </div>
     `;
     return;
@@ -8433,8 +8469,9 @@ function renderAssessmentTaskList() {
 
 function assessmentTaskCardHtml(task, placement) {
   const assessedLos = assessmentTaskValidLearningOutcomes(task);
+  const selected = task.id === state.selectedAssessmentTaskId;
   return `
-    <article class="assessment-task-card ${task.weighted ? "weighted" : ""}">
+    <article class="assessment-task-card ${task.weighted ? "weighted" : ""} ${selected ? "selected" : ""}" data-task-id="${escapeAttr(task.id)}" tabindex="0">
       <div class="assessment-task-card-main">
         <div>
           <p class="eyebrow">${task.weighted ? "Weighted Assessment" : escapeHtml(task.type)}</p>
@@ -8442,7 +8479,6 @@ function assessmentTaskCardHtml(task, placement) {
           <p>${escapeHtml(placement.unit?.title || "Unlinked unit")}</p>
         </div>
         <div class="assessment-task-actions">
-          <button class="ghost-button assessment-task-edit" type="button" data-task-id="${escapeAttr(task.id)}">Edit</button>
           <button class="ghost-button assessment-task-delete" type="button" data-task-id="${escapeAttr(task.id)}">Delete</button>
         </div>
       </div>
@@ -8455,7 +8491,6 @@ function assessmentTaskCardHtml(task, placement) {
         ${assessedLos.length ? assessedLos.map((lo) => `<span>${escapeHtml(lo.split(":")[0])}</span>`).join("") : `<span class="missing">No unit LO selected</span>`}
       </div>
       <div class="assessment-task-evidence">${renderTeacherText(task.evidence || "Evidence not yet described", { fallback: "Evidence not yet described" })}</div>
-      <button class="ghost-button rubric-placeholder" type="button" disabled>Draft Rubric From Task · Coming Next</button>
     </article>
   `;
 }
@@ -9142,17 +9177,20 @@ els.unitSetupModal.addEventListener("click", (event) => {
   render();
 });
 
-els.newAssessmentTask?.addEventListener("click", () => {
+function openNewAssessmentTaskEditor() {
   if (!canEditActivePlan()) return;
   state.assessmentTaskEditorOpen = true;
   state.editingAssessmentTaskId = "";
+  state.selectedAssessmentTaskId = "";
   render();
   window.setTimeout(() => els.assessmentTaskTitle?.focus(), 0);
-});
+}
+
+els.newAssessmentTask?.addEventListener("click", openNewAssessmentTaskEditor);
 
 els.cancelAssessmentTask?.addEventListener("click", () => {
-  state.assessmentTaskEditorOpen = false;
   state.editingAssessmentTaskId = "";
+  state.assessmentTaskEditorOpen = false;
   render();
 });
 
@@ -9176,25 +9214,28 @@ els.saveAssessmentTask?.addEventListener("click", () => {
   }
   if (!task.title.trim()) task.title = `${task.type} Task`;
   const existingIndex = state.assessmentTasks.findIndex((candidate) => candidate.id === state.editingAssessmentTaskId);
+  let savedTaskId = state.editingAssessmentTaskId;
   if (existingIndex >= 0) {
     state.assessmentTasks[existingIndex] = { ...state.assessmentTasks[existingIndex], ...task, id: state.editingAssessmentTaskId };
   } else {
-    state.assessmentTasks.push({ ...task, id: uid("assessment-task") });
+    savedTaskId = uid("assessment-task");
+    state.assessmentTasks.push({ ...task, id: savedTaskId });
   }
   state.assessmentTasks = normalizeAssessmentTasks(state.assessmentTasks);
   state.assessmentTaskEditorOpen = false;
-  state.editingAssessmentTaskId = "";
+  state.selectedAssessmentTaskId = savedTaskId;
+  state.editingAssessmentTaskId = savedTaskId;
   saveState();
   render();
 });
 
 els.assessmentTaskList?.addEventListener("click", (event) => {
-  const editButton = event.target.closest(".assessment-task-edit");
+  const createButton = event.target.closest("[data-assessment-create]");
   const deleteButton = event.target.closest(".assessment-task-delete");
-  if (editButton) {
-    state.editingAssessmentTaskId = editButton.dataset.taskId;
-    state.assessmentTaskEditorOpen = true;
-    render();
+  const taskCard = event.target.closest(".assessment-task-card");
+  if (createButton) {
+    event.stopPropagation();
+    openNewAssessmentTaskEditor();
     return;
   }
   if (deleteButton) {
@@ -9203,9 +9244,36 @@ els.assessmentTaskList?.addEventListener("click", (event) => {
     const title = task?.title || "this assessment task";
     if (!window.confirm(`Delete ${title}?`)) return;
     state.assessmentTasks = state.assessmentTasks.filter((candidate) => candidate.id !== deleteButton.dataset.taskId);
+    if (state.selectedAssessmentTaskId === deleteButton.dataset.taskId) state.selectedAssessmentTaskId = "";
+    if (state.editingAssessmentTaskId === deleteButton.dataset.taskId) state.editingAssessmentTaskId = "";
     saveState();
     render();
+    return;
   }
+  if (taskCard?.dataset.taskId) {
+    state.selectedAssessmentTaskId = taskCard.dataset.taskId;
+    state.editingAssessmentTaskId = taskCard.dataset.taskId;
+    state.assessmentTaskEditorOpen = true;
+    saveState({ forceLocal: true });
+    render();
+  }
+});
+
+els.assessmentTaskList?.addEventListener("keydown", (event) => {
+  if (event.key !== "Enter" && event.key !== " ") return;
+  const taskCard = event.target.closest(".assessment-task-card");
+  if (!taskCard?.dataset.taskId) return;
+  event.preventDefault();
+  state.selectedAssessmentTaskId = taskCard.dataset.taskId;
+  state.editingAssessmentTaskId = taskCard.dataset.taskId;
+  state.assessmentTaskEditorOpen = true;
+  saveState({ forceLocal: true });
+  render();
+});
+
+els.assessmentScreen?.addEventListener("click", (event) => {
+  if (!event.target.closest("[data-assessment-create]")) return;
+  openNewAssessmentTaskEditor();
 });
 
 els.newPlan?.addEventListener("click", () => {

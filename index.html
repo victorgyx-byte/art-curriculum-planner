@@ -401,84 +401,106 @@
                 <p class="eyebrow">Assessment Studio</p>
                 <h2>Formal LO Assessment Coverage</h2>
               </div>
-              <button id="new-assessment-task" class="primary-button" type="button">Create Assessment Task</button>
             </div>
 
-            <section class="assessment-matrix-panel" aria-label="Learning outcome assessment matrix">
-              <div class="section-title">LO Coverage Matrix</div>
-              <div id="assessment-matrix" class="assessment-matrix"></div>
-            </section>
-
-            <section id="assessment-task-editor" class="assessment-task-editor hidden" aria-label="Assessment task editor">
-              <div class="assessment-task-editor-heading">
-                <div>
-                  <p class="eyebrow">Assessment Task</p>
-                  <h3 id="assessment-task-editor-title">Create Assessment Task</h3>
+            <div class="assessment-studio-layout">
+              <aside class="assessment-task-list-panel" aria-label="Assessment tasks">
+                <div class="assessment-rail-heading">
+                  <div>
+                    <p class="eyebrow">Assessment Tasks</p>
+                    <h3>Task Library</h3>
+                  </div>
+                  <button id="new-assessment-task" class="primary-button" type="button">Create Task</button>
                 </div>
-                <button id="cancel-assessment-task" class="ghost-button" type="button">Cancel</button>
+                <div id="assessment-task-list" class="assessment-task-list"></div>
+              </aside>
+
+              <div class="assessment-main-panel">
+                <section id="assessment-editor-empty" class="assessment-editor-empty" aria-label="No assessment task selected">
+                  <p class="eyebrow">Assessment Task</p>
+                  <h3>Select or create an assessment task</h3>
+                  <p>Formal LO coverage is counted only through Assessment Tasks. Lesson evidence can support your thinking, but it does not count as formal assessment by itself.</p>
+                  <button class="primary-button" type="button" data-assessment-create>Create Assessment Task</button>
+                </section>
+
+                <section id="assessment-task-editor" class="assessment-task-editor hidden" aria-label="Assessment task editor">
+                  <div class="assessment-task-editor-heading">
+                    <div>
+                      <p class="eyebrow">Assessment Task</p>
+                      <h3 id="assessment-task-editor-title">Create Assessment Task</h3>
+                    </div>
+                    <button id="cancel-assessment-task" class="ghost-button" type="button">Cancel</button>
+                  </div>
+
+                  <div class="assessment-form-grid">
+                    <label>
+                      <span class="field-label">Task Title</span>
+                      <input id="assessment-task-title" class="text-input" type="text" placeholder="e.g. Term 2 weighted assessment" />
+                    </label>
+                    <label>
+                      <span class="field-label">Linked Unit</span>
+                      <select id="assessment-task-unit" class="text-input"></select>
+                    </label>
+                    <label>
+                      <span class="field-label">Assessment Type</span>
+                      <select id="assessment-task-type" class="text-input">
+                        <option value="Diagnostic Check">Diagnostic</option>
+                        <option value="Formative Assessment">Formative</option>
+                        <option value="Summative Assessment">Summative</option>
+                        <option value="Self Assessment">Self</option>
+                        <option value="Peer Assessment">Peer</option>
+                      </select>
+                    </label>
+                    <label>
+                      <span class="field-label">Strength</span>
+                      <select id="assessment-task-strength" class="text-input">
+                        <option value="Light">Light</option>
+                        <option value="Moderate">Moderate</option>
+                        <option value="Major">Major</option>
+                      </select>
+                    </label>
+                  </div>
+
+                  <div class="assessment-lo-picker">
+                    <div class="field-label">Formal Learning Outcomes Assessed</div>
+                    <div id="assessment-task-los" class="setup-checkbox-list"></div>
+                  </div>
+
+                  <label class="field-label" for="assessment-task-evidence">Evidence Description</label>
+                  <textarea id="assessment-task-evidence" class="text-area" rows="3" placeholder="What evidence will be collected for this formal assessment?"></textarea>
+
+                  <div class="assessment-form-grid">
+                    <label class="assessment-weighted-check">
+                      <input id="assessment-task-weighted" type="checkbox" />
+                      <span>Weighted assessment</span>
+                    </label>
+                    <label>
+                      <span class="field-label">Weighted Note</span>
+                      <input id="assessment-task-weighted-note" class="text-input" type="text" placeholder="e.g. WA1, 20%" />
+                    </label>
+                  </div>
+
+                  <label class="field-label" for="assessment-task-notes">Notes</label>
+                  <textarea id="assessment-task-notes" class="text-area" rows="2"></textarea>
+
+                  <div class="assessment-rubric-placeholder">
+                    <p class="eyebrow">Rubric Builder</p>
+                    <h4>Draft Rubric From Task</h4>
+                    <p>Coming next: use this task, its linked LOs, and evidence description to start a rubric draft.</p>
+                    <button class="ghost-button" type="button" disabled>Draft Rubric From Task · Coming Next</button>
+                  </div>
+
+                  <div class="assessment-task-actions">
+                    <button id="save-assessment-task" class="primary-button" type="button">Save Assessment Task</button>
+                  </div>
+                </section>
+
+                <section class="assessment-matrix-panel" aria-label="Learning outcome assessment matrix">
+                  <div class="section-title">LO Coverage Matrix</div>
+                  <div id="assessment-matrix" class="assessment-matrix"></div>
+                </section>
               </div>
-
-              <div class="assessment-form-grid">
-                <label>
-                  <span class="field-label">Task Title</span>
-                  <input id="assessment-task-title" class="text-input" type="text" placeholder="e.g. Term 2 weighted assessment" />
-                </label>
-                <label>
-                  <span class="field-label">Linked Unit</span>
-                  <select id="assessment-task-unit" class="text-input"></select>
-                </label>
-                <label>
-                  <span class="field-label">Assessment Type</span>
-                  <select id="assessment-task-type" class="text-input">
-                    <option value="Diagnostic Check">Diagnostic</option>
-                    <option value="Formative Assessment">Formative</option>
-                    <option value="Summative Assessment">Summative</option>
-                    <option value="Self Assessment">Self</option>
-                    <option value="Peer Assessment">Peer</option>
-                  </select>
-                </label>
-                <label>
-                  <span class="field-label">Strength</span>
-                  <select id="assessment-task-strength" class="text-input">
-                    <option value="Light">Light</option>
-                    <option value="Moderate">Moderate</option>
-                    <option value="Major">Major</option>
-                  </select>
-                </label>
-              </div>
-
-              <div class="assessment-lo-picker">
-                <div class="field-label">Formal Learning Outcomes Assessed</div>
-                <div id="assessment-task-los" class="setup-checkbox-list"></div>
-              </div>
-
-              <label class="field-label" for="assessment-task-evidence">Evidence Description</label>
-              <textarea id="assessment-task-evidence" class="text-area" rows="3" placeholder="What evidence will be collected for this formal assessment?"></textarea>
-
-              <div class="assessment-form-grid">
-                <label class="assessment-weighted-check">
-                  <input id="assessment-task-weighted" type="checkbox" />
-                  <span>Weighted assessment</span>
-                </label>
-                <label>
-                  <span class="field-label">Weighted Note</span>
-                  <input id="assessment-task-weighted-note" class="text-input" type="text" placeholder="e.g. WA1, 20%" />
-                </label>
-              </div>
-
-              <label class="field-label" for="assessment-task-notes">Notes</label>
-              <textarea id="assessment-task-notes" class="text-area" rows="2"></textarea>
-
-              <div class="assessment-task-actions">
-                <button id="save-assessment-task" class="primary-button" type="button">Save Assessment Task</button>
-                <button class="ghost-button" type="button" disabled>Draft Rubric From Task · Coming Next</button>
-              </div>
-            </section>
-
-            <section class="assessment-task-list-panel" aria-label="Assessment tasks">
-              <div class="section-title">Assessment Tasks</div>
-              <div id="assessment-task-list" class="assessment-task-list"></div>
-            </section>
+            </div>
           </section>
         </div>
 
