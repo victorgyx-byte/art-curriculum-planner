@@ -8175,8 +8175,8 @@ function renderIncidenceGroup(title, units, type, expectedValues = [], options =
   const maxTotal = Math.max(1, ...rows.map((row) => lessonBased ? row.lessonCount : row.weeks));
   const content = `
     <div class="analysis-card-summary">
-      <span>${coveredCount}/${rows.length} covered</span>
-      ${notPlannedCount ? `<strong>${notPlannedCount} need attention</strong>` : `<strong>Balanced coverage</strong>`}
+      <span>${coveredCount}/${rows.length} featured</span>
+      ${notPlannedCount ? `<strong>${notPlannedCount} need attention</strong>` : `<strong>Balanced features</strong>`}
     </div>
     <div class="analysis-list ${options.collapsible ? "compact-analysis-list" : ""}">
       ${rows.map((row) => `
@@ -8199,7 +8199,7 @@ function renderIncidenceGroup(title, units, type, expectedValues = [], options =
         <details>
           <summary>
             <span>${escapeHtml(title)}</span>
-            <small>${coveredCount}/${rows.length} covered</small>
+            <small>${coveredCount}/${rows.length} featured</small>
           </summary>
           ${content}
         </details>
@@ -8267,7 +8267,7 @@ function renderPlanningAttention(units) {
       return notPlanned ? `${notPlanned} ${label} not yet planned` : "";
     })
     .filter(Boolean);
-  if (!items.length) return `<div class="attention-strip settled">All tracked areas have some coverage.</div>`;
+  if (!items.length) return `<div class="attention-strip settled">All tracked areas are featured somewhere.</div>`;
   return `
     <div class="attention-strip">
       <strong>Needs attention</strong>
@@ -8286,7 +8286,7 @@ function coverageLabel(row, lessonBased) {
   if (!row.unitCount) return "Not planned";
   const count = lessonBased ? row.lessonCount : row.weeks;
   if (count <= 2) return "Low";
-  return "Covered";
+  return "Featured";
 }
 
 function coverageClass(row, lessonBased) {
@@ -8310,11 +8310,12 @@ function renderPedagogyGroup(units) {
   const totalLessons = activeRows.reduce((total, row) => total + row.lessonCount, 0);
   const colors = ["#2f6f73", "#b5493a", "#d49a2a", "#4d5f91", "#7a5b9a", "#5f6f7a"];
   let cursor = 0;
-  const stops = activeRows.map((row, index) => {
+  const colorForRow = (row) => colors[Math.max(0, rows.findIndex((entry) => entry.label === row.label)) % colors.length];
+  const stops = activeRows.map((row) => {
     const start = cursor;
     const end = totalLessons ? cursor + (row.lessonCount / totalLessons) * 100 : cursor;
     cursor = end;
-    return `${colors[index % colors.length]} ${start}% ${end}%`;
+    return `${colorForRow(row)} ${start}% ${end}%`;
   });
   return `
     <article class="analysis-card pedagogy-analysis-card">
@@ -8323,10 +8324,10 @@ function renderPedagogyGroup(units) {
         <div class="pedagogy-chart-layout">
           <div class="pedagogy-pie" style="background: conic-gradient(${stops.join(", ")});" aria-hidden="true"></div>
           <div class="analysis-list">
-            ${rows.map((row, index) => `
+            ${rows.map((row) => `
               <div class="analysis-row ${row.unitCount ? "" : "empty"}">
                 <div class="analysis-row-main">
-                  <span><i class="analysis-swatch" style="background:${colors[index % colors.length]}"></i>${escapeHtml(row.label)}</span>
+                  <span><i class="analysis-swatch" style="background:${colorForRow(row)}"></i>${escapeHtml(row.label)}</span>
                   <small>${incidenceRowMeta(row, true)}</small>
                 </div>
               </div>
