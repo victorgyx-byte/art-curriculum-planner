@@ -488,6 +488,86 @@ const reflectionCheckpointPurposes = [
   "21CC learning goals",
 ];
 
+const teachingActionLibrary = [
+  {
+    id: "gallery-walk",
+    title: "Gallery Walk",
+    description: "Students move through displayed works, process evidence, or peer responses to observe, compare, and leave feedback.",
+    pedagogies: ["Inquiry Based Learning", "Dialogic Talk", "Collaborative Art Making & Learning"],
+    activityTypes: ["Connect & Wonder", "Express", "Reflect"],
+    keywords: ["critique", "feedback", "display", "peer", "observe"],
+  },
+  {
+    id: "peer-critique",
+    title: "Peer Critique",
+    description: "Students use criteria or prompts to give specific feedback on peers' work, then use that feedback to improve their own next steps.",
+    pedagogies: ["Dialogic Talk", "Collaborative Art Making & Learning"],
+    activityTypes: ["Express", "Reflect"],
+    keywords: ["feedback", "rubric", "assessment", "discussion"],
+  },
+  {
+    id: "see-think-wonder",
+    title: "See-Think-Wonder",
+    description: "Students slow down their looking by naming what they see, interpreting what they think, and generating questions for inquiry.",
+    pedagogies: ["Inquiry Based Learning", "Dialogic Talk"],
+    activityTypes: ["Connect & Wonder", "Investigate", "Reflect"],
+    keywords: ["question", "observe", "routine", "visible thinking"],
+  },
+  {
+    id: "material-exploration",
+    title: "Material Exploration",
+    description: "Students test materials, tools, and processes to discover affordances, constraints, and possible visual effects before committing to an artwork.",
+    pedagogies: ["Experiential Learning", "Embodied Learning", "Inquiry Based Learning"],
+    activityTypes: ["Investigate", "Make"],
+    keywords: ["experiment", "materials", "process", "studio"],
+  },
+  {
+    id: "teacher-demonstration",
+    title: "Teacher Demonstration",
+    description: "The teacher models a technique, thinking process, or workflow so students can see both the action and the decision-making behind it.",
+    pedagogies: ["Experiential Learning", "Embodied Learning", "Differentiated Instruction (DI)"],
+    activityTypes: ["Investigate", "Make"],
+    keywords: ["demo", "modelling", "technique", "scaffold"],
+  },
+  {
+    id: "visual-journaling",
+    title: "Visual Journaling",
+    description: "Students document observations, experiments, annotations, questions, and reflections as part of an ongoing thinking process.",
+    pedagogies: ["Inquiry Based Learning", "Experiential Learning"],
+    activityTypes: ["Connect & Wonder", "Investigate", "Reflect"],
+    keywords: ["journal", "portfolio", "reflection", "document"],
+  },
+  {
+    id: "artist-statement-writing",
+    title: "Artist Statement Writing",
+    description: "Students articulate intention, process, and meaning in writing so they can connect visual decisions to ideas and audience.",
+    pedagogies: ["Dialogic Talk", "Disciplinary & Interdisciplinary Learning"],
+    activityTypes: ["Express", "Reflect"],
+    keywords: ["writing", "intention", "meaning", "reflection"],
+  },
+  {
+    id: "moodboard-curation",
+    title: "Moodboard Curation",
+    description: "Students gather and curate references, images, textures, colours, and words to clarify a visual direction or design intention.",
+    pedagogies: ["Inquiry Based Learning", "Disciplinary & Interdisciplinary Learning", "E-Pedagogy"],
+    activityTypes: ["Connect & Wonder", "Investigate", "Make"],
+    keywords: ["research", "reference", "curate", "visual direction"],
+  },
+];
+
+teachingActionLibrary.forEach((action) => {
+  libraryCardDetails[action.title] = {
+    tone: "teachingMoves",
+    title: action.title,
+    detailLabel: "",
+    context: [
+      action.description,
+      `Linked pedagogies: ${action.pedagogies.join(", ")}`,
+      `Useful activity types: ${action.activityTypes.join(", ")}`,
+    ],
+  };
+});
+
 const artisticProcessLabels = {
   ap1: "AP1: Observe, record and reflect on what they see and experience",
   ap2: "AP2: Gather and research on different types of visual and other information",
@@ -725,6 +805,10 @@ const defaultState = {
   lessonOverviewOpen: false,
   unitOverviewOpen: false,
   showAll21ccLessonGoals: false,
+  activeTeachingActionPickerStepId: "",
+  activeTeachingActionDetailStepId: "",
+  activeTeachingActionDetailId: "",
+  teachingActionSearch: "",
   collapsedCategories: {},
   overlays: {
     bigIdeas: true,
@@ -1108,6 +1192,10 @@ function normalizeState(candidate) {
   normalized.lessonOverviewOpen = false;
   normalized.unitOverviewOpen = Boolean(normalized.unitOverviewOpen);
   normalized.showAll21ccLessonGoals = Boolean(normalized.showAll21ccLessonGoals);
+  normalized.activeTeachingActionPickerStepId = normalized.activeTeachingActionPickerStepId || "";
+  normalized.activeTeachingActionDetailStepId = normalized.activeTeachingActionDetailStepId || "";
+  normalized.activeTeachingActionDetailId = normalized.activeTeachingActionDetailId || "";
+  normalized.teachingActionSearch = normalized.teachingActionSearch || "";
   normalized.selectedBoardZone = ["meaning", "alignment", "content", "core"].includes(normalized.selectedBoardZone)
     ? normalized.selectedBoardZone
     : "meaning";
@@ -1970,9 +2058,40 @@ function normalizeLessonSteps(steps) {
       customisation: step.customisation || "",
       reflectionPurpose,
       reflectionPrompt,
+      teachingActions: normalizeTeachingActions(step.teachingActions || []),
       confirmed: Boolean(step.confirmed),
     };
   });
+}
+
+function normalizeTeachingActions(actions) {
+  return (actions || [])
+    .map((action) => {
+      if (!action) return null;
+      const title = typeof action === "string" ? action : action.title || "";
+      const id = typeof action === "string" ? teachingActionIdFromTitle(action) : action.id || teachingActionIdFromTitle(title);
+      const metadata = teachingActionById(id) || teachingActionByTitle(title);
+      if (!metadata) return null;
+      return {
+        id: metadata.id,
+        title: metadata.title,
+        note: typeof action === "object" ? action.note || "" : "",
+      };
+    })
+    .filter(Boolean)
+    .filter((action, index, list) => list.findIndex((candidate) => candidate.id === action.id) === index);
+}
+
+function teachingActionById(id) {
+  return teachingActionLibrary.find((action) => action.id === id);
+}
+
+function teachingActionByTitle(title) {
+  return teachingActionLibrary.find((action) => action.title === title);
+}
+
+function teachingActionIdFromTitle(title) {
+  return slugify(title || "");
 }
 
 function visibleValues(values) {
@@ -2101,6 +2220,7 @@ function createLessonStep() {
     description: "",
     evidence: "",
     customisation: "",
+    teachingActions: [],
     confirmed: false,
   };
 }
@@ -2116,6 +2236,7 @@ function createReflectionCheckpointStep() {
     customisation: "",
     reflectionPurpose: "Curricular goal",
     reflectionPrompt: "",
+    teachingActions: [],
     confirmed: false,
   };
 }
@@ -2172,6 +2293,10 @@ function planStateForContentHash(planState) {
     "selectedLessonZone",
     "unitOverviewOpen",
     "lessonOverviewOpen",
+    "activeTeachingActionPickerStepId",
+    "activeTeachingActionDetailStepId",
+    "activeTeachingActionDetailId",
+    "teachingActionSearch",
     "localSavedAtMs",
     "cloudSavedAtMs",
   ].forEach((key) => delete clone[key]);
@@ -4891,16 +5016,16 @@ function lessonWordExportHtml(unit, lesson) {
       ["Other Visual Qualities", lessonOverviewValues(lesson, "visualQualityText")],
     ])}
     ${wordGroupedSection("Core Learning Experiences", [["Core Learning Experiences", lessonOverviewValues(lesson, "coreExperiences")]])}
-    ${wordGroupedSection("Pedagogy and Teaching Actions", [
+    ${wordGroupedSection("Pedagogy", [
       ["Pedagogy", lessonOverviewValues(lesson, "pedagogy")],
-      ["Teaching Actions", lessonOverviewValues(lesson, "teachingMoves")],
+      ["Legacy Teaching Move Cards", lessonOverviewValues(lesson, "teachingMoves")],
     ])}
     ${wordGroupedSection("Assessment", [["Assessment", lessonOverviewValues(lesson, "assessment")]])}
     ${wordGroupedSection("Lesson Structure", [["Lesson Structure", structures]])}
     <h2>Learning Activities</h2>
     ${lesson.steps?.length ? `
       <table>
-        <tr><th>Activity</th><th>Type</th><th>Duration</th><th>Details</th><th>Evidence for Assessment</th></tr>
+        <tr><th>Activity</th><th>Type</th><th>Duration</th><th>Details</th><th>Evidence for Assessment</th><th>Teaching Actions</th></tr>
         ${lesson.steps.map((step, index) => `
           <tr>
             <td>${index + 1}</td>
@@ -4908,10 +5033,26 @@ function lessonWordExportHtml(unit, lesson) {
             <td>${step.duration ? `${escapeHtml(String(step.duration))} minutes` : `<span class="not-planned">Not set</span>`}</td>
             <td>${wordParagraph(step.description || "Not yet planned")}</td>
             <td>${wordParagraph(step.evidence || "Not yet planned")}</td>
+            <td>${wordTeachingActions(step)}</td>
           </tr>
         `).join("")}
       </table>
     ` : `<p class="not-planned">Not yet planned</p>`}
+  `;
+}
+
+function wordTeachingActions(step) {
+  const actions = lessonTeachingActionEntries(step);
+  if (!actions.length) return `<span class="not-planned">Not yet planned</span>`;
+  return `
+    <ul>
+      ${actions.map(({ action, selection }) => `
+        <li>
+          <strong>${escapeHtml(action.title)}</strong>
+          ${selection.note ? wordParagraph(selection.note) : ""}
+        </li>
+      `).join("")}
+    </ul>
   `;
 }
 
@@ -5643,11 +5784,6 @@ function lessonLibrarySections(unit, zone = null, lesson = null) {
       ]),
     },
     {
-      title: "Teaching Actions",
-      zone: "pedagogy",
-      items: lessonItemsFromValues("teachingMoves", libraryItemsByType("teachingMoves")),
-    },
-    {
       title: "Assessment",
       zone: "assessment",
       items: lessonItemsFromValues("assessment", [
@@ -5863,9 +5999,9 @@ function lessonConfirmedSummary(unit, lesson) {
           ["Other Visual Qualities", "visualQualityText"],
         ])}</dd>
         <dt>Core Learning Experiences</dt><dd>${lessonOverviewGroups(lesson, [["Core Learning Experiences", "coreExperiences"]])}</dd>
-        <dt>Pedagogy and Teaching Actions</dt><dd>${lessonOverviewGroups(lesson, [
+        <dt>Pedagogy</dt><dd>${lessonOverviewGroups(lesson, [
           ["Pedagogy", "pedagogy"],
-          ["Teaching Actions", "teachingMoves"],
+          ["Legacy Teaching Move Cards", "teachingMoves"],
         ])}</dd>
         <dt>Assessment</dt><dd>${lessonOverviewGroups(lesson, [["Assessment", "assessment"]])}</dd>
         <dt>Lesson Structure</dt><dd>${lessonOverviewList(structures)}</dd>
@@ -5906,10 +6042,35 @@ function lessonActivityOverviewHtml(step, index) {
         ${step.duration ? `<p><strong>Duration:</strong> ${escapeHtml(String(step.duration))} minutes</p>` : ""}
         ${step.description ? renderTeacherText(step.description) : `<p class="not-planned">Details not yet planned</p>`}
         ${step.evidence ? `<div class="formatted-field-label">Evidence for Assessment</div>${renderTeacherText(step.evidence)}` : ""}
+        ${lessonTeachingActionsOverviewHtml(step)}
         ${step.customisation ? `<div class="formatted-field-label">Customisation</div>${renderTeacherText(step.customisation)}` : ""}
       </div>
     </div>
   `;
+}
+
+function lessonTeachingActionsOverviewHtml(step) {
+  const actions = lessonTeachingActionEntries(step);
+  if (!actions.length) return "";
+  return `
+    <div class="lesson-overview-actions-list">
+      <div class="formatted-field-label">Teaching Actions</div>
+      <ul>
+        ${actions.map(({ action, selection }) => `
+          <li>
+            <strong>${escapeHtml(action.title)}</strong>
+            ${selection.note ? renderTeacherText(selection.note) : ""}
+          </li>
+        `).join("")}
+      </ul>
+    </div>
+  `;
+}
+
+function lessonTeachingActionEntries(step) {
+  return normalizeTeachingActions(step.teachingActions || [])
+    .map((selection) => ({ selection, action: teachingActionById(selection.id) }))
+    .filter((entry) => entry.action);
 }
 
 function renderLessonImage(lesson) {
@@ -6144,6 +6305,7 @@ function renderLessonSteps(lesson) {
         </div>
       </div>
       ${step.confirmed ? lessonActivityDisplayContent(step) : lessonActivityEditContent(step)}
+      ${renderTeachingActionsForStep(step, lesson)}
     `;
     item.querySelectorAll(".activity-move").forEach((button) => {
       button.addEventListener("click", () => {
@@ -6194,8 +6356,210 @@ function renderLessonSteps(lesson) {
       step.description = event.target.value;
       saveState();
     });
+    bindTeachingActionControls(item, lesson, step);
     els.lessonSteps.append(item);
   });
+}
+
+function renderTeachingActionsForStep(step, lesson) {
+  step.teachingActions = normalizeTeachingActions(step.teachingActions || []);
+  const selectedActions = step.teachingActions
+    .map((selection) => ({ selection, metadata: teachingActionById(selection.id) }))
+    .filter((entry) => entry.metadata);
+  const pickerOpen = state.activeTeachingActionPickerStepId === step.id;
+  const detailOpen = state.activeTeachingActionDetailStepId === step.id
+    ? teachingActionById(state.activeTeachingActionDetailId)
+    : null;
+  const detailSelection = detailOpen
+    ? step.teachingActions.find((selection) => selection.id === detailOpen.id)
+    : null;
+  return `
+    <section class="activity-teaching-actions" aria-label="Teaching actions">
+      <div class="activity-teaching-header">
+        <div>
+          <div class="lesson-flow-label">Teaching actions</div>
+          <div class="activity-teaching-hint">Contextual moves for this activity</div>
+        </div>
+        <button class="activity-action-picker-toggle" type="button">
+          ${pickerOpen ? "Close Picker" : "Add Teaching Action"}
+        </button>
+      </div>
+      ${selectedActions.length ? `
+        <div class="activity-action-chips">
+          ${selectedActions.map(({ selection, metadata }) => `
+            <button class="activity-action-chip" type="button" data-action-id="${escapeAttr(metadata.id)}">
+              ${escapeHtml(metadata.title)}
+              ${selection.note ? `<span>note</span>` : ""}
+            </button>
+          `).join("")}
+        </div>
+      ` : `<p class="activity-teaching-empty">No teaching actions selected yet.</p>`}
+      ${pickerOpen ? renderTeachingActionPicker(step, lesson) : ""}
+      ${detailOpen ? renderTeachingActionDetail(detailOpen, detailSelection) : ""}
+    </section>
+  `;
+}
+
+function renderTeachingActionPicker(step, lesson) {
+  const search = (state.teachingActionSearch || "").trim().toLowerCase();
+  const selectedIds = new Set((step.teachingActions || []).map((selection) => selection.id));
+  const actions = teachingActionsForActivity(step, lesson, search);
+  const suggestedCount = actions.filter((entry) => entry.suggested).length;
+  return `
+    <div class="activity-action-picker">
+      <div class="activity-action-picker-top">
+        <strong>${suggestedCount ? "Suggested for this activity" : "Browse teaching actions"}</strong>
+        <input class="text-input activity-action-search" type="search" placeholder="Search teaching actions" value="${escapeAttr(state.teachingActionSearch || "")}" />
+      </div>
+      <div class="activity-action-options">
+        ${actions.length ? actions.map(({ action, suggested }) => `
+          <article class="activity-action-option ${suggested ? "suggested" : ""}">
+            <div>
+              <div class="activity-action-option-title">${escapeHtml(action.title)}</div>
+              <p>${escapeHtml(action.description)}</p>
+              <div class="activity-action-tags">
+                ${suggested ? `<span>Suggested</span>` : ""}
+                ${action.activityTypes.slice(0, 3).map((type) => `<span>${escapeHtml(type)}</span>`).join("")}
+              </div>
+            </div>
+            <button class="activity-action-add" type="button" data-action-id="${escapeAttr(action.id)}" ${selectedIds.has(action.id) ? "disabled" : ""}>
+              ${selectedIds.has(action.id) ? "Added" : "Add"}
+            </button>
+          </article>
+        `).join("") : `<p class="activity-teaching-empty">No teaching actions match this search.</p>`}
+      </div>
+    </div>
+  `;
+}
+
+function renderTeachingActionDetail(action, selection) {
+  return `
+    <div class="activity-action-detail">
+      <div class="activity-action-detail-head">
+        <div>
+          <div class="lesson-flow-label">Teaching action</div>
+          <h4>${escapeHtml(action.title)}</h4>
+        </div>
+        <button class="activity-action-detail-close" type="button">Return to activity</button>
+      </div>
+      <p>${escapeHtml(action.description)}</p>
+      <div class="activity-action-meta">
+        <span>Pedagogy: ${escapeHtml(action.pedagogies.join(", "))}</span>
+        <span>Useful in: ${escapeHtml(action.activityTypes.join(", "))}</span>
+      </div>
+      <label class="activity-action-note-field">
+        <span class="field-label">Teacher note</span>
+        <textarea class="text-area activity-action-note" rows="2" data-action-id="${escapeAttr(action.id)}" placeholder="How will you use this move here?">${escapeHtml(selection?.note || "")}</textarea>
+      </label>
+      <button class="ghost-button activity-action-remove" type="button" data-action-id="${escapeAttr(action.id)}">Remove from activity</button>
+    </div>
+  `;
+}
+
+function teachingActionsForActivity(step, lesson, search = "") {
+  const selectedPedagogies = selectedLessonPedagogies(lesson);
+  return teachingActionLibrary
+    .map((action) => ({
+      action,
+      score: teachingActionSuggestionScore(action, step, selectedPedagogies, search),
+    }))
+    .filter((entry) => entry.score > -100)
+    .sort((a, b) => b.score - a.score || a.action.title.localeCompare(b.action.title))
+    .map((entry) => ({
+      action: entry.action,
+      suggested: entry.score >= 20,
+    }));
+}
+
+function teachingActionSuggestionScore(action, step, selectedPedagogies, search) {
+  const searchable = [
+    action.title,
+    action.description,
+    ...action.pedagogies,
+    ...action.activityTypes,
+    ...(action.keywords || []),
+  ].join(" ").toLowerCase();
+  if (search && !searchable.includes(search)) return -100;
+  const stepType = isReflectionCheckpoint(step) ? "Reflect" : step.type;
+  let score = search ? 5 : 0;
+  if (action.activityTypes.includes(stepType)) score += 20;
+  const pedagogyMatches = action.pedagogies.filter((pedagogy) => selectedPedagogies.has(pedagogy)).length;
+  score += pedagogyMatches * 12;
+  if (!search && score === 0) score = 1;
+  return score;
+}
+
+function selectedLessonPedagogies(lesson) {
+  return new Set(
+    (lesson?.boardCards || [])
+      .filter((card) => card.type === "pedagogy")
+      .map((card) => card.label),
+  );
+}
+
+function bindTeachingActionControls(scope, lesson, step) {
+  scope.querySelector(".activity-action-picker-toggle")?.addEventListener("click", () => {
+    const isOpen = state.activeTeachingActionPickerStepId === step.id;
+    state.activeTeachingActionPickerStepId = isOpen ? "" : step.id;
+    state.activeTeachingActionDetailStepId = "";
+    state.activeTeachingActionDetailId = "";
+    state.teachingActionSearch = "";
+    renderLessonSteps(lesson);
+  });
+  scope.querySelector(".activity-action-search")?.addEventListener("input", (event) => {
+    state.teachingActionSearch = event.target.value;
+    renderLessonSteps(lesson);
+    const nextSearch = els.lessonSteps.querySelector(`.lesson-step-card[data-step-id="${CSS.escape(step.id)}"] .activity-action-search`);
+    nextSearch?.focus();
+    if (nextSearch) nextSearch.selectionStart = nextSearch.selectionEnd = nextSearch.value.length;
+  });
+  scope.querySelectorAll(".activity-action-add").forEach((button) => {
+    button.addEventListener("click", () => {
+      addTeachingActionToStep(step, button.dataset.actionId);
+      state.activeTeachingActionDetailStepId = step.id;
+      state.activeTeachingActionDetailId = button.dataset.actionId;
+      saveState();
+      renderLessonSteps(lesson);
+    });
+  });
+  scope.querySelectorAll(".activity-action-chip").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.activeTeachingActionDetailStepId = step.id;
+      state.activeTeachingActionDetailId = button.dataset.actionId;
+      state.activeTeachingActionPickerStepId = "";
+      renderLessonSteps(lesson);
+    });
+  });
+  scope.querySelector(".activity-action-detail-close")?.addEventListener("click", () => {
+    state.activeTeachingActionDetailStepId = "";
+    state.activeTeachingActionDetailId = "";
+    renderLessonSteps(lesson);
+  });
+  scope.querySelector(".activity-action-remove")?.addEventListener("click", (event) => {
+    removeTeachingActionFromStep(step, event.currentTarget.dataset.actionId);
+    state.activeTeachingActionDetailStepId = "";
+    state.activeTeachingActionDetailId = "";
+    saveState();
+    renderLessonSteps(lesson);
+  });
+  scope.querySelector(".activity-action-note")?.addEventListener("input", (event) => {
+    const selection = (step.teachingActions || []).find((action) => action.id === event.target.dataset.actionId);
+    if (!selection) return;
+    selection.note = event.target.value;
+    saveState();
+  });
+}
+
+function addTeachingActionToStep(step, actionId) {
+  const metadata = teachingActionById(actionId);
+  if (!metadata) return;
+  step.teachingActions = normalizeTeachingActions(step.teachingActions || []);
+  if (step.teachingActions.some((selection) => selection.id === metadata.id)) return;
+  step.teachingActions.push({ id: metadata.id, title: metadata.title, note: "" });
+}
+
+function removeTeachingActionFromStep(step, actionId) {
+  step.teachingActions = (step.teachingActions || []).filter((selection) => selection.id !== actionId);
 }
 
 function bindLessonActivityDragReorder(node, lesson, step) {
@@ -6853,7 +7217,7 @@ function cardAllowedOnLessonBoard(card) {
 function lessonZoneDefinitions() {
   return [
     { key: "curricular", label: "Curricular Goals" },
-    { key: "pedagogy", label: "Pedagogy and Teaching Actions" },
+    { key: "pedagogy", label: "Pedagogy" },
     { key: "assessment", label: "Assessment" },
     { key: "content", label: "Learning Content" },
     { key: "core", label: "Core Learning Experience" },
