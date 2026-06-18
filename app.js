@@ -1945,6 +1945,8 @@ function normalizeLessons(lessons, unit = {}) {
       boardCards: baseCards,
       removedUnitCardKeys,
       lessonBoardInitialized: true,
+      dismissedSuggestions: lesson.suggestionVersion === SUGGESTION_VERSION ? lesson.dismissedSuggestions || [] : [],
+      suggestionVersion: SUGGESTION_VERSION,
       steps: normalizeLessonSteps(lesson.steps || []),
       confirmed: Boolean(lesson.confirmed),
     };
@@ -5743,9 +5745,12 @@ function cc21GoalLibraryItem(goal) {
 }
 
 function selected21ccEmphases(unit, lesson) {
+  const unitCc21Cards = (unit?.boardCards || []).filter((card) => card.type === "cc21");
+  const unitLevelCc21Cards = unitCc21Cards.filter((card) => !card.lessonOrigin);
+  const legacyUnitCc21Values = unitCc21Cards.length ? [] : unit?.cc21 || [];
   return visibleValues([
-    ...(unit?.cc21 || []),
-    ...(unit?.boardCards || []).filter((card) => card.type === "cc21").map((card) => card.label),
+    ...legacyUnitCc21Values,
+    ...unitLevelCc21Cards.map((card) => card.label),
     ...(lesson?.boardCards || []).filter((card) => card.type === "cc21").map((card) => card.label),
   ]);
 }
@@ -5754,6 +5759,34 @@ function cc21GoalsForEmphases(emphases) {
   const selected = new Set(emphases);
   if (!selected.size) return [];
   return cc21LessonGoals.filter((goal) => selected.has(goal.emphasis) || selected.has(goal.domain));
+}
+
+function cc21GoalByLabel(label) {
+  return cc21LessonGoals.find((goal) => goal.label === label);
+}
+
+function suggestedLessonCc21Outcomes(unit, lesson) {
+  if (!unit || !lesson) return [];
+  const selectedOutcomes = new Set(selected21ccEmphases(unit, lesson));
+  const dismissed = new Set(lesson.dismissedSuggestions || []);
+  const selectedGoals = uniqueReadableValues(
+    (lesson.boardCards || [])
+      .filter((card) => card.type === "cc21Goals")
+      .map((card) => card.label),
+  );
+  const suggestions = selectedGoals
+    .map(cc21GoalByLabel)
+    .filter(Boolean)
+    .filter((goal) => goal.emphasis && !selectedOutcomes.has(goal.emphasis))
+    .map((goal) => ({
+      key: `cc21Goal:${goal.label}->cc21:${goal.emphasis}`,
+      groupKey: suggestionGroupKey("curricular", "cc21", goal.emphasis),
+      zone: "curricular",
+      type: "cc21",
+      label: goal.emphasis,
+      sourceLabel: goal.label,
+    }));
+  return uniqueSuggestions(suggestions).filter((suggestion) => !dismissed.has(suggestion.key) && !dismissed.has(suggestion.groupKey));
 }
 
 function lessonItemsFromValues(type, values) {
@@ -5956,6 +5989,38 @@ function renderLessonPlanningBoard(lesson) {
       const target = document.querySelector(`.lesson-zone[data-lesson-zone="${card.zone || lessonZoneForType(card.type)}"] .zone-cards`);
       target?.append(node);
     });
+  renderLessonSuggestions(selectedUnit(), lesson);
+}
+
+function renderLessonSuggestions(unit, lesson) {
+  suggestedLessonCc21Outcomes(unit, lesson).forEach((suggestion) => {
+    const zone = document.querySelector(`.lesson-zone[data-lesson-zone="${suggestion.zone}"] .zone-cards`);
+    if (!zone) return;
+    const node = document.createElement("article");
+    node.className = "suggestion-card lesson-suggestion-card";
+    node.dataset.suggestionKey = suggestion.key;
+    node.dataset.suggestionGroupKey = suggestion.groupKey;
+    node.innerHTML = `
+      <div class="suggestion-label">${escapeHtml(suggestionHeader(suggestion.type))}</div>
+      <div class="suggestion-title">${escapeHtml(suggestion.label)}</div>
+      <div class="suggestion-source">From ${escapeHtml(suggestion.sourceLabel)}</div>
+      <div class="suggestion-actions">
+        <button class="suggestion-add" type="button">Add</button>
+        <button class="suggestion-dismiss" type="button">Dismiss</button>
+      </div>
+    `;
+    node.querySelector(".suggestion-add").addEventListener("click", (event) => {
+      event.stopPropagation();
+      addLessonBoardCard(unit, lesson, { type: suggestion.type, label: suggestion.label }, { zone: suggestion.zone });
+    });
+    node.querySelector(".suggestion-dismiss").addEventListener("click", (event) => {
+      event.stopPropagation();
+      dismissLessonSuggestion(lesson, suggestion);
+      saveState();
+      render();
+    });
+    zone.append(node);
+  });
 }
 
 function renderLessonMeaningReference(unit) {
@@ -6447,10 +6512,18 @@ function dismissSuggestion(unit, suggestion) {
   unit.suggestionVersion = SUGGESTION_VERSION;
 }
 
+function dismissLessonSuggestion(lesson, suggestion) {
+  lesson.dismissedSuggestions = lesson.dismissedSuggestions || [];
+  addUnique(lesson.dismissedSuggestions, suggestion.key);
+  addUnique(lesson.dismissedSuggestions, suggestion.groupKey);
+  lesson.suggestionVersion = SUGGESTION_VERSION;
+}
+
 function suggestionHeader(type) {
   const labels = {
     artisticProcesses: "Suggested Artistic Process",
     learningOutcomes: "Suggested Learning Outcome",
+    cc21: "Suggested 21CC Outcome",
   };
   return labels[type] || "Suggested";
 }
@@ -6604,6 +6677,7 @@ function addLessonBoardCard(unit, lesson, payload, options = {}) {
     existing.inherited = inheritedFromUnit;
     existing.unitCardKey = inheritedFromUnit ? cardKey(unitCard) : "";
     existing.order = nextLessonCardOrder(lesson, zone);
+    saveState();
     render();
     return;
   }
@@ -6616,6 +6690,7 @@ function addLessonBoardCard(unit, lesson, payload, options = {}) {
     inherited: inheritedFromUnit,
     unitCardKey: inheritedFromUnit ? cardKey(unitCard) : "",
   });
+  saveState();
   render();
 }
 
