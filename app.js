@@ -156,7 +156,7 @@ const defaultCardLibrary = [
     ],
   },
   {
-    title: "Teaching Moves",
+    title: "Teaching Actions",
     type: "teachingMoves",
     items: [
       "Gallery Walk",
@@ -527,70 +527,467 @@ const reflectionCheckpointPurposes = [
 
 const teachingActionLibrary = [
   {
-    id: "gallery-walk",
-    title: "Gallery Walk",
-    description: "Students move through displayed works, process evidence, or peer responses to observe, compare, and leave feedback.",
-    pedagogies: ["Inquiry Based Learning", "Dialogic Talk", "Collaborative Art Making & Learning"],
-    activityTypes: ["Connect & Wonder", "Express", "Reflect"],
-    keywords: ["critique", "feedback", "display", "peer", "observe"],
+    id: "know-want-to-know-learnt",
+    title: "Know, Want to Know, Learnt",
+    description: "Students record what they Know, Want to know, and have Learnt",
+    area: "Activating Prior Knowledge",
+    activityTypes: ["Connect & Wonder", "Reflect"],
+    pedagogies: [],
+    keywords: ["kwl", "prior knowledge", "reflect"],
   },
   {
-    id: "peer-critique",
-    title: "Peer Critique",
-    description: "Students use criteria or prompts to give specific feedback on peers' work, then use that feedback to improve their own next steps.",
-    pedagogies: ["Dialogic Talk", "Collaborative Art Making & Learning"],
-    activityTypes: ["Express", "Reflect"],
-    keywords: ["feedback", "rubric", "assessment", "discussion"],
+    id: "concept-cartoons",
+    title: "Concept Cartoons",
+    description: "Visual scenarios surface and challenge student preconceptions",
+    area: "Activating Prior Knowledge",
+    activityTypes: ["Connect & Wonder", "Investigate"],
+    pedagogies: ["Disciplinary & Interdisciplinary Learning", "Dialogic Talk"],
+    keywords: ["misconceptions", "scenario", "visual"],
   },
   {
-    id: "see-think-wonder",
-    title: "See-Think-Wonder",
-    description: "Students slow down their looking by naming what they see, interpreting what they think, and generating questions for inquiry.",
-    pedagogies: ["Inquiry Based Learning", "Dialogic Talk"],
-    activityTypes: ["Connect & Wonder", "Investigate", "Reflect"],
-    keywords: ["question", "observe", "routine", "visible thinking"],
+    id: "scenario-task-action-reflection",
+    title: "Scenario, Task, Action, Reflection",
+    description: "A real-world scenario anchors student inquiry from analysis to reflection",
+    area: "Activating Prior Knowledge",
+    activityTypes: ["Connect & Wonder", "Investigate"],
+    pedagogies: ["Experiential Learning", "Disciplinary & Interdisciplinary Learning"],
+    keywords: ["scenario", "real-world", "reflection"],
   },
   {
-    id: "material-exploration",
-    title: "Material Exploration",
-    description: "Students test materials, tools, and processes to discover affordances, constraints, and possible visual effects before committing to an artwork.",
-    pedagogies: ["Experiential Learning", "Embodied Learning", "Inquiry Based Learning"],
-    activityTypes: ["Investigate", "Make"],
-    keywords: ["experiment", "materials", "process", "studio"],
-  },
-  {
-    id: "teacher-demonstration",
-    title: "Teacher Demonstration",
-    description: "The teacher models a technique, thinking process, or workflow so students can see both the action and the decision-making behind it.",
-    pedagogies: ["Experiential Learning", "Embodied Learning", "Differentiated Instruction (DI)"],
-    activityTypes: ["Investigate", "Make"],
-    keywords: ["demo", "modelling", "technique", "scaffold"],
-  },
-  {
-    id: "visual-journaling",
-    title: "Visual Journaling",
-    description: "Students document observations, experiments, annotations, questions, and reflections as part of an ongoing thinking process.",
-    pedagogies: ["Inquiry Based Learning", "Experiential Learning"],
-    activityTypes: ["Connect & Wonder", "Investigate", "Reflect"],
-    keywords: ["journal", "portfolio", "reflection", "document"],
-  },
-  {
-    id: "artist-statement-writing",
-    title: "Artist Statement Writing",
-    description: "Students articulate intention, process, and meaning in writing so they can connect visual decisions to ideas and audience.",
-    pedagogies: ["Dialogic Talk", "Disciplinary & Interdisciplinary Learning"],
-    activityTypes: ["Express", "Reflect"],
-    keywords: ["writing", "intention", "meaning", "reflection"],
-  },
-  {
-    id: "moodboard-curation",
-    title: "Moodboard Curation",
-    description: "Students gather and curate references, images, textures, colours, and words to clarify a visual direction or design intention.",
-    pedagogies: ["Inquiry Based Learning", "Disciplinary & Interdisciplinary Learning", "E-Pedagogy"],
+    id: "thinking-with-objects",
+    title: "Thinking with Objects",
+    description: "Meaningful objects and key questions connect students to subject matter",
+    area: "Activating Prior Knowledge",
     activityTypes: ["Connect & Wonder", "Investigate", "Make"],
-    keywords: ["research", "reference", "curate", "visual direction"],
+    pedagogies: ["Experiential Learning", "Embodied Learning"],
+    keywords: ["objects", "questions", "stimulus"],
+  },
+  {
+    id: "discrepant-events",
+    title: "Discrepant Events",
+    description: "A surprising event sparks curiosity and hooks students into learning",
+    area: "Arousing Interest",
+    activityTypes: ["Connect & Wonder"],
+    pedagogies: ["Experiential Learning"],
+    keywords: ["surprise", "curiosity", "hook"],
+  },
+  {
+    id: "teach-a-friend",
+    title: "Teach a Friend",
+    description: "Students teach a concept to a peer to deepen understanding",
+    area: "Arousing Interest",
+    activityTypes: ["Make", "Express"],
+    pedagogies: ["Disciplinary & Interdisciplinary Learning", "Dialogic Talk"],
+    keywords: ["peer teaching", "explain", "share"],
+  },
+  {
+    id: "using-stories-and-images",
+    title: "Using Stories and Images",
+    description: "Narratives and visuals make learning meaningful and memorable",
+    area: "Arousing Interest",
+    activityTypes: ["Connect & Wonder", "Investigate", "Express"],
+    pedagogies: ["Experiential Learning", "Embodied Learning"],
+    keywords: ["stories", "images", "narrative"],
+  },
+  {
+    id: "chalk-talk",
+    title: "Chalk Talk",
+    description: "Silent written discussion where students respond to a prompt on paper",
+    area: "Encouraging Learner Engagement",
+    activityTypes: ["Connect & Wonder", "Investigate", "Reflect"],
+    pedagogies: ["Embodied Learning", "Dialogic Talk"],
+    keywords: ["silent discussion", "written response", "prompt"],
+  },
+  {
+    id: "engage-explore-apply",
+    title: "Engage, Explore, Apply",
+    description: "Three-phase structure moving students from engagement to application",
+    area: "Encouraging Learner Engagement",
+    activityTypes: ["Connect & Wonder", "Investigate", "Make"],
+    pedagogies: ["Experiential Learning", "Embodied Learning", "Disciplinary & Interdisciplinary Learning"],
+    keywords: ["phase", "apply", "engage"],
+  },
+  {
+    id: "facilitating-productive-academic-discussion",
+    title: "Facilitating Productive Academic Discussion",
+    description: "Structured discussion pushes students to reason and build on each other's ideas",
+    area: "Encouraging Learner Engagement",
+    activityTypes: ["Connect & Wonder", "Investigate", "Express"],
+    pedagogies: ["Disciplinary & Interdisciplinary Learning", "Dialogic Talk"],
+    keywords: ["discussion", "reasoning", "talk"],
+  },
+  {
+    id: "repeat-clarify-understand",
+    title: "Repeat, Clarify, Understand",
+    description: "Students Repeat, Clarify, and deepen Understanding through structured interaction",
+    area: "Encouraging Learner Engagement",
+    activityTypes: ["Express", "Reflect"],
+    pedagogies: ["Dialogic Talk"],
+    keywords: ["clarify", "interaction", "understand"],
+  },
+  {
+    id: "use-of-analogies",
+    title: "Use of Analogies",
+    description: "Familiar comparisons make abstract concepts accessible",
+    area: "Providing Clear Explanation",
+    activityTypes: ["Investigate", "Make"],
+    pedagogies: ["Disciplinary & Interdisciplinary Learning"],
+    keywords: ["analogy", "comparison", "explanation"],
+  },
+  {
+    id: "demonstration",
+    title: "Demonstration",
+    description: "Teacher shows students how to do something before asking them to try",
+    area: "Providing Clear Explanation",
+    activityTypes: ["Make"],
+    pedagogies: ["Experiential Learning", "Embodied Learning", "Disciplinary & Interdisciplinary Learning"],
+    keywords: ["demo", "model", "technique"],
+  },
+  {
+    id: "models-as-teaching-aids",
+    title: "Models as Teaching Aids",
+    description: "Physical or conceptual models represent abstract ideas concretely",
+    area: "Providing Clear Explanation",
+    activityTypes: ["Investigate", "Make"],
+    pedagogies: ["Embodied Learning", "Disciplinary & Interdisciplinary Learning"],
+    keywords: ["model", "concrete", "representation"],
+  },
+  {
+    id: "model-thinking-aloud",
+    title: "Model Thinking Aloud",
+    description: "Teacher verbalises thinking to make expert reasoning visible",
+    area: "Providing Clear Explanation",
+    activityTypes: ["Make"],
+    pedagogies: ["Disciplinary & Interdisciplinary Learning", "Dialogic Talk"],
+    keywords: ["think aloud", "reasoning", "model"],
+  },
+  {
+    id: "visual-organisers",
+    title: "Visual Organisers",
+    description: "Graphic tools help students organise and connect ideas",
+    area: "Providing Clear Explanation",
+    activityTypes: ["Investigate", "Make", "Reflect"],
+    pedagogies: ["Embodied Learning", "Disciplinary & Interdisciplinary Learning"],
+    keywords: ["graphic organiser", "organise", "connect"],
+  },
+  {
+    id: "managing-transitions",
+    title: "Managing Transitions",
+    description: "Smooth movement between activities maintains lesson flow",
+    area: "Pacing and Maintaining Momentum",
+    activityTypes: ["Make"],
+    pedagogies: [],
+    keywords: ["transition", "flow", "pace"],
+  },
+  {
+    id: "pause-and-reflect",
+    title: "Pause and Reflect",
+    description: "Deliberate pauses allow students to consolidate thinking mid-lesson",
+    area: "Pacing and Maintaining Momentum",
+    activityTypes: ["Investigate", "Make", "Reflect"],
+    pedagogies: ["Experiential Learning"],
+    keywords: ["pause", "consolidate", "reflect"],
+  },
+  {
+    id: "activating-time-fillers",
+    title: "Activating Time Fillers",
+    description: "Purposeful short activities maintain engagement during downtime",
+    area: "Pacing and Maintaining Momentum",
+    activityTypes: ["Make"],
+    pedagogies: [],
+    keywords: ["time filler", "downtime", "engagement"],
+  },
+  {
+    id: "whiteboarding",
+    title: "Whiteboarding",
+    description: "Students collaboratively solve problems on whiteboards to make thinking visible",
+    area: "Facilitating Collaborative Learning",
+    activityTypes: ["Connect & Wonder", "Investigate"],
+    pedagogies: ["Embodied Learning", "Disciplinary & Interdisciplinary Learning", "Dialogic Talk"],
+    keywords: ["whiteboard", "collaboration", "visible thinking"],
+  },
+  {
+    id: "jigsaw",
+    title: "Jigsaw",
+    description: "Students become experts on one part of a topic and teach it to peers",
+    area: "Facilitating Collaborative Learning",
+    activityTypes: ["Investigate", "Express"],
+    pedagogies: ["Disciplinary & Interdisciplinary Learning", "Dialogic Talk"],
+    keywords: ["expert group", "peer teaching", "collaboration"],
+  },
+  {
+    id: "reciprocal-teaching",
+    title: "Reciprocal Teaching",
+    description: "Students take turns leading discussion using four comprehension strategies",
+    area: "Facilitating Collaborative Learning",
+    activityTypes: ["Investigate", "Express"],
+    pedagogies: ["Disciplinary & Interdisciplinary Learning", "Dialogic Talk"],
+    keywords: ["discussion", "student-led", "comprehension"],
+  },
+  {
+    id: "think-pair-share",
+    title: "Think, Pair, Share",
+    description: "Students think individually, discuss in pairs, then share with the class",
+    area: "Facilitating Collaborative Learning",
+    activityTypes: ["Connect & Wonder", "Investigate", "Express"],
+    pedagogies: ["Dialogic Talk"],
+    keywords: ["pair", "share", "discussion"],
+  },
+  {
+    id: "scouting-for-information",
+    title: "Scouting for Information",
+    description: "Students collaboratively research and gather information from sources",
+    area: "Facilitating Collaborative Learning",
+    activityTypes: ["Investigate"],
+    pedagogies: ["Disciplinary & Interdisciplinary Learning"],
+    keywords: ["research", "sources", "information"],
+  },
+  {
+    id: "engagement-through-collaboration-and-interactivity-using-information-and-communications-technology",
+    title: "Engagement through Collaboration and Interactivity Using Information and Communications Technology",
+    description: "Digital tools facilitate collaborative learning experiences",
+    area: "Facilitating Collaborative Learning",
+    activityTypes: ["Investigate", "Make"],
+    pedagogies: ["Experiential Learning", "Embodied Learning", "Dialogic Talk"],
+    keywords: ["ict", "digital", "collaboration", "technology"],
+  },
+  {
+    id: "initiate-respond-follow-up-chains",
+    title: "Initiate, Respond, Follow-up Chains",
+    description: "Structured Initiate-Respond-Follow-up sequences deepen student responses",
+    area: "Using Questions to Deepen Learning",
+    activityTypes: ["Express", "Reflect"],
+    pedagogies: ["Dialogic Talk"],
+    keywords: ["questioning", "follow-up", "response"],
+  },
+  {
+    id: "pumping",
+    title: "Pumping",
+    description: "Follow-up prompts push students to elaborate beyond surface-level answers",
+    area: "Using Questions to Deepen Learning",
+    activityTypes: ["Connect & Wonder", "Investigate", "Express"],
+    pedagogies: ["Dialogic Talk"],
+    keywords: ["questioning", "elaborate", "prompt"],
+  },
+  {
+    id: "refine-refine-and-refine",
+    title: "Refine, Refine and Refine",
+    description: "Iterative questioning improves precision in student thinking and expression",
+    area: "Using Questions to Deepen Learning",
+    activityTypes: ["Make", "Express", "Reflect"],
+    pedagogies: ["Disciplinary & Interdisciplinary Learning", "Dialogic Talk"],
+    keywords: ["refine", "iterate", "precision"],
+  },
+  {
+    id: "generating-questions",
+    title: "Generating Questions",
+    description: "Students generate their own questions to drive and own their inquiry",
+    area: "Using Questions to Deepen Learning",
+    activityTypes: ["Connect & Wonder", "Investigate"],
+    pedagogies: ["Disciplinary & Interdisciplinary Learning"],
+    keywords: ["questions", "inquiry", "student questions"],
+  },
+  {
+    id: "challenge-me",
+    title: "Challenge Me",
+    description: "Students interrogate each other's ideas through structured questioning",
+    area: "Using Questions to Deepen Learning",
+    activityTypes: ["Investigate", "Express", "Reflect"],
+    pedagogies: ["Disciplinary & Interdisciplinary Learning", "Dialogic Talk"],
+    keywords: ["challenge", "questioning", "peer"],
+  },
+  {
+    id: "clarify-sensitise-influence",
+    title: "Clarify, Sensitise, Influence",
+    description: "Questions Clarify thinking, Sensitise students to issues, and Influence perspectives",
+    area: "Using Questions to Deepen Learning",
+    activityTypes: ["Connect & Wonder", "Investigate"],
+    pedagogies: ["Disciplinary & Interdisciplinary Learning", "Dialogic Talk"],
+    keywords: ["clarify", "sensitise", "influence"],
+  },
+  {
+    id: "socratic-method-of-questioning",
+    title: "Socratic Method of Questioning",
+    description: "Probing questions help students examine assumptions and deepen reasoning",
+    area: "Using Questions to Deepen Learning",
+    activityTypes: ["Connect & Wonder", "Investigate", "Express", "Reflect"],
+    pedagogies: ["Disciplinary & Interdisciplinary Learning", "Dialogic Talk"],
+    keywords: ["socratic", "assumptions", "probing"],
+  },
+  {
+    id: "pass-it-round",
+    title: "Pass It Round",
+    description: "A question or idea is passed around the class to build collective understanding",
+    area: "Concluding the Lesson",
+    activityTypes: ["Express", "Reflect"],
+    pedagogies: ["Dialogic Talk"],
+    keywords: ["share", "collective", "question"],
+  },
+  {
+    id: "3-2-1-summariser",
+    title: "3-2-1 Summariser",
+    description: "Students identify 3 things learnt, 2 questions, and 1 application",
+    area: "Concluding the Lesson",
+    activityTypes: ["Reflect"],
+    pedagogies: ["Experiential Learning"],
+    keywords: ["summarise", "exit ticket", "reflect"],
+  },
+  {
+    id: "my-learning-checklist",
+    title: "My Learning Checklist",
+    description: "Students assess their own understanding against lesson objectives",
+    area: "Concluding the Lesson",
+    activityTypes: ["Reflect"],
+    pedagogies: ["Experiential Learning"],
+    keywords: ["checklist", "self-assessment", "objectives"],
+  },
+  {
+    id: "my-visual-representation",
+    title: "My Visual Representation",
+    description: "Students represent their learning visually through drawing, maps, or graphs",
+    area: "Concluding the Lesson",
+    activityTypes: ["Investigate", "Make", "Express"],
+    pedagogies: ["Experiential Learning", "Embodied Learning"],
+    keywords: ["visual", "mind map", "drawing"],
+  },
+  {
+    id: "what-have-i-learnt",
+    title: "What Have I Learnt",
+    description: "Students reflect on What they learnt and How they learnt it",
+    area: "Concluding the Lesson",
+    activityTypes: ["Reflect"],
+    pedagogies: ["Experiential Learning"],
+    keywords: ["reflection", "learning", "metacognition"],
+  },
+  {
+    id: "affirm-question-suggest",
+    title: "Affirm, Question, Suggest",
+    description: "Structured feedback that Affirms, Questions, and Suggests next steps",
+    area: "Checking for Understanding and Providing Feedback",
+    activityTypes: ["Make", "Express", "Reflect"],
+    pedagogies: ["Dialogic Talk"],
+    keywords: ["feedback", "critique", "peer"],
+  },
+  {
+    id: "comment-only-feedback",
+    title: "Comment Only Feedback",
+    description: "Written comments without grades focus students on improvement",
+    area: "Checking for Understanding and Providing Feedback",
+    activityTypes: ["Make", "Reflect"],
+    pedagogies: [],
+    keywords: ["feedback", "comment", "assessment"],
+  },
+  {
+    id: "justify-my-thinking",
+    title: "Justify My Thinking",
+    description: "Students explain the reasoning behind their answers",
+    area: "Checking for Understanding and Providing Feedback",
+    activityTypes: ["Investigate", "Express", "Reflect"],
+    pedagogies: ["Disciplinary & Interdisciplinary Learning", "Dialogic Talk"],
+    keywords: ["justify", "reasoning", "explain"],
+  },
+  {
+    id: "i-do-i-know-i-check",
+    title: "I Do, I Know, I Check",
+    description: "Students self-assess their ability to perform, explain, and verify their learning",
+    area: "Checking for Understanding and Providing Feedback",
+    activityTypes: ["Make", "Reflect"],
+    pedagogies: ["Experiential Learning"],
+    keywords: ["self-assessment", "check", "understanding"],
+  },
+  {
+    id: "reverse-engineering-multiple-choice-questions",
+    title: "Reverse Engineering Multiple Choice Questions",
+    description: "Students analyse multiple choice question options to surface and address misconceptions",
+    area: "Checking for Understanding and Providing Feedback",
+    activityTypes: ["Investigate"],
+    pedagogies: ["Disciplinary & Interdisciplinary Learning"],
+    keywords: ["mcq", "misconception", "analysis"],
+  },
+  {
+    id: "share-my-learning",
+    title: "Share My Learning",
+    description: "Students share their learning with peers to consolidate and receive feedback",
+    area: "Checking for Understanding and Providing Feedback",
+    activityTypes: ["Express", "Reflect"],
+    pedagogies: ["Experiential Learning", "Dialogic Talk"],
+    keywords: ["share", "feedback", "consolidate"],
+  },
+  {
+    id: "thumbometer",
+    title: "Thumbometer",
+    description: "A quick gesture indicates each student's level of understanding",
+    area: "Checking for Understanding and Providing Feedback",
+    activityTypes: ["Make", "Reflect"],
+    pedagogies: [],
+    keywords: ["quick check", "gesture", "understanding"],
+  },
+  {
+    id: "demonstrating-my-understanding-through-mind-maps",
+    title: "Demonstrating My Understanding through Mind Maps",
+    description: "Students create mind maps to organise and show their understanding",
+    area: "Supporting Self-Directed Learning",
+    activityTypes: ["Connect & Wonder", "Investigate", "Reflect"],
+    pedagogies: ["Disciplinary & Interdisciplinary Learning"],
+    keywords: ["mind map", "organise", "understanding"],
+  },
+  {
+    id: "role-play",
+    title: "Role Play",
+    description: "Students take on roles to explore concepts, perspectives, or scenarios",
+    area: "Supporting Self-Directed Learning",
+    activityTypes: ["Connect & Wonder", "Express"],
+    pedagogies: ["Experiential Learning", "Embodied Learning", "Disciplinary & Interdisciplinary Learning"],
+    keywords: ["role", "perspective", "scenario"],
+  },
+  {
+    id: "facilitating-online-forum-discussion",
+    title: "Facilitating Online Forum Discussion",
+    description: "Asynchronous online discussion extends thinking beyond the classroom",
+    area: "Supporting Self-Directed Learning",
+    activityTypes: ["Investigate", "Express", "Reflect"],
+    pedagogies: ["Dialogic Talk"],
+    keywords: ["online", "forum", "discussion"],
+  },
+  {
+    id: "show-and-tell",
+    title: "Show and Tell",
+    description: "Students present their learning to an audience to demonstrate understanding",
+    area: "Setting Meaningful Assignments",
+    activityTypes: ["Express"],
+    pedagogies: ["Experiential Learning", "Embodied Learning", "Disciplinary & Interdisciplinary Learning"],
+    keywords: ["present", "audience", "share"],
+  },
+  {
+    id: "practice-for-mastery",
+    title: "Practice for Mastery",
+    description: "Repeated practice with feedback builds fluency in skills or knowledge",
+    area: "Setting Meaningful Assignments",
+    activityTypes: ["Make"],
+    pedagogies: ["Experiential Learning", "Embodied Learning", "Disciplinary & Interdisciplinary Learning"],
+    keywords: ["practice", "mastery", "fluency"],
+  },
+  {
+    id: "your-choice",
+    title: "Your Choice",
+    description: "Students choose how they demonstrate their learning to promote agency",
+    area: "Setting Meaningful Assignments",
+    activityTypes: ["Connect & Wonder", "Investigate", "Make", "Express", "Reflect"],
+    pedagogies: ["Experiential Learning", "Embodied Learning", "Disciplinary & Interdisciplinary Learning", "Dialogic Talk"],
+    keywords: ["choice", "agency", "assignment"],
   },
 ];
+
+const legacyTeachingActionAliases = {
+  "gallery-walk": "pass-it-round",
+  "peer-critique": "affirm-question-suggest",
+  "see-think-wonder": "generating-questions",
+  "material-exploration": "engage-explore-apply",
+  "teacher-demonstration": "demonstration",
+  "visual-journaling": "what-have-i-learnt",
+  "artist-statement-writing": "show-and-tell",
+  "moodboard-curation": "scouting-for-information",
+};
 
 teachingActionLibrary.forEach((action) => {
   libraryCardDetails[action.title] = {
@@ -599,7 +996,8 @@ teachingActionLibrary.forEach((action) => {
     detailLabel: "",
     context: [
       action.description,
-      `Linked pedagogies: ${action.pedagogies.join(", ")}`,
+      `Teaching area: ${action.area || "General"}`,
+      ...(action.pedagogies.length ? [`Linked pedagogies: ${action.pedagogies.join(", ")}`] : []),
       `Useful activity types: ${action.activityTypes.join(", ")}`,
     ],
   };
@@ -846,6 +1244,7 @@ const defaultState = {
   activeTeachingActionDetailStepId: "",
   activeTeachingActionDetailId: "",
   teachingActionSearch: "",
+  showAllTeachingActions: false,
   collapsedCategories: {},
   overlays: {
     bigIdeas: true,
@@ -1233,6 +1632,7 @@ function normalizeState(candidate) {
   normalized.activeTeachingActionDetailStepId = normalized.activeTeachingActionDetailStepId || "";
   normalized.activeTeachingActionDetailId = normalized.activeTeachingActionDetailId || "";
   normalized.teachingActionSearch = normalized.teachingActionSearch || "";
+  normalized.showAllTeachingActions = Boolean(normalized.showAllTeachingActions);
   normalized.selectedBoardZone = ["meaning", "alignment", "content", "core"].includes(normalized.selectedBoardZone)
     ? normalized.selectedBoardZone
     : "meaning";
@@ -2112,7 +2512,6 @@ function normalizeTeachingActions(actions) {
       return {
         id: metadata.id,
         title: metadata.title,
-        note: typeof action === "object" ? action.note || "" : "",
       };
     })
     .filter(Boolean)
@@ -2120,7 +2519,8 @@ function normalizeTeachingActions(actions) {
 }
 
 function teachingActionById(id) {
-  return teachingActionLibrary.find((action) => action.id === id);
+  return teachingActionLibrary.find((action) => action.id === id)
+    || teachingActionLibrary.find((action) => action.id === legacyTeachingActionAliases[id]);
 }
 
 function teachingActionByTitle(title) {
@@ -2334,6 +2734,7 @@ function planStateForContentHash(planState) {
     "activeTeachingActionDetailStepId",
     "activeTeachingActionDetailId",
     "teachingActionSearch",
+    "showAllTeachingActions",
     "localSavedAtMs",
     "cloudSavedAtMs",
   ].forEach((key) => delete clone[key]);
@@ -5055,7 +5456,7 @@ function lessonWordExportHtml(unit, lesson) {
     ${wordGroupedSection("Core Learning Experiences", [["Core Learning Experiences", lessonOverviewValues(lesson, "coreExperiences")]])}
     ${wordGroupedSection("Pedagogy", [
       ["Pedagogy", lessonOverviewValues(lesson, "pedagogy")],
-      ["Legacy Teaching Move Cards", lessonOverviewValues(lesson, "teachingMoves")],
+      ["Legacy Teaching Action Cards", lessonOverviewValues(lesson, "teachingMoves")],
     ])}
     ${wordGroupedSection("Assessment", [["Assessment", lessonOverviewValues(lesson, "assessment")]])}
     ${wordGroupedSection("Lesson Structure", [["Lesson Structure", structures]])}
@@ -5083,10 +5484,9 @@ function wordTeachingActions(step) {
   if (!actions.length) return `<span class="not-planned">Not yet planned</span>`;
   return `
     <ul>
-      ${actions.map(({ action, selection }) => `
+      ${actions.map(({ action }) => `
         <li>
           <strong>${escapeHtml(action.title)}</strong>
-          ${selection.note ? wordParagraph(selection.note) : ""}
         </li>
       `).join("")}
     </ul>
@@ -6038,7 +6438,7 @@ function lessonConfirmedSummary(unit, lesson) {
         <dt>Core Learning Experiences</dt><dd>${lessonOverviewGroups(lesson, [["Core Learning Experiences", "coreExperiences"]])}</dd>
         <dt>Pedagogy</dt><dd>${lessonOverviewGroups(lesson, [
           ["Pedagogy", "pedagogy"],
-          ["Legacy Teaching Move Cards", "teachingMoves"],
+          ["Legacy Teaching Action Cards", "teachingMoves"],
         ])}</dd>
         <dt>Assessment</dt><dd>${lessonOverviewGroups(lesson, [["Assessment", "assessment"]])}</dd>
         <dt>Lesson Structure</dt><dd>${lessonOverviewList(structures)}</dd>
@@ -6093,10 +6493,9 @@ function lessonTeachingActionsOverviewHtml(step) {
     <div class="lesson-overview-actions-list">
       <div class="formatted-field-label">Teaching Actions</div>
       <ul>
-        ${actions.map(({ action, selection }) => `
+        ${actions.map(({ action }) => `
           <li>
             <strong>${escapeHtml(action.title)}</strong>
-            ${selection.note ? renderTeacherText(selection.note) : ""}
           </li>
         `).join("")}
       </ul>
@@ -6407,18 +6806,14 @@ function renderTeachingActionsForStep(step, lesson) {
   const detailOpen = state.activeTeachingActionDetailStepId === step.id
     ? teachingActionById(state.activeTeachingActionDetailId)
     : null;
-  const detailSelection = detailOpen
-    ? step.teachingActions.find((selection) => selection.id === detailOpen.id)
-    : null;
   return `
     <section class="activity-teaching-actions" aria-label="Teaching actions">
       <div class="activity-teaching-header">
         <div>
-          <div class="lesson-flow-label">Teaching actions</div>
-          <div class="activity-teaching-hint">Contextual moves for this activity</div>
+          <div class="lesson-flow-label">Teaching Actions</div>
         </div>
         <button class="activity-action-picker-toggle" type="button">
-          ${pickerOpen ? "Close Picker" : "Add Teaching Action"}
+          ${pickerOpen ? "Close" : "Browse Teaching Actions"}
         </button>
       </div>
       ${selectedActions.length ? `
@@ -6426,13 +6821,12 @@ function renderTeachingActionsForStep(step, lesson) {
           ${selectedActions.map(({ selection, metadata }) => `
             <button class="activity-action-chip" type="button" data-action-id="${escapeAttr(metadata.id)}">
               ${escapeHtml(metadata.title)}
-              ${selection.note ? `<span>note</span>` : ""}
             </button>
           `).join("")}
         </div>
-      ` : `<p class="activity-teaching-empty">No teaching actions selected yet.</p>`}
+      ` : `<p class="activity-teaching-empty">Optional ideas for shaping this activity.</p>`}
       ${pickerOpen ? renderTeachingActionPicker(step, lesson) : ""}
-      ${detailOpen ? renderTeachingActionDetail(detailOpen, detailSelection) : ""}
+      ${detailOpen ? renderTeachingActionDetail(detailOpen) : ""}
     </section>
   `;
 }
@@ -6441,54 +6835,87 @@ function renderTeachingActionPicker(step, lesson) {
   const search = (state.teachingActionSearch || "").trim().toLowerCase();
   const selectedIds = new Set((step.teachingActions || []).map((selection) => selection.id));
   const actions = teachingActionsForActivity(step, lesson, search);
-  const suggestedCount = actions.filter((entry) => entry.suggested).length;
+  const suggestedActions = actions.filter((entry) => entry.suggested);
+  const browsing = state.showAllTeachingActions || Boolean(search);
+  const browseGroups = groupTeachingActionsByArea(actions.map((entry) => entry.action));
   return `
     <div class="activity-action-picker">
       <div class="activity-action-picker-top">
-        <strong>${suggestedCount ? "Suggested for this activity" : "Browse teaching actions"}</strong>
+        <strong>Suggested for this activity</strong>
         <input class="text-input activity-action-search" type="search" placeholder="Search teaching actions" value="${escapeAttr(state.teachingActionSearch || "")}" />
       </div>
       <div class="activity-action-options">
-        ${actions.length ? actions.map(({ action, suggested }) => `
-          <article class="activity-action-option ${suggested ? "suggested" : ""}">
-            <div>
-              <div class="activity-action-option-title">${escapeHtml(action.title)}</div>
-              <p>${escapeHtml(action.description)}</p>
-              <div class="activity-action-tags">
-                ${suggested ? `<span>Suggested</span>` : ""}
-                ${action.activityTypes.slice(0, 3).map((type) => `<span>${escapeHtml(type)}</span>`).join("")}
-              </div>
-            </div>
-            <button class="activity-action-add" type="button" data-action-id="${escapeAttr(action.id)}" ${selectedIds.has(action.id) ? "disabled" : ""}>
-              ${selectedIds.has(action.id) ? "Added" : "Add"}
-            </button>
-          </article>
-        `).join("") : `<p class="activity-teaching-empty">No teaching actions match this search.</p>`}
+        ${suggestedActions.length ? suggestedActions.map(({ action }) => teachingActionOptionHtml(action, selectedIds, true)).join("") : `<p class="activity-teaching-empty">No strong suggestions yet. Browse the full library if you want ideas.</p>`}
       </div>
+      <button class="activity-action-browse-toggle" type="button" aria-expanded="${String(browsing)}">
+        ${browsing ? "Hide Browse Teaching Actions" : "Browse Teaching Actions"}
+      </button>
+      ${browsing ? `
+        <div class="activity-action-browse">
+          ${browseGroups.length ? browseGroups.map(([area, groupActions]) => `
+            <section class="activity-action-area">
+              <h5>${escapeHtml(area)}</h5>
+              <div class="activity-action-options">
+                ${groupActions.map((action) => teachingActionOptionHtml(action, selectedIds, suggestedActions.some((entry) => entry.action.id === action.id))).join("")}
+              </div>
+            </section>
+          `).join("") : `<p class="activity-teaching-empty">No teaching actions match this search.</p>`}
+        </div>
+      ` : ""}
     </div>
   `;
 }
 
-function renderTeachingActionDetail(action, selection) {
+function teachingActionOptionHtml(action, selectedIds, suggested = false) {
   return `
-    <div class="activity-action-detail">
-      <div class="activity-action-detail-head">
-        <div>
-          <div class="lesson-flow-label">Teaching action</div>
-          <h4>${escapeHtml(action.title)}</h4>
+    <article class="activity-action-option ${suggested ? "suggested" : ""}">
+      <div>
+        <div class="activity-action-option-title">${escapeHtml(action.title)}</div>
+        <p>${escapeHtml(action.description)}</p>
+        <div class="activity-action-tags">
+          ${suggested ? `<span>Suggested</span>` : ""}
+          ${action.area ? `<span>${escapeHtml(action.area)}</span>` : ""}
+          ${action.activityTypes.slice(0, 3).map((type) => `<span>${escapeHtml(type)}</span>`).join("")}
         </div>
-        <button class="activity-action-detail-close" type="button">Return to activity</button>
       </div>
-      <p>${escapeHtml(action.description)}</p>
-      <div class="activity-action-meta">
-        <span>Pedagogy: ${escapeHtml(action.pedagogies.join(", "))}</span>
-        <span>Useful in: ${escapeHtml(action.activityTypes.join(", "))}</span>
+      <button class="activity-action-add" type="button" data-action-id="${escapeAttr(action.id)}" ${selectedIds.has(action.id) ? "disabled" : ""}>
+        ${selectedIds.has(action.id) ? "Added" : "Add"}
+      </button>
+    </article>
+  `;
+}
+
+function groupTeachingActionsByArea(actions) {
+  const groups = new Map();
+  actions.forEach((action) => {
+    const area = action.area || "Other Teaching Actions";
+    if (!groups.has(area)) groups.set(area, []);
+    groups.get(area).push(action);
+  });
+  return [...groups.entries()];
+}
+
+function renderTeachingActionDetail(action) {
+  return `
+    <div class="activity-action-detail-backdrop">
+      <div class="activity-action-detail" role="dialog" aria-label="${escapeAttr(action.title)}">
+        <div class="activity-action-detail-controls">
+          <button class="activity-action-remove" type="button" data-action-id="${escapeAttr(action.id)}" aria-label="Remove teaching action">Delete</button>
+          <button class="activity-action-detail-close" type="button" aria-label="Return to activity">✓</button>
+        </div>
+        <div class="activity-action-detail-head">
+          <div>
+            <div class="lesson-flow-label">Teaching Action</div>
+            <h4>${escapeHtml(action.title)}</h4>
+          </div>
+        </div>
+        <p>${escapeHtml(action.description)}</p>
+        <div class="activity-action-meta">
+          ${action.area ? `<span>Area: ${escapeHtml(action.area)}</span>` : ""}
+          ${action.pedagogies.length ? `<span>Pedagogy: ${escapeHtml(action.pedagogies.join(", "))}</span>` : ""}
+          <span>Useful in: ${escapeHtml(action.activityTypes.join(", "))}</span>
+        </div>
       </div>
-      <label class="activity-action-note-field">
-        <span class="field-label">Teacher note</span>
-        <textarea class="text-area activity-action-note" rows="2" data-action-id="${escapeAttr(action.id)}" placeholder="How will you use this move here?">${escapeHtml(selection?.note || "")}</textarea>
-      </label>
-      <button class="ghost-button activity-action-remove" type="button" data-action-id="${escapeAttr(action.id)}">Remove from activity</button>
     </div>
   `;
 }
@@ -6512,6 +6939,7 @@ function teachingActionSuggestionScore(action, step, selectedPedagogies, search)
   const searchable = [
     action.title,
     action.description,
+    action.area || "",
     ...action.pedagogies,
     ...action.activityTypes,
     ...(action.keywords || []),
@@ -6541,6 +6969,11 @@ function bindTeachingActionControls(scope, lesson, step) {
     state.activeTeachingActionDetailStepId = "";
     state.activeTeachingActionDetailId = "";
     state.teachingActionSearch = "";
+    state.showAllTeachingActions = false;
+    renderLessonSteps(lesson);
+  });
+  scope.querySelector(".activity-action-browse-toggle")?.addEventListener("click", () => {
+    state.showAllTeachingActions = !state.showAllTeachingActions;
     renderLessonSteps(lesson);
   });
   scope.querySelector(".activity-action-search")?.addEventListener("input", (event) => {
@@ -6567,6 +7000,12 @@ function bindTeachingActionControls(scope, lesson, step) {
       renderLessonSteps(lesson);
     });
   });
+  scope.querySelector(".activity-action-detail-backdrop")?.addEventListener("click", (event) => {
+    if (!event.target.classList.contains("activity-action-detail-backdrop")) return;
+    state.activeTeachingActionDetailStepId = "";
+    state.activeTeachingActionDetailId = "";
+    renderLessonSteps(lesson);
+  });
   scope.querySelector(".activity-action-detail-close")?.addEventListener("click", () => {
     state.activeTeachingActionDetailStepId = "";
     state.activeTeachingActionDetailId = "";
@@ -6579,12 +7018,6 @@ function bindTeachingActionControls(scope, lesson, step) {
     saveState();
     renderLessonSteps(lesson);
   });
-  scope.querySelector(".activity-action-note")?.addEventListener("input", (event) => {
-    const selection = (step.teachingActions || []).find((action) => action.id === event.target.dataset.actionId);
-    if (!selection) return;
-    selection.note = event.target.value;
-    saveState();
-  });
 }
 
 function addTeachingActionToStep(step, actionId) {
@@ -6592,7 +7025,7 @@ function addTeachingActionToStep(step, actionId) {
   if (!metadata) return;
   step.teachingActions = normalizeTeachingActions(step.teachingActions || []);
   if (step.teachingActions.some((selection) => selection.id === metadata.id)) return;
-  step.teachingActions.push({ id: metadata.id, title: metadata.title, note: "" });
+  step.teachingActions.push({ id: metadata.id, title: metadata.title });
 }
 
 function removeTeachingActionFromStep(step, actionId) {
@@ -6978,7 +7411,7 @@ function cardTypeLabel(type, card = {}) {
     visualQualities: "Visual Quality",
     visualQualityText: "Visual Quality",
     coreExperiences: "Core Experience",
-    teachingMoves: "Teaching Move",
+    teachingMoves: "Teaching Action",
     assessment: "Assessment",
     pedagogy: "Pedagogy",
     cc21: "21CC",
