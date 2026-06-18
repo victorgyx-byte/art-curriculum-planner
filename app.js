@@ -6824,6 +6824,7 @@ function renderTeachingActionsForStep(step, lesson) {
   const detailOpen = state.activeTeachingActionDetailStepId === step.id
     ? teachingActionById(state.activeTeachingActionDetailId)
     : null;
+  const detailSelected = Boolean(detailOpen && step.teachingActions.some((selection) => selection.id === detailOpen.id));
   return `
     <section class="activity-teaching-actions" aria-label="Teaching actions">
       <div class="activity-teaching-header">
@@ -6844,7 +6845,7 @@ function renderTeachingActionsForStep(step, lesson) {
         </div>
       ` : `<p class="activity-teaching-empty">Optional ideas for shaping this activity.</p>`}
       ${pickerOpen ? renderTeachingActionPicker(step, lesson) : ""}
-      ${detailOpen ? renderTeachingActionDetail(detailOpen) : ""}
+      ${detailOpen ? renderTeachingActionDetail(detailOpen, detailSelected) : ""}
     </section>
   `;
 }
@@ -6890,7 +6891,7 @@ function renderTeachingActionPicker(step, lesson) {
 
 function teachingActionOptionHtml(action, selectedIds, suggested = false) {
   return `
-    <article class="activity-action-option ${suggested ? "suggested" : ""}">
+    <article class="activity-action-option ${suggested ? "suggested" : ""}" data-action-id="${escapeAttr(action.id)}" role="button" tabindex="0">
       <div>
         <div class="activity-action-option-title">${escapeHtml(action.title)}</div>
         <p>${escapeHtml(action.description)}</p>
@@ -6921,10 +6922,18 @@ function teachingActionAreaExpanded(area) {
   return Boolean(state.collapsedCategories[`teachingActionArea:${area}`]);
 }
 
+function clearTeachingActionAreaExpansion() {
+  Object.keys(state.collapsedCategories)
+    .filter((categoryKey) => categoryKey.startsWith("teachingActionArea:"))
+    .forEach((categoryKey) => {
+      delete state.collapsedCategories[categoryKey];
+    });
+}
+
 function openTeachingActionArea(groups) {
   if (!groups.length) return "";
   const expanded = groups.find(([area]) => teachingActionAreaExpanded(area));
-  return expanded?.[0] || groups[0][0];
+  return expanded?.[0] || "";
 }
 
 function teachingActionAreaLabel(area) {
@@ -6936,12 +6945,14 @@ function teachingAreaSortIndex(area) {
   return index === -1 ? Number.MAX_SAFE_INTEGER : index;
 }
 
-function renderTeachingActionDetail(action) {
+function renderTeachingActionDetail(action, selected = false) {
   return `
     <div class="activity-action-detail-backdrop">
       <div class="activity-action-detail" role="dialog" aria-label="${escapeAttr(action.title)}">
         <div class="activity-action-detail-controls">
-          <button class="activity-action-remove" type="button" data-action-id="${escapeAttr(action.id)}" aria-label="Remove teaching action">Delete</button>
+          ${selected
+            ? `<button class="activity-action-remove" type="button" data-action-id="${escapeAttr(action.id)}" aria-label="Remove teaching action">Delete</button>`
+            : `<button class="activity-action-detail-add" type="button" data-action-id="${escapeAttr(action.id)}">Add</button>`}
           <button class="activity-action-detail-close" type="button" aria-label="Return to activity">✓</button>
         </div>
         <div class="activity-action-detail-head">
@@ -7011,22 +7022,28 @@ function bindTeachingActionControls(scope, lesson, step) {
     state.activeTeachingActionDetailId = "";
     state.teachingActionSearch = "";
     state.showAllTeachingActions = false;
+    clearTeachingActionAreaExpansion();
     renderLessonSteps(lesson);
   });
   scope.querySelector(".activity-action-browse-toggle")?.addEventListener("click", () => {
-    state.showAllTeachingActions = !state.showAllTeachingActions;
+    const nextOpen = !state.showAllTeachingActions;
+    state.showAllTeachingActions = nextOpen;
+    clearTeachingActionAreaExpansion();
     renderLessonSteps(lesson);
   });
   scope.querySelectorAll(".activity-action-area-toggle").forEach((button) => {
     button.addEventListener("click", () => {
-      const key = `teachingActionArea:${button.dataset.area}`;
-      Object.keys(state.collapsedCategories)
-        .filter((categoryKey) => categoryKey.startsWith("teachingActionArea:"))
-        .forEach((categoryKey) => {
-          delete state.collapsedCategories[categoryKey];
-        });
-      state.collapsedCategories[key] = true;
+      const area = button.dataset.area;
+      const key = `teachingActionArea:${area}`;
+      const alreadyOpen = Boolean(state.collapsedCategories[key]);
+      clearTeachingActionAreaExpansion();
+      if (!alreadyOpen) {
+        state.collapsedCategories[key] = true;
+      }
       renderLessonSteps(lesson);
+      if (!alreadyOpen) {
+        focusTeachingActionArea(step.id, area);
+      }
     });
   });
   scope.querySelector(".activity-action-search")?.addEventListener("input", (event) => {
@@ -7036,11 +7053,26 @@ function bindTeachingActionControls(scope, lesson, step) {
     nextSearch?.focus();
     if (nextSearch) nextSearch.selectionStart = nextSearch.selectionEnd = nextSearch.value.length;
   });
-  scope.querySelectorAll(".activity-action-add").forEach((button) => {
-    button.addEventListener("click", () => {
-      addTeachingActionToStep(step, button.dataset.actionId);
+  scope.querySelectorAll(".activity-action-option").forEach((card) => {
+    const openPreview = (event) => {
+      if (event.target.closest(".activity-action-add")) return;
       state.activeTeachingActionDetailStepId = step.id;
-      state.activeTeachingActionDetailId = button.dataset.actionId;
+      state.activeTeachingActionDetailId = card.dataset.actionId;
+      renderLessonSteps(lesson);
+    };
+    card.addEventListener("click", openPreview);
+    card.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      openPreview(event);
+    });
+  });
+  scope.querySelectorAll(".activity-action-add").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      addTeachingActionToStep(step, button.dataset.actionId);
+      state.activeTeachingActionDetailStepId = "";
+      state.activeTeachingActionDetailId = "";
       saveState();
       renderLessonSteps(lesson);
     });
@@ -7064,12 +7096,29 @@ function bindTeachingActionControls(scope, lesson, step) {
     state.activeTeachingActionDetailId = "";
     renderLessonSteps(lesson);
   });
+  scope.querySelector(".activity-action-detail-add")?.addEventListener("click", (event) => {
+    addTeachingActionToStep(step, event.currentTarget.dataset.actionId);
+    state.activeTeachingActionDetailStepId = "";
+    state.activeTeachingActionDetailId = "";
+    saveState();
+    renderLessonSteps(lesson);
+  });
   scope.querySelector(".activity-action-remove")?.addEventListener("click", (event) => {
     removeTeachingActionFromStep(step, event.currentTarget.dataset.actionId);
     state.activeTeachingActionDetailStepId = "";
     state.activeTeachingActionDetailId = "";
     saveState();
     renderLessonSteps(lesson);
+  });
+}
+
+function focusTeachingActionArea(stepId, area) {
+  window.requestAnimationFrame(() => {
+    const stepNode = els.lessonSteps?.querySelector(`.lesson-step-card[data-step-id="${CSS.escape(stepId)}"]`);
+    const areaNode = stepNode
+      ?.querySelector(`.activity-action-area-toggle[data-area="${CSS.escape(area)}"]`)
+      ?.closest(".activity-action-area");
+    areaNode?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   });
 }
 

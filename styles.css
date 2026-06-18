@@ -3340,11 +3340,17 @@ button:disabled {
   border-radius: 9px;
   padding: 9px;
   background: #fff;
+  cursor: pointer;
 }
 
 .activity-action-option.suggested {
   border-left-color: var(--accent);
   background: rgba(219, 238, 237, 0.34);
+}
+
+.activity-action-option:focus-visible {
+  outline: 2px solid rgba(47, 111, 115, 0.42);
+  outline-offset: 2px;
 }
 
 .activity-action-option-title {
@@ -3491,6 +3497,7 @@ button:disabled {
   line-height: 1.15;
 }
 
+.activity-action-detail-add,
 .activity-action-detail-close,
 .activity-action-remove {
   border: 1px solid rgba(47, 111, 115, 0.22);
@@ -3502,6 +3509,10 @@ button:disabled {
   color: var(--accent);
   font-size: 12px;
   font-weight: 900;
+}
+
+.activity-action-detail-add {
+  color: var(--accent);
 }
 
 .activity-action-remove {
