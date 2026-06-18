@@ -90,6 +90,82 @@ button:disabled {
   line-height: 1.4;
 }
 
+.weave-logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  width: fit-content;
+  color: var(--ink);
+}
+
+.weave-mark {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 36px;
+  flex: 0 0 auto;
+}
+
+.weave-thread {
+  position: absolute;
+  left: 1px;
+  display: block;
+  width: 42px;
+  height: 12px;
+  border: 3px solid currentColor;
+  border-radius: 999px;
+  transform-origin: center;
+}
+
+.weave-thread.thread-a {
+  top: 1px;
+  color: var(--accent);
+  transform: rotate(-18deg);
+}
+
+.weave-thread.thread-b {
+  top: 12px;
+  color: var(--accent-3);
+  transform: rotate(18deg);
+}
+
+.weave-thread.thread-c {
+  top: 23px;
+  color: var(--accent-2);
+  opacity: 0.92;
+  transform: rotate(-18deg);
+}
+
+.weave-word {
+  font-size: clamp(40px, 7vw, 76px);
+  font-weight: 900;
+  line-height: 0.92;
+  letter-spacing: -0.02em;
+}
+
+.weave-logo-large {
+  margin: 2px 0 2px;
+}
+
+.weave-logo-large .weave-mark {
+  width: 56px;
+  height: 46px;
+}
+
+.weave-logo-large .weave-thread {
+  width: 54px;
+  height: 15px;
+  border-width: 4px;
+}
+
+.weave-logo-large .thread-b {
+  top: 15px;
+}
+
+.weave-logo-large .thread-c {
+  top: 30px;
+}
+
 .login-copy {
   max-width: 32ch;
   font-size: clamp(16px, 2vw, 19px);
@@ -403,6 +479,46 @@ button:disabled {
   max-width: 1480px;
 }
 
+.topbar-brand {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 18px;
+}
+
+.weave-logo-compact {
+  gap: 8px;
+}
+
+.weave-logo-compact .weave-mark {
+  width: 34px;
+  height: 28px;
+}
+
+.weave-logo-compact .weave-thread {
+  width: 32px;
+  height: 9px;
+  border-width: 2px;
+}
+
+.weave-logo-compact .thread-b {
+  top: 9px;
+}
+
+.weave-logo-compact .thread-c {
+  top: 18px;
+}
+
+.weave-logo-compact .weave-word {
+  font-size: 26px;
+}
+
+.planner-heading {
+  min-width: 0;
+  border-left: 1px solid rgba(111, 106, 97, 0.22);
+  padding-left: 16px;
+}
+
 .topbar h1,
 .panel-heading h2,
 .empty-state h2 {
@@ -413,6 +529,9 @@ button:disabled {
 .topbar h1 {
   font-size: clamp(24px, 4vw, 38px);
   line-height: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .eyebrow {
@@ -3539,7 +3658,7 @@ button:disabled {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .login-panel h1 {
+  .weave-logo-large .weave-word {
     max-width: 12ch;
   }
 
@@ -3646,8 +3765,31 @@ button:disabled {
     padding: 24px;
   }
 
-  .login-panel h1 {
+  .weave-logo-large .weave-word {
     font-size: clamp(38px, 14vw, 58px);
+  }
+
+  .weave-logo-large {
+    gap: 10px;
+  }
+
+  .weave-logo-large .weave-mark {
+    width: 44px;
+    height: 36px;
+  }
+
+  .weave-logo-large .weave-thread {
+    width: 42px;
+    height: 12px;
+    border-width: 3px;
+  }
+
+  .weave-logo-large .thread-b {
+    top: 12px;
+  }
+
+  .weave-logo-large .thread-c {
+    top: 23px;
   }
 
   .login-button {
@@ -3729,6 +3871,17 @@ button:disabled {
   .topbar {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .topbar-brand {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .planner-heading {
+    border-left: 0;
+    padding-left: 0;
   }
 
   .workspace {

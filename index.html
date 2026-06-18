@@ -30,7 +30,14 @@
       <div class="login-layout">
         <div class="login-panel">
           <p class="eyebrow">Curriculum Design Studio</p>
-          <h1>Weave</h1>
+          <div class="weave-logo weave-logo-large" aria-label="Weave">
+            <span class="weave-mark" aria-hidden="true">
+              <span class="weave-thread thread-a"></span>
+              <span class="weave-thread thread-b"></span>
+              <span class="weave-thread thread-c"></span>
+            </span>
+            <span class="weave-word">Weave</span>
+          </div>
           <p class="login-copy">Weave curriculum, units, lessons, and learning goals into one shared planning workspace.</p>
           <div class="login-actions">
             <button id="login-google" class="primary-button login-button" type="button">Continue with Google</button>
@@ -43,9 +50,19 @@
 
     <div id="app-shell" class="app-shell hidden">
       <header class="topbar">
-        <div>
-          <p id="planner-kicker" class="eyebrow">Workspace</p>
-          <h1 id="planner-title">Weave</h1>
+        <div class="topbar-brand">
+          <div class="weave-logo weave-logo-compact" aria-label="Weave">
+            <span class="weave-mark" aria-hidden="true">
+              <span class="weave-thread thread-a"></span>
+              <span class="weave-thread thread-b"></span>
+              <span class="weave-thread thread-c"></span>
+            </span>
+            <span class="weave-word">Weave</span>
+          </div>
+          <div class="planner-heading">
+            <p id="planner-kicker" class="eyebrow">Workspace</p>
+            <h1 id="planner-title">Weave</h1>
+          </div>
         </div>
         <div class="topbar-actions">
           <button id="workspace-home" class="ghost-button" type="button">Workspace</button>
