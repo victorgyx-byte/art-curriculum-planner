@@ -688,6 +688,14 @@ button:disabled {
   margin: 0 auto;
 }
 
+.workspace.assessment-mode {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.workspace.assessment-mode .library-panel {
+  display: none;
+}
+
 .workspace-home {
   display: grid;
   gap: 18px;

@@ -4219,6 +4219,7 @@ function renderScreens() {
   els.lessonScreen.classList.toggle("hidden", !showLesson);
   els.assessmentScreen?.classList.toggle("hidden", !showAssessment);
   els.workspace.classList.toggle("timeline-mode", showTimeline || showAssessment);
+  els.workspace.classList.toggle("assessment-mode", showAssessment);
   els.cardLibraryPanel.classList.toggle("hidden", showTimeline || showAssessment);
   els.workspaceHome.classList.toggle("hidden", showWorkspace);
   els.modeSwitch.classList.toggle("hidden", showWorkspace);
