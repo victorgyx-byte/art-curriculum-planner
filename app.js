@@ -417,6 +417,43 @@ const libraryCardDetails = {
       "Through drawing, students make marks on paper and are encouraged to imagine the possibilities of what the drawing can be.",
     ],
   },
+  "Portfolio: Document": {
+    tone: "coreExperiences",
+    title: "Portfolio: Document",
+    detailLabel: "",
+    context: [
+      "Students establish habits and routines that support day-to-day generation, keeping and management of materials that could contribute to a portfolio.",
+      "Students learn basic photo-documentation skills to ensure artworks are accurately and clearly captured. Students learn to label, store and organise their materials either in analogue or digital ways.",
+    ],
+  },
+  "Portfolio: Curate": {
+    tone: "coreExperiences",
+    title: "Portfolio: Curate",
+    detailLabel: "",
+    context: [
+      "Students consider their intended narrative as they select a body of visuals from existing materials generated from day-to-day learning.",
+      "Students learn to arrange, sequence and assemble selected materials in a coherent manner to convey their intended narrative. Curation can be done individually, in pairs or in groups.",
+    ],
+  },
+  "Portfolio: Reflect": {
+    tone: "coreExperiences",
+    title: "Portfolio: Reflect",
+    detailLabel: "",
+    context: [
+      "When curating, students undergo a reflective process of recalling learning, observing connections in thoughts and interests, and evaluating their endeavours in overcoming personal artistic boundaries.",
+      "When viewing presentations by others, students learn to relate, to contribute their views respectfully, and to situate their art making. Reflection invites self-assessment.",
+    ],
+  },
+  "Portfolio: (Re)present": {
+    tone: "coreExperiences",
+    title: "Portfolio: (Re)present",
+    detailLabel: "",
+    context: [
+      "Presentations can be formal or informal, in pairs, small groups or with larger audiences, and in the form of oral presentation or showcases.",
+      "Presenting to others involves organising and externalising ideas, thoughts and feelings that are internalised when learning; students learn to articulate a representation of themselves.",
+      "Participatory mechanisms that encourage interaction or feedback, such as inviting the audience to leave notes for the presenter, can be built in.",
+    ],
+  },
   "AP1: Observe, record and reflect on what they see and experience": {
     tone: "process",
     title: "Artistic Process 1: Observe, record and reflect on what they see and experience",
