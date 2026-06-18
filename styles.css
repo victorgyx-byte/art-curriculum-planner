@@ -3327,8 +3327,6 @@ button:disabled {
   display: grid;
   gap: 8px;
   margin-top: 10px;
-  max-height: 300px;
-  overflow: auto;
   padding-right: 4px;
 }
 
@@ -3412,20 +3410,48 @@ button:disabled {
 .activity-action-browse {
   margin-top: 10px;
   display: grid;
-  gap: 12px;
+  gap: 8px;
+  max-height: 360px;
+  overflow: auto;
+  padding-right: 4px;
 }
 
 .activity-action-area {
-  border-top: 1px solid rgba(216, 208, 194, 0.8);
-  padding-top: 10px;
+  border: 1px solid rgba(216, 208, 194, 0.86);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.72);
+  overflow: hidden;
 }
 
-.activity-action-area h5 {
-  margin: 0;
+.activity-action-area-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 0;
+  padding: 10px 12px;
+  background: transparent;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 900;
   text-transform: uppercase;
+  text-align: left;
+}
+
+.activity-action-area-toggle span:last-child {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 3px 8px;
+  background: rgba(47, 111, 115, 0.1);
+  color: var(--accent);
+  font-size: 10px;
+  text-transform: none;
+}
+
+.activity-action-area .activity-action-options {
+  margin: 0;
+  padding: 0 10px 10px;
 }
 
 .activity-action-detail-backdrop {

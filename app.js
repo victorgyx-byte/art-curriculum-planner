@@ -989,6 +989,24 @@ const legacyTeachingActionAliases = {
   "moodboard-curation": "scouting-for-information",
 };
 
+const teachingAreaOrder = [
+  "Activating Prior Knowledge",
+  "Arousing Interest",
+  "Encouraging Learning Engagement",
+  "Providing Clear Explanation",
+  "Pacing and Maintaining Momentum",
+  "Facilitating Collaborative Learning",
+  "Using Questions to Deepen Learning",
+  "Checking for Understanding and Providing Feedback",
+  "Supporting Self-Directed Learning",
+  "Setting Meaningful Assignments",
+  "Concluding the Lesson",
+];
+
+const teachingAreaDisplayLabels = {
+  "Encouraging Learner Engagement": "Encouraging Learning Engagement",
+};
+
 teachingActionLibrary.forEach((action) => {
   libraryCardDetails[action.title] = {
     tone: "teachingMoves",
@@ -996,7 +1014,7 @@ teachingActionLibrary.forEach((action) => {
     detailLabel: "",
     context: [
       action.description,
-      `Teaching area: ${action.area || "General"}`,
+      `Teaching area: ${teachingActionAreaLabel(action.area || "General")}`,
       ...(action.pedagogies.length ? [`Linked pedagogies: ${action.pedagogies.join(", ")}`] : []),
       `Useful activity types: ${action.activityTypes.join(", ")}`,
     ],
@@ -6835,9 +6853,10 @@ function renderTeachingActionPicker(step, lesson) {
   const search = (state.teachingActionSearch || "").trim().toLowerCase();
   const selectedIds = new Set((step.teachingActions || []).map((selection) => selection.id));
   const actions = teachingActionsForActivity(step, lesson, search);
-  const suggestedActions = actions.filter((entry) => entry.suggested);
+  const suggestedActions = actions.filter((entry) => entry.suggested).slice(0, 4);
   const browsing = state.showAllTeachingActions || Boolean(search);
   const browseGroups = groupTeachingActionsByArea(actions.map((entry) => entry.action));
+  const openArea = openTeachingActionArea(browseGroups);
   return `
     <div class="activity-action-picker">
       <div class="activity-action-picker-top">
@@ -6848,16 +6867,19 @@ function renderTeachingActionPicker(step, lesson) {
         ${suggestedActions.length ? suggestedActions.map(({ action }) => teachingActionOptionHtml(action, selectedIds, true)).join("") : `<p class="activity-teaching-empty">No strong suggestions yet. Browse the full library if you want ideas.</p>`}
       </div>
       <button class="activity-action-browse-toggle" type="button" aria-expanded="${String(browsing)}">
-        ${browsing ? "Hide Browse Teaching Actions" : "Browse Teaching Actions"}
+        ${browsing ? "Hide More Teaching Actions" : "Browse More Teaching Actions"}
       </button>
       ${browsing ? `
         <div class="activity-action-browse">
           ${browseGroups.length ? browseGroups.map(([area, groupActions]) => `
             <section class="activity-action-area">
-              <h5>${escapeHtml(area)}</h5>
-              <div class="activity-action-options">
+              <button class="activity-action-area-toggle" type="button" data-area="${escapeAttr(area)}" aria-expanded="${String(area === openArea)}">
+                <span>${escapeHtml(area)}</span>
+                <span>${groupActions.length} actions</span>
+              </button>
+              ${area === openArea ? `<div class="activity-action-options">
                 ${groupActions.map((action) => teachingActionOptionHtml(action, selectedIds, suggestedActions.some((entry) => entry.action.id === action.id))).join("")}
-              </div>
+              </div>` : ""}
             </section>
           `).join("") : `<p class="activity-teaching-empty">No teaching actions match this search.</p>`}
         </div>
@@ -6888,11 +6910,30 @@ function teachingActionOptionHtml(action, selectedIds, suggested = false) {
 function groupTeachingActionsByArea(actions) {
   const groups = new Map();
   actions.forEach((action) => {
-    const area = action.area || "Other Teaching Actions";
+    const area = teachingActionAreaLabel(action.area || "Other Teaching Actions");
     if (!groups.has(area)) groups.set(area, []);
     groups.get(area).push(action);
   });
-  return [...groups.entries()];
+  return [...groups.entries()].sort(([areaA], [areaB]) => teachingAreaSortIndex(areaA) - teachingAreaSortIndex(areaB) || areaA.localeCompare(areaB));
+}
+
+function teachingActionAreaExpanded(area) {
+  return Boolean(state.collapsedCategories[`teachingActionArea:${area}`]);
+}
+
+function openTeachingActionArea(groups) {
+  if (!groups.length) return "";
+  const expanded = groups.find(([area]) => teachingActionAreaExpanded(area));
+  return expanded?.[0] || groups[0][0];
+}
+
+function teachingActionAreaLabel(area) {
+  return teachingAreaDisplayLabels[area] || area;
+}
+
+function teachingAreaSortIndex(area) {
+  const index = teachingAreaOrder.indexOf(area);
+  return index === -1 ? Number.MAX_SAFE_INTEGER : index;
 }
 
 function renderTeachingActionDetail(action) {
@@ -6911,7 +6952,7 @@ function renderTeachingActionDetail(action) {
         </div>
         <p>${escapeHtml(action.description)}</p>
         <div class="activity-action-meta">
-          ${action.area ? `<span>Area: ${escapeHtml(action.area)}</span>` : ""}
+          ${action.area ? `<span>Area: ${escapeHtml(teachingActionAreaLabel(action.area))}</span>` : ""}
           ${action.pedagogies.length ? `<span>Pedagogy: ${escapeHtml(action.pedagogies.join(", "))}</span>` : ""}
           <span>Useful in: ${escapeHtml(action.activityTypes.join(", "))}</span>
         </div>
@@ -6975,6 +7016,18 @@ function bindTeachingActionControls(scope, lesson, step) {
   scope.querySelector(".activity-action-browse-toggle")?.addEventListener("click", () => {
     state.showAllTeachingActions = !state.showAllTeachingActions;
     renderLessonSteps(lesson);
+  });
+  scope.querySelectorAll(".activity-action-area-toggle").forEach((button) => {
+    button.addEventListener("click", () => {
+      const key = `teachingActionArea:${button.dataset.area}`;
+      Object.keys(state.collapsedCategories)
+        .filter((categoryKey) => categoryKey.startsWith("teachingActionArea:"))
+        .forEach((categoryKey) => {
+          delete state.collapsedCategories[categoryKey];
+        });
+      state.collapsedCategories[key] = true;
+      renderLessonSteps(lesson);
+    });
   });
   scope.querySelector(".activity-action-search")?.addEventListener("input", (event) => {
     state.teachingActionSearch = event.target.value;
