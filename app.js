@@ -8011,6 +8011,7 @@ function shortenAll(values = [], isLo = false) {
 
 function startTimelinePointer(event, unit, block) {
   if (event.button !== 0 && event.pointerType === "mouse") return;
+  event.preventDefault();
   timelineDrag = {
     unitId: unit.id,
     mode: "move",
@@ -8020,7 +8021,9 @@ function startTimelinePointer(event, unit, block) {
     originalStart: unit.start,
     originalLocalWeek: timelineLocalWeek(unit.start),
     originalYear: timelineYearForStart(unit.start),
+    block,
   };
+  block.classList.add("timeline-dragging");
   block.setPointerCapture(event.pointerId);
   block.addEventListener("pointermove", moveTimelinePointer);
   block.addEventListener("pointerup", endTimelinePointer);
@@ -8037,18 +8040,28 @@ function moveTimelinePointer(event) {
   const deltaWeeks = Math.round((event.clientX - timelineDrag.startX) / weekWidth());
   const year = timelineYearAtPoint(event.clientY) || timelineDrag.originalYear;
   unit.start = clampUnitStartInYear(unit, year, timelineDrag.originalLocalWeek + deltaWeeks);
-  renderUnits();
-  renderHealth();
-  renderEditor();
+  updateTimelineDragPreview(unit, timelineDrag.block);
 }
 
 function endTimelinePointer(event) {
-  event.currentTarget.releasePointerCapture(timelineDrag.pointerId);
+  if (!timelineDrag) return;
+  const drag = timelineDrag;
+  const block = drag.block || event.currentTarget;
+  if (block?.hasPointerCapture?.(drag.pointerId)) {
+    block.releasePointerCapture(drag.pointerId);
+  }
+  block?.classList.remove("timeline-dragging");
+  block?.removeEventListener("pointermove", moveTimelinePointer);
+  block?.removeEventListener("pointerup", endTimelinePointer);
+  block?.removeEventListener("pointercancel", endTimelinePointer);
   const unit = state.units.find((candidate) => candidate.id === timelineDrag.unitId);
   if (unit) {
     state.selectedUnitId = unit.id;
-    if (timelineDrag.moved) packTimelineYear(timelineYearForStart(unit.start));
-    if (!timelineDrag.moved) {
+    if (drag.moved) {
+      packTimelineYear(drag.originalYear);
+      packTimelineYear(timelineYearForStart(unit.start));
+    }
+    if (!drag.moved) {
       const now = Date.now();
       const isDoubleClick = timelineClick.unitId === unit.id && now - timelineClick.at < 420;
       timelineClick = { unitId: unit.id, at: now };
@@ -8061,6 +8074,14 @@ function endTimelinePointer(event) {
   }
   timelineDrag = null;
   render();
+}
+
+function updateTimelineDragPreview(unit, block) {
+  if (!block) return;
+  const width = weekWidth();
+  const year = timelineYearForStart(unit.start);
+  block.style.left = `${timelineLaneLabelWidth() + (timelineLocalWeek(unit.start) - 1) * width + 4}px`;
+  block.style.top = `${TIMELINE_HEADER_HEIGHT + (year - 1) * TIMELINE_LANE_HEIGHT + 10}px`;
 }
 
 function timelineYearAtPoint(clientY) {
