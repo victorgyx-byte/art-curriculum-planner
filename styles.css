@@ -932,12 +932,9 @@ button:disabled {
 
 .library-panel {
   display: grid;
-  grid-template-rows: auto auto minmax(260px, 1fr);
-  align-content: stretch;
+  align-content: start;
   gap: 14px;
   min-height: 0;
-  max-height: calc(100vh - 112px);
-  overflow: hidden;
   position: sticky;
   top: 12px;
 }
@@ -975,8 +972,7 @@ button:disabled {
 .card-library-panel {
   display: flex;
   flex-direction: column;
-  grid-row: 3;
-  max-height: none;
+  max-height: min(98vh, 980px);
   min-height: 0;
   overflow: hidden;
 }
@@ -991,7 +987,6 @@ button:disabled {
 }
 
 .unit-list-panel {
-  grid-row: 1;
   display: flex;
   flex-direction: column;
   max-height: min(30vh, 320px);
@@ -1006,7 +1001,6 @@ button:disabled {
 }
 
 .lesson-nav-panel {
-  grid-row: 2;
   display: flex;
   flex-direction: column;
   max-height: min(30vh, 320px);
