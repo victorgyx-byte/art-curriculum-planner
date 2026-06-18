@@ -8383,13 +8383,13 @@ function renderAssessmentLoPicker(task) {
 
 function assessmentUnitLearningOutcomes(unit) {
   if (!unit) return [];
-  return sortLearningOutcomes([
+  return sortLearningOutcomes(normalizePlanningValues([
     ...(unit.learningOutcomes?.primary || []),
     ...(unit.learningOutcomes?.supporting || []),
     ...(unit.boardCards || [])
       .filter((card) => card.type === "learningOutcomes")
-      .map((card) => normalizePlanningLabel(card.label, "learningOutcomes")),
-  ]);
+      .map((card) => card.label),
+  ], "learningOutcomes"));
 }
 
 function assessmentTaskValidLearningOutcomes(task) {
