@@ -8288,7 +8288,7 @@ function renderAssessmentMatrix() {
   state.assessmentTasks.forEach((task) => {
     const placement = assessmentTaskPlacement(task);
     if (!placement.year || !placement.term) return;
-    task.learningOutcomes.forEach((lo) => {
+    assessmentTaskValidLearningOutcomes(task).forEach((lo) => {
       const key = `${lo}|${placement.year}|${placement.term}`;
       if (!taskLookup.has(key)) taskLookup.set(key, []);
       taskLookup.get(key).push(task);
@@ -8363,20 +8363,39 @@ function renderAssessmentTaskEditor() {
 
 function renderAssessmentLoPicker(task) {
   const linkedUnit = state.units.find((unit) => unit.id === els.assessmentTaskUnit.value);
-  const unitLos = new Set(sortLearningOutcomes([
-    ...(linkedUnit?.learningOutcomes?.primary || []),
-    ...(linkedUnit?.learningOutcomes?.supporting || []),
-    ...(linkedUnit?.boardCards || [])
-      .filter((card) => card.type === "learningOutcomes")
-      .map((card) => normalizePlanningLabel(card.label, "learningOutcomes")),
-  ]));
-  const selected = new Set(task.learningOutcomes || []);
-  els.assessmentTaskLos.innerHTML = allLearningOutcomeLabels().map((lo) => `
-    <label class="${unitLos.has(lo) ? "suggested-lo" : ""}">
+  const unitLos = assessmentUnitLearningOutcomes(linkedUnit);
+  const selected = new Set((task.learningOutcomes || []).filter((lo) => unitLos.includes(lo)));
+  if (!unitLos.length) {
+    els.assessmentTaskLos.innerHTML = `
+      <div class="assessment-lo-empty">
+        Add Learning Outcome cards to this unit first. Assessment tasks can only assess LOs already planned in the unit.
+      </div>
+    `;
+    return;
+  }
+  els.assessmentTaskLos.innerHTML = unitLos.map((lo) => `
+    <label class="suggested-lo">
       <input type="checkbox" value="${escapeAttr(lo)}" ${selected.has(lo) ? "checked" : ""} />
-      <span>${escapeHtml(lo)}${unitLos.has(lo) ? " · in unit" : ""}</span>
+      <span>${escapeHtml(lo)}</span>
     </label>
   `).join("");
+}
+
+function assessmentUnitLearningOutcomes(unit) {
+  if (!unit) return [];
+  return sortLearningOutcomes([
+    ...(unit.learningOutcomes?.primary || []),
+    ...(unit.learningOutcomes?.supporting || []),
+    ...(unit.boardCards || [])
+      .filter((card) => card.type === "learningOutcomes")
+      .map((card) => normalizePlanningLabel(card.label, "learningOutcomes")),
+  ]);
+}
+
+function assessmentTaskValidLearningOutcomes(task) {
+  const unit = state.units.find((candidate) => candidate.id === task.unitId);
+  const unitLos = new Set(assessmentUnitLearningOutcomes(unit));
+  return sortLearningOutcomes((task.learningOutcomes || []).filter((lo) => unitLos.has(lo)));
 }
 
 function renderAssessmentTaskList() {
@@ -8413,6 +8432,7 @@ function renderAssessmentTaskList() {
 }
 
 function assessmentTaskCardHtml(task, placement) {
+  const assessedLos = assessmentTaskValidLearningOutcomes(task);
   return `
     <article class="assessment-task-card ${task.weighted ? "weighted" : ""}">
       <div class="assessment-task-card-main">
@@ -8432,7 +8452,7 @@ function assessmentTaskCardHtml(task, placement) {
         ${task.weightedNote ? `<span>${escapeHtml(task.weightedNote)}</span>` : ""}
       </div>
       <div class="assessment-task-los">
-        ${task.learningOutcomes.length ? task.learningOutcomes.map((lo) => `<span>${escapeHtml(lo.split(":")[0])}</span>`).join("") : `<span class="missing">No LO selected</span>`}
+        ${assessedLos.length ? assessedLos.map((lo) => `<span>${escapeHtml(lo.split(":")[0])}</span>`).join("") : `<span class="missing">No unit LO selected</span>`}
       </div>
       <div class="assessment-task-evidence">${renderTeacherText(task.evidence || "Evidence not yet described", { fallback: "Evidence not yet described" })}</div>
       <button class="ghost-button rubric-placeholder" type="button" disabled>Draft Rubric From Task · Coming Next</button>
@@ -9148,6 +9168,10 @@ els.saveAssessmentTask?.addEventListener("click", () => {
   const task = collectAssessmentTaskForm();
   if (!task.unitId) {
     renderCloudStatus("Create a unit before adding assessment tasks", "Sign out");
+    return;
+  }
+  if (!task.learningOutcomes.length) {
+    renderCloudStatus("Add unit Learning Outcomes before saving this assessment task", "Sign out");
     return;
   }
   if (!task.title.trim()) task.title = `${task.type} Task`;
