@@ -5633,7 +5633,7 @@ function lessonLibrarySections(unit, zone = null, lesson = null) {
         ...libraryItemsByType("cc21"),
       ])),
     },
-    ...cc21LessonGoalLibrarySections(unit, lesson),
+    ...cc21LessonGoalLibrarySections(unit, lesson, zone || "curricular"),
     {
       title: "Pedagogy",
       zone: "pedagogy",
@@ -5702,7 +5702,7 @@ function lessonLibrarySections(unit, zone = null, lesson = null) {
     .filter((section) => section.items.length);
 }
 
-function cc21LessonGoalLibrarySections(unit, lesson) {
+function cc21LessonGoalLibrarySections(unit, lesson, zone = "curricular") {
   const sections = [];
   const suggestedGoals = cc21GoalsForEmphases(selected21ccEmphases(unit, lesson));
   if (suggestedGoals.length) {
@@ -5721,11 +5721,11 @@ function cc21LessonGoalLibrarySections(unit, lesson) {
       action: "toggleAll21ccGoals",
     }],
   });
-  if (!state.showAll21ccLessonGoals) return sections;
+  if (!state.showAll21ccLessonGoals || isAll21ccGoalMapCollapsed(zone)) return sections;
   cc21LessonGoalGroups.forEach((domain) => {
     domain.competencies.forEach((competency) => {
       sections.push({
-        title: `${competency.competency} (${domain.domain})`,
+        title: competency.competency,
         zone: "curricular",
         items: competency.goals.map((goal) => cc21GoalLibraryItem({
           ...goal,
@@ -5738,6 +5738,13 @@ function cc21LessonGoalLibrarySections(unit, lesson) {
     });
   });
   return sections;
+}
+
+function isAll21ccGoalMapCollapsed(zone = "curricular") {
+  return Boolean(
+    state.collapsedCategories[`lesson:${zone}:Browse All 21CC Goals`] ||
+    state.collapsedCategories[`mobile-lesson:${zone}:Browse All 21CC Goals`],
+  );
 }
 
 function cc21GoalLibraryItem(goal) {
