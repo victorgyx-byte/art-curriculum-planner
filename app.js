@@ -1528,6 +1528,13 @@ const els = {
   assessmentTaskNotes: document.querySelector("#assessment-task-notes"),
   saveAssessmentTask: document.querySelector("#save-assessment-task"),
   cancelAssessmentTask: document.querySelector("#cancel-assessment-task"),
+  draftRubric: document.querySelector("#draft-rubric"),
+  rubricDraftStatus: document.querySelector("#rubric-draft-status"),
+  rubricBasedOn: document.querySelector("#rubric-based-on"),
+  rubricEditor: document.querySelector("#rubric-editor"),
+  rubricCriteria: document.querySelector("#rubric-criteria"),
+  addRubricCriterion: document.querySelector("#add-rubric-criterion"),
+  saveRubric: document.querySelector("#save-rubric"),
   lessonLanding: document.querySelector("#lesson-landing"),
   lessonEditor: document.querySelector("#lesson-editor"),
   lessonEditorTitle: document.querySelector("#lesson-editor-title"),
@@ -2607,8 +2614,41 @@ function normalizeAssessmentTasks(tasks) {
       weighted: Boolean(task.weighted),
       weightedNote: task.weightedNote || "",
       notes: task.notes || "",
+      rubric: normalizeRubricDraft(task.rubric),
     }))
     .filter((task) => task.unitId || task.title || task.learningOutcomes.length || task.evidence);
+}
+
+function normalizeRubricDraft(rubric) {
+  if (!rubric || typeof rubric !== "object") return null;
+  const levels = Array.isArray(rubric.levels) && rubric.levels.length
+    ? rubric.levels.map((level) => String(level || "").trim()).filter(Boolean).slice(0, 6)
+    : ["Beginning", "Developing", "Secure", "Extending"];
+  const safeLevels = levels.length ? levels : ["Beginning", "Developing", "Secure", "Extending"];
+  const criteria = (Array.isArray(rubric.criteria) ? rubric.criteria : [])
+    .map((criterion) => {
+      const descriptors = {};
+      safeLevels.forEach((level) => {
+        descriptors[level] = String(criterion?.descriptors?.[level] || "").trim();
+      });
+      return {
+        id: criterion?.id || uid("rubric-criterion"),
+        title: String(criterion?.title || "").trim(),
+        linkedOutcomes: sortLearningOutcomes(normalizePlanningValues(criterion?.linkedOutcomes || [], "learningOutcomes")),
+        focus: String(criterion?.focus || "").trim(),
+        descriptors,
+      };
+    })
+    .filter((criterion) => criterion.title || Object.values(criterion.descriptors).some(Boolean));
+  return {
+    id: rubric.id || uid("rubric"),
+    status: rubric.status || "draft",
+    generatedAt: rubric.generatedAt || new Date().toISOString(),
+    reviewReminder: rubric.reviewReminder || "AI draft. Teacher review required before use.",
+    sourcesUsed: uniqueReadableValues(rubric.sourcesUsed || []),
+    levels: safeLevels,
+    criteria,
+  };
 }
 
 function assessmentTaskPlacement(task) {
@@ -8411,6 +8451,7 @@ function renderAssessmentTaskEditor() {
   els.assessmentTaskWeightedNote.value = task.weightedNote || "";
   els.assessmentTaskNotes.value = task.notes || "";
   renderAssessmentLoPicker(task);
+  renderAssessmentRubric(task);
 }
 
 function renderAssessmentLoPicker(task) {
@@ -8431,6 +8472,84 @@ function renderAssessmentLoPicker(task) {
       <span>${escapeHtml(lo)}</span>
     </label>
   `).join("");
+}
+
+function renderAssessmentRubric(task) {
+  if (!els.rubricEditor || !els.rubricCriteria) return;
+  const rubric = normalizeRubricDraft(task.rubric);
+  const hasRubric = Boolean(rubric?.criteria?.length);
+  els.rubricEditor.classList.toggle("hidden", !hasRubric);
+  if (els.rubricDraftStatus) els.rubricDraftStatus.textContent = "";
+  if (els.rubricBasedOn) {
+    els.rubricBasedOn.innerHTML = hasRubric && rubric.sourcesUsed.length
+      ? `
+        <span>Draft based on</span>
+        ${rubric.sourcesUsed.map((source) => `<strong>${escapeHtml(source)}</strong>`).join("")}
+      `
+      : "";
+  }
+  if (!hasRubric) {
+    els.rubricCriteria.innerHTML = "";
+    return;
+  }
+  els.rubricCriteria.innerHTML = rubric.criteria.map((criterion, index) => `
+    <article class="rubric-criterion" data-criterion-index="${index}">
+      <div class="rubric-criterion-heading">
+        <label>
+          <span class="field-label">Criterion</span>
+          <input class="text-input rubric-criterion-title" type="text" value="${escapeAttr(criterion.title)}" />
+        </label>
+        <button class="icon-button rubric-remove-criterion" type="button" aria-label="Remove criterion">x</button>
+      </div>
+      <label>
+        <span class="field-label">Linked LO Notes</span>
+        <input class="text-input rubric-criterion-outcomes" type="text" value="${escapeAttr(criterion.linkedOutcomes.join("; "))}" />
+      </label>
+      <label>
+        <span class="field-label">Focus</span>
+        <textarea class="text-area rubric-criterion-focus" rows="2">${escapeHtml(criterion.focus || "")}</textarea>
+      </label>
+      <div class="rubric-level-grid">
+        ${rubric.levels.map((level) => `
+          <label>
+            <span class="field-label">${escapeHtml(level)}</span>
+            <textarea class="text-area rubric-descriptor" rows="3" data-level="${escapeAttr(level)}">${escapeHtml(criterion.descriptors?.[level] || "")}</textarea>
+          </label>
+        `).join("")}
+      </div>
+    </article>
+  `).join("");
+}
+
+function collectRubricEditor() {
+  const task = state.assessmentTasks.find((candidate) => candidate.id === state.editingAssessmentTaskId);
+  const currentRubric = normalizeRubricDraft(task?.rubric);
+  if (!currentRubric) return null;
+  const criteria = [...(els.rubricCriteria?.querySelectorAll(".rubric-criterion") || [])].map((node) => {
+    const descriptors = {};
+    currentRubric.levels.forEach((level) => {
+      const descriptor = [...node.querySelectorAll(".rubric-descriptor")].find((field) => field.dataset.level === level);
+      descriptors[level] = descriptor?.value.trim() || "";
+    });
+    return {
+      id: currentRubric.criteria[Number(node.dataset.criterionIndex)]?.id || uid("rubric-criterion"),
+      title: node.querySelector(".rubric-criterion-title")?.value.trim() || "",
+      linkedOutcomes: normalizePlanningValues((node.querySelector(".rubric-criterion-outcomes")?.value || "").split(";"), "learningOutcomes"),
+      focus: node.querySelector(".rubric-criterion-focus")?.value.trim() || "",
+      descriptors,
+    };
+  });
+  return normalizeRubricDraft({
+    ...currentRubric,
+    criteria,
+    generatedAt: currentRubric.generatedAt || new Date().toISOString(),
+  });
+}
+
+function setRubricStatus(message, isBusy = false) {
+  if (!els.rubricDraftStatus) return;
+  els.rubricDraftStatus.textContent = message;
+  els.rubricDraftStatus.classList.toggle("busy", Boolean(isBusy));
 }
 
 function assessmentUnitLearningOutcomes(unit) {
@@ -8524,6 +8643,7 @@ function blankAssessmentTask(overrides = {}) {
     weighted: false,
     weightedNote: "",
     notes: "",
+    rubric: null,
     ...overrides,
   };
 }
@@ -8548,6 +8668,154 @@ function collectAssessmentTaskForm() {
     weightedNote: els.assessmentTaskWeightedNote.value.trim(),
     notes: els.assessmentTaskNotes.value.trim(),
   };
+}
+
+function buildRubricDraftRequest(task) {
+  const unit = state.units.find((candidate) => candidate.id === task.unitId);
+  const safeOverviewValues = (type) => unit ? overviewValues(unit, type) : [];
+  const lessonEvidence = (unit?.lessons || [])
+    .slice(0, 12)
+    .map((lesson, index) => ({
+      lessonNumber: index + 1,
+      title: lesson.title || "",
+      description: lesson.description || "",
+      evidence: (lesson.steps || [])
+        .map((step) => step.evidence || step.customisation || "")
+        .filter(Boolean)
+        .slice(0, 4),
+    }))
+    .filter((lesson) => lesson.title || lesson.description || lesson.evidence.length);
+  return {
+    plan: {
+      title: activePlanTitle(),
+      subject: state.plan?.subject || "Art",
+    },
+    assessmentTask: {
+      title: task.title,
+      type: task.type,
+      learningOutcomes: assessmentTaskValidLearningOutcomes(task),
+      evidence: task.evidence,
+      weighted: task.weighted,
+      weightedNote: task.weightedNote,
+      notes: task.notes,
+    },
+    unit: {
+      title: unit?.title || "",
+      performanceTask: unit?.artTask || "",
+      bigIdeas: safeOverviewValues("bigIdeas"),
+      guidingQuestions: unit ? guidingQuestionValues(unit) : [],
+      theme: unit ? themeValues(unit) : [],
+      learningOutcomes: assessmentUnitLearningOutcomes(unit),
+      learningContent: {
+        media: safeOverviewValues("media"),
+        context: unit ? contextOverviewValues(unit) : [],
+        artisticProcesses: safeOverviewValues("artisticProcesses"),
+        visualQualities: unit ? visualQualityOverviewValues(unit) : [],
+      },
+      coreExperiences: safeOverviewValues("coreExperiences"),
+      pedagogy: safeOverviewValues("pedagogy"),
+      assessmentCards: safeOverviewValues("assessment"),
+    },
+    lessonEvidence,
+  };
+}
+
+async function draftRubricForAssessmentTask() {
+  if (!canEditActivePlan()) return;
+  if (window.location.protocol === "file:") {
+    setRubricStatus("Open the online or local server version to draft rubrics.");
+    return;
+  }
+  if (!cloud.user) {
+    setRubricStatus("Sign in online before drafting a rubric.");
+    return;
+  }
+  const savedTaskId = saveAssessmentTaskFromForm({ keepEditorOpen: true, skipRender: true });
+  if (!savedTaskId) {
+    setRubricStatus("Add a linked unit, unit LO, and evidence first.");
+    renderAssessmentTaskEditor();
+    return;
+  }
+  const task = state.assessmentTasks.find((candidate) => candidate.id === savedTaskId);
+  if (!task?.evidence?.trim()) {
+    setRubricStatus("Add an evidence description before drafting.");
+    renderAssessmentTaskEditor();
+    return;
+  }
+  const selectedLos = assessmentTaskValidLearningOutcomes(task);
+  if (!selectedLos.length) {
+    setRubricStatus("Select at least one planned LO first.");
+    renderAssessmentTaskEditor();
+    return;
+  }
+  const originalLabel = els.draftRubric?.textContent || "Draft Rubric";
+  if (els.draftRubric) {
+    els.draftRubric.disabled = true;
+    els.draftRubric.textContent = "Drafting...";
+  }
+  setRubricStatus("Drafting with curated syllabus references...", true);
+  try {
+    const token = await cloud.user.getIdToken();
+    const response = await fetch("/api/draft-rubric", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(buildRubricDraftRequest(task)),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(payload.error || "Rubric draft failed.");
+    }
+    const rubric = normalizeRubricDraft(payload.rubric);
+    if (!rubric?.criteria?.length) {
+      throw new Error("The draft returned no rubric criteria.");
+    }
+    task.rubric = rubric;
+    state.assessmentTasks = normalizeAssessmentTasks(state.assessmentTasks);
+    saveState();
+    renderAssessmentTaskEditor();
+    const savedOnline = await saveCloudStateNow();
+    setRubricStatus(savedOnline ? "Rubric drafted and saved online." : "Rubric drafted. Saved locally; online retry pending.");
+  } catch (error) {
+    console.warn("Rubric draft failed", error);
+    setRubricStatus(error.message || "Rubric draft failed.");
+  } finally {
+    if (els.draftRubric) {
+      els.draftRubric.disabled = false;
+      els.draftRubric.textContent = originalLabel;
+    }
+  }
+}
+
+function saveAssessmentTaskFromForm(options = {}) {
+  if (!canEditActivePlan()) return "";
+  const task = collectAssessmentTaskForm();
+  if (!task.unitId) {
+    renderCloudStatus("Create a unit before adding assessment tasks", "Sign out");
+    return "";
+  }
+  if (!task.learningOutcomes.length) {
+    renderCloudStatus("Add unit Learning Outcomes before saving this assessment task", "Sign out");
+    return "";
+  }
+  if (!task.title.trim()) task.title = `${task.type} Task`;
+  const existingIndex = state.assessmentTasks.findIndex((candidate) => candidate.id === state.editingAssessmentTaskId);
+  let savedTaskId = state.editingAssessmentTaskId;
+  if (existingIndex >= 0) {
+    state.assessmentTasks[existingIndex] = { ...state.assessmentTasks[existingIndex], ...task, id: state.editingAssessmentTaskId };
+  } else {
+    savedTaskId = uid("assessment-task");
+    state.assessmentTasks.push({ ...task, id: savedTaskId });
+  }
+  state.assessmentTasks = normalizeAssessmentTasks(state.assessmentTasks);
+  state.selectedAssessmentTaskId = savedTaskId;
+  state.editingAssessmentTaskId = savedTaskId;
+  if (!options.keepEditorOpen) state.assessmentTaskEditorOpen = false;
+  saveState();
+  if (!options.skipRender) render();
+  return savedTaskId;
 }
 
 function renderIncidenceGroup(title, units, type, expectedValues = [], options = {}) {
@@ -9219,31 +9487,54 @@ els.assessmentTaskUnit?.addEventListener("change", () => {
 });
 
 els.saveAssessmentTask?.addEventListener("click", () => {
+  saveAssessmentTaskFromForm();
+});
+
+els.draftRubric?.addEventListener("click", draftRubricForAssessmentTask);
+
+els.addRubricCriterion?.addEventListener("click", () => {
   if (!canEditActivePlan()) return;
-  const task = collectAssessmentTaskForm();
-  if (!task.unitId) {
-    renderCloudStatus("Create a unit before adding assessment tasks", "Sign out");
-    return;
-  }
-  if (!task.learningOutcomes.length) {
-    renderCloudStatus("Add unit Learning Outcomes before saving this assessment task", "Sign out");
-    return;
-  }
-  if (!task.title.trim()) task.title = `${task.type} Task`;
-  const existingIndex = state.assessmentTasks.findIndex((candidate) => candidate.id === state.editingAssessmentTaskId);
-  let savedTaskId = state.editingAssessmentTaskId;
-  if (existingIndex >= 0) {
-    state.assessmentTasks[existingIndex] = { ...state.assessmentTasks[existingIndex], ...task, id: state.editingAssessmentTaskId };
-  } else {
-    savedTaskId = uid("assessment-task");
-    state.assessmentTasks.push({ ...task, id: savedTaskId });
-  }
+  const task = state.assessmentTasks.find((candidate) => candidate.id === state.editingAssessmentTaskId);
+  const rubric = collectRubricEditor() || normalizeRubricDraft(task?.rubric);
+  if (!task || !rubric) return;
+  const descriptors = {};
+  rubric.levels.forEach((level) => {
+    descriptors[level] = "";
+  });
+  rubric.criteria.push({
+    id: uid("rubric-criterion"),
+    title: "New Criterion",
+    linkedOutcomes: assessmentTaskValidLearningOutcomes(task).slice(0, 1),
+    focus: "",
+    descriptors,
+  });
+  task.rubric = normalizeRubricDraft(rubric);
+  renderAssessmentRubric(task);
+});
+
+els.rubricCriteria?.addEventListener("click", (event) => {
+  const removeButton = event.target.closest(".rubric-remove-criterion");
+  if (!removeButton || !canEditActivePlan()) return;
+  const task = state.assessmentTasks.find((candidate) => candidate.id === state.editingAssessmentTaskId);
+  const rubric = collectRubricEditor();
+  const criterionNode = removeButton.closest(".rubric-criterion");
+  if (!task || !rubric || !criterionNode) return;
+  rubric.criteria.splice(Number(criterionNode.dataset.criterionIndex), 1);
+  task.rubric = normalizeRubricDraft(rubric);
+  renderAssessmentRubric(task);
+});
+
+els.saveRubric?.addEventListener("click", async () => {
+  if (!canEditActivePlan()) return;
+  const task = state.assessmentTasks.find((candidate) => candidate.id === state.editingAssessmentTaskId);
+  const rubric = collectRubricEditor();
+  if (!task || !rubric) return;
+  task.rubric = rubric;
   state.assessmentTasks = normalizeAssessmentTasks(state.assessmentTasks);
-  state.assessmentTaskEditorOpen = false;
-  state.selectedAssessmentTaskId = savedTaskId;
-  state.editingAssessmentTaskId = savedTaskId;
   saveState();
-  render();
+  setRubricStatus("Saving rubric...", true);
+  const savedOnline = await saveCloudStateNow();
+  setRubricStatus(savedOnline ? "Rubric saved online." : "Rubric saved locally; online retry pending.");
 });
 
 els.assessmentTaskList?.addEventListener("click", (event) => {

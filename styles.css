@@ -2360,27 +2360,108 @@ button:disabled {
   flex-shrink: 0;
 }
 
-.assessment-rubric-placeholder {
+.assessment-rubric-panel {
   display: grid;
-  gap: 6px;
+  gap: 10px;
   border: 1px dashed rgba(216, 208, 194, 0.94);
   border-radius: 12px;
   padding: 14px;
   background: rgba(246, 241, 233, 0.48);
 }
 
-.assessment-rubric-placeholder h4 {
+.assessment-rubric-panel h4 {
   margin: 0;
   color: var(--ink);
   font-size: 17px;
 }
 
-.assessment-rubric-placeholder p {
+.assessment-rubric-panel p {
   margin: 0;
   color: var(--muted);
   font-size: 13px;
   font-weight: 750;
   line-height: 1.4;
+}
+
+.rubric-panel-actions,
+.rubric-editor-heading,
+.rubric-criterion-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.rubric-panel-actions {
+  align-items: center;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+}
+
+.rubric-based-on {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.rubric-based-on strong {
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: rgba(219, 238, 237, 0.74);
+  color: var(--accent);
+}
+
+.rubric-editor {
+  display: grid;
+  gap: 12px;
+  border-top: 1px solid rgba(216, 208, 194, 0.76);
+  padding-top: 12px;
+}
+
+.rubric-editor-heading h5 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 18px;
+}
+
+.rubric-criteria {
+  display: grid;
+  gap: 12px;
+}
+
+.rubric-criterion {
+  display: grid;
+  gap: 10px;
+  border: 1px solid rgba(216, 208, 194, 0.86);
+  border-left: 5px solid var(--accent);
+  border-radius: 12px;
+  padding: 12px;
+  background: rgba(255, 253, 250, 0.96);
+}
+
+.rubric-criterion-heading label {
+  flex: 1;
+}
+
+.rubric-level-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.inline-save-status {
+  min-height: 20px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.inline-save-status.busy {
+  color: var(--accent);
 }
 
 .board-heading {
@@ -4727,9 +4808,15 @@ button:disabled {
   .assessment-heading,
   .assessment-task-editor-heading,
   .assessment-task-card-main,
-  .assessment-task-actions {
+  .assessment-task-actions,
+  .rubric-editor-heading,
+  .rubric-criterion-heading {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .rubric-level-grid {
+    grid-template-columns: 1fr;
   }
 
   .assessment-matrix-grid {

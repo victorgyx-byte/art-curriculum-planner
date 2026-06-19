@@ -483,11 +483,28 @@
                   <label class="field-label" for="assessment-task-notes">Notes</label>
                   <textarea id="assessment-task-notes" class="text-area" rows="2"></textarea>
 
-                  <div class="assessment-rubric-placeholder">
+                  <div class="assessment-rubric-panel">
                     <p class="eyebrow">Rubric Builder</p>
                     <h4>Draft Rubric From Task</h4>
-                    <p>Coming next: use this task, its linked LOs, and evidence description to start a rubric draft.</p>
-                    <button class="ghost-button" type="button" disabled>Draft Rubric From Task · Coming Next</button>
+                    <p>Use this task, its linked LOs, and curated syllabus references to start an editable analytic rubric draft.</p>
+                    <div class="rubric-panel-actions">
+                      <button id="draft-rubric" class="primary-button" type="button">Draft Rubric</button>
+                      <span id="rubric-draft-status" class="inline-save-status" aria-live="polite"></span>
+                    </div>
+                    <div id="rubric-based-on" class="rubric-based-on"></div>
+                    <div id="rubric-editor" class="rubric-editor hidden" aria-label="Rubric editor">
+                      <div class="rubric-editor-heading">
+                        <div>
+                          <p class="eyebrow">AI draft · Teacher review required</p>
+                          <h5>Editable Analytic Rubric</h5>
+                        </div>
+                        <button id="add-rubric-criterion" class="ghost-button" type="button">Add Criterion</button>
+                      </div>
+                      <div id="rubric-criteria" class="rubric-criteria"></div>
+                      <div class="rubric-panel-actions">
+                        <button id="save-rubric" class="primary-button" type="button">Save Rubric</button>
+                      </div>
+                    </div>
                   </div>
 
                   <div class="assessment-task-actions">

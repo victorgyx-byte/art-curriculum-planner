@@ -12,7 +12,8 @@ Use option 2.5:
 ## Stack
 
 - Frontend: Vercel static deployment.
-- Backend: Firebase Authentication, Cloud Firestore, and later Firebase Storage.
+- Backend: Firebase Authentication, Cloud Firestore, Firebase Storage, and Vercel serverless API routes.
+- AI drafting: OpenAI API called only from Vercel serverless routes, never from the browser.
 - Current fallback: browser local storage remains the prototype fallback until Firebase is connected.
 
 ## First Online Data Shape
@@ -71,7 +72,23 @@ For the MVP, `state` stores the current app state as one document field. Each pl
 2. Import the repository into Vercel.
 3. Deploy as a static frontend.
 4. Add Firebase environment variables from `.env.example`.
-5. Redeploy after environment variables are added.
+5. Add `OPENAI_API_KEY` for the AI rubric drafter.
+6. Optionally add `OPENAI_MODEL`; if omitted, Weave uses the default in `api/draft-rubric.js`.
+7. Redeploy after environment variables are added.
+
+## AI Rubric Drafter Setup
+
+The rubric drafter uses `/api/draft-rubric`, a Vercel serverless route. The browser sends the selected Assessment Task context and the signed-in teacher's Firebase ID token. The route verifies the token, adds curated LO and assessment guidance, calls OpenAI, and returns an editable rubric draft.
+
+Required Vercel environment variables:
+
+```text
+OPENAI_API_KEY=
+OPENAI_MODEL=gpt-4o-mini
+FIREBASE_PROJECT_ID=
+```
+
+Do not place the OpenAI API key in `index.html`, `app.js`, or any browser file.
 
 ## Current Code Step
 
