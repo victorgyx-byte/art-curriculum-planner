@@ -154,20 +154,27 @@ function requestBody(req) {
   return req.body;
 }
 
-function rubricSchema() {
-  const levels = ["Beginning", "Developing", "Secure", "Extending"];
+function rubricLevelsForStageCount(stageCount) {
+  return Number(stageCount) === 3
+    ? ["Developing", "Competent", "Proficient"]
+    : ["Beginning", "Developing", "Competent", "Proficient"];
+}
+
+function rubricSchema(stageCount = 4) {
+  const levels = rubricLevelsForStageCount(stageCount);
   const descriptorProperties = Object.fromEntries(levels.map((level) => [level, { type: "string" }]));
   return {
     type: "object",
     additionalProperties: false,
-    required: ["levels", "criteria", "reviewReminder", "sourcesUsed"],
+    required: ["levels", "totalMarks", "criteria", "reviewReminder", "sourcesUsed"],
     properties: {
       levels: {
         type: "array",
-        minItems: 4,
-        maxItems: 4,
+        minItems: levels.length,
+        maxItems: levels.length,
         items: { type: "string", enum: levels },
       },
+      totalMarks: { type: "string" },
       criteria: {
         type: "array",
         minItems: 3,
@@ -175,7 +182,7 @@ function rubricSchema() {
         items: {
           type: "object",
           additionalProperties: false,
-          required: ["title", "linkedOutcomes", "focus", "descriptors"],
+          required: ["title", "linkedOutcomes", "focus", "marks", "descriptors"],
           properties: {
             title: { type: "string" },
             linkedOutcomes: {
@@ -184,6 +191,7 @@ function rubricSchema() {
               items: { type: "string" },
             },
             focus: { type: "string" },
+            marks: { type: "string" },
             descriptors: {
               type: "object",
               additionalProperties: false,
@@ -210,6 +218,8 @@ function extractJsonText(data) {
 async function callOpenAI(context) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw Object.assign(new Error("Server is missing OPENAI_API_KEY."), { status: 500 });
+  const stageCount = Number(context.rubricOptions?.stageCount) === 3 ? 3 : 4;
+  const levels = rubricLevelsForStageCount(stageCount);
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -225,7 +235,7 @@ async function callOpenAI(context) {
         json_schema: {
           name: "weave_rubric_draft",
           strict: true,
-          schema: rubricSchema(),
+          schema: rubricSchema(stageCount),
         },
       },
       messages: [
@@ -236,6 +246,8 @@ async function callOpenAI(context) {
             "Use only the selected Learning Outcomes and supplied references.",
             "Do not assess student behaviour, compliance, effort, or neatness unless directly evidenced by the task.",
             "Write concise, teacher-editable descriptors that describe observable evidence.",
+            `Use exactly these rubric levels: ${levels.join(", ")}.`,
+            "Suggest marks per criterion if total marks are provided; otherwise leave marks as a short editable suggestion.",
             "Return only the required structured JSON.",
           ].join(" "),
         },
@@ -273,6 +285,7 @@ module.exports = async function handler(req, res) {
       return;
     }
     const draft = await callOpenAI(context);
+    const stageCount = Number(context.rubricOptions?.stageCount) === 3 ? 3 : 4;
     const sourcesUsed = [
       ...selectedLos.map(loCode).filter(Boolean),
       context.unit?.title ? "Unit Performance Task" : "",
@@ -281,6 +294,9 @@ module.exports = async function handler(req, res) {
     json(res, 200, {
       rubric: {
         ...draft,
+        stageCount,
+        levels: rubricLevelsForStageCount(stageCount),
+        totalMarks: draft.totalMarks || context.rubricOptions?.totalMarks || "",
         sourcesUsed: Array.from(new Set([...(draft.sourcesUsed || []), ...sourcesUsed])),
         generatedAt: new Date().toISOString(),
         status: "draft",

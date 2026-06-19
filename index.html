@@ -487,6 +487,19 @@
                     <p class="eyebrow">Rubric Builder</p>
                     <h4>Draft Rubric From Task</h4>
                     <p>Use this task, its linked LOs, and curated syllabus references to start an editable analytic rubric draft.</p>
+                    <div class="rubric-options-grid">
+                      <label>
+                        <span class="field-label">Rubric Stages</span>
+                        <select id="rubric-stage-count" class="text-input">
+                          <option value="4">4 stages: Beginning, Developing, Competent, Proficient</option>
+                          <option value="3">3 stages: Developing, Competent, Proficient</option>
+                        </select>
+                      </label>
+                      <label>
+                        <span class="field-label">Total Marks</span>
+                        <input id="rubric-total-marks" class="text-input" type="text" placeholder="e.g. 20 marks" />
+                      </label>
+                    </div>
                     <div class="rubric-panel-actions">
                       <button id="draft-rubric" class="primary-button" type="button">Draft Rubric</button>
                       <span id="rubric-draft-status" class="inline-save-status" aria-live="polite"></span>

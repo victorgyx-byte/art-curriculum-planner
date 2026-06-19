@@ -1530,6 +1530,8 @@ const els = {
   cancelAssessmentTask: document.querySelector("#cancel-assessment-task"),
   draftRubric: document.querySelector("#draft-rubric"),
   rubricDraftStatus: document.querySelector("#rubric-draft-status"),
+  rubricStageCount: document.querySelector("#rubric-stage-count"),
+  rubricTotalMarks: document.querySelector("#rubric-total-marks"),
   rubricBasedOn: document.querySelector("#rubric-based-on"),
   rubricEditor: document.querySelector("#rubric-editor"),
   rubricCriteria: document.querySelector("#rubric-criteria"),
@@ -2621,10 +2623,11 @@ function normalizeAssessmentTasks(tasks) {
 
 function normalizeRubricDraft(rubric) {
   if (!rubric || typeof rubric !== "object") return null;
+  const requestedLevels = rubricLevelsForStageCount(rubric.stageCount || rubric.levels?.length || 4);
   const levels = Array.isArray(rubric.levels) && rubric.levels.length
     ? rubric.levels.map((level) => String(level || "").trim()).filter(Boolean).slice(0, 6)
-    : ["Beginning", "Developing", "Secure", "Extending"];
-  const safeLevels = levels.length ? levels : ["Beginning", "Developing", "Secure", "Extending"];
+    : requestedLevels;
+  const safeLevels = levels.length ? levels : requestedLevels;
   const criteria = (Array.isArray(rubric.criteria) ? rubric.criteria : [])
     .map((criterion) => {
       const descriptors = {};
@@ -2636,6 +2639,7 @@ function normalizeRubricDraft(rubric) {
         title: String(criterion?.title || "").trim(),
         linkedOutcomes: sortLearningOutcomes(normalizePlanningValues(criterion?.linkedOutcomes || [], "learningOutcomes")),
         focus: String(criterion?.focus || "").trim(),
+        marks: String(criterion?.marks || "").trim(),
         descriptors,
       };
     })
@@ -2646,9 +2650,17 @@ function normalizeRubricDraft(rubric) {
     generatedAt: rubric.generatedAt || new Date().toISOString(),
     reviewReminder: rubric.reviewReminder || "AI draft. Teacher review required before use.",
     sourcesUsed: uniqueReadableValues(rubric.sourcesUsed || []),
+    stageCount: safeLevels.length,
+    totalMarks: String(rubric.totalMarks || "").trim(),
     levels: safeLevels,
     criteria,
   };
+}
+
+function rubricLevelsForStageCount(stageCount) {
+  return Number(stageCount) === 3
+    ? ["Developing", "Competent", "Proficient"]
+    : ["Beginning", "Developing", "Competent", "Proficient"];
 }
 
 function assessmentTaskPlacement(task) {
@@ -8478,6 +8490,9 @@ function renderAssessmentRubric(task) {
   if (!els.rubricEditor || !els.rubricCriteria) return;
   const rubric = normalizeRubricDraft(task.rubric);
   const hasRubric = Boolean(rubric?.criteria?.length);
+  if (els.draftRubric) els.draftRubric.textContent = hasRubric ? "Redraft Rubric" : "Draft Rubric";
+  if (els.rubricStageCount) els.rubricStageCount.value = String(rubric?.stageCount || 4);
+  if (els.rubricTotalMarks) els.rubricTotalMarks.value = rubric?.totalMarks || "";
   els.rubricEditor.classList.toggle("hidden", !hasRubric);
   if (els.rubricDraftStatus) els.rubricDraftStatus.textContent = "";
   if (els.rubricBasedOn) {
@@ -8509,6 +8524,10 @@ function renderAssessmentRubric(task) {
         <span class="field-label">Focus</span>
         <textarea class="text-area rubric-criterion-focus" rows="2">${escapeHtml(criterion.focus || "")}</textarea>
       </label>
+      <label>
+        <span class="field-label">Marks</span>
+        <input class="text-input rubric-criterion-marks" type="text" value="${escapeAttr(criterion.marks || "")}" placeholder="e.g. 5 marks" />
+      </label>
       <div class="rubric-level-grid">
         ${rubric.levels.map((level) => `
           <label>
@@ -8536,11 +8555,14 @@ function collectRubricEditor() {
       title: node.querySelector(".rubric-criterion-title")?.value.trim() || "",
       linkedOutcomes: normalizePlanningValues((node.querySelector(".rubric-criterion-outcomes")?.value || "").split(";"), "learningOutcomes"),
       focus: node.querySelector(".rubric-criterion-focus")?.value.trim() || "",
+      marks: node.querySelector(".rubric-criterion-marks")?.value.trim() || "",
       descriptors,
     };
   });
   return normalizeRubricDraft({
     ...currentRubric,
+    stageCount: Number(els.rubricStageCount?.value) || currentRubric.stageCount || currentRubric.levels.length,
+    totalMarks: els.rubricTotalMarks?.value.trim() || currentRubric.totalMarks || "",
     criteria,
     generatedAt: currentRubric.generatedAt || new Date().toISOString(),
   });
@@ -8673,6 +8695,7 @@ function collectAssessmentTaskForm() {
 function buildRubricDraftRequest(task) {
   const unit = state.units.find((candidate) => candidate.id === task.unitId);
   const safeOverviewValues = (type) => unit ? overviewValues(unit, type) : [];
+  const stageCount = Number(els.rubricStageCount?.value) === 3 ? 3 : 4;
   const lessonEvidence = (unit?.lessons || [])
     .slice(0, 12)
     .map((lesson, index) => ({
@@ -8698,6 +8721,11 @@ function buildRubricDraftRequest(task) {
       weighted: task.weighted,
       weightedNote: task.weightedNote,
       notes: task.notes,
+    },
+    rubricOptions: {
+      stageCount,
+      levels: rubricLevelsForStageCount(stageCount),
+      totalMarks: els.rubricTotalMarks?.value.trim() || "",
     },
     unit: {
       title: unit?.title || "",
@@ -8803,8 +8831,14 @@ function saveAssessmentTaskFromForm(options = {}) {
   if (!task.title.trim()) task.title = `${task.type} Task`;
   const existingIndex = state.assessmentTasks.findIndex((candidate) => candidate.id === state.editingAssessmentTaskId);
   let savedTaskId = state.editingAssessmentTaskId;
+  const editedRubric = collectRubricEditor();
   if (existingIndex >= 0) {
-    state.assessmentTasks[existingIndex] = { ...state.assessmentTasks[existingIndex], ...task, id: state.editingAssessmentTaskId };
+    state.assessmentTasks[existingIndex] = {
+      ...state.assessmentTasks[existingIndex],
+      ...task,
+      id: state.editingAssessmentTaskId,
+      rubric: editedRubric || state.assessmentTasks[existingIndex].rubric || null,
+    };
   } else {
     savedTaskId = uid("assessment-task");
     state.assessmentTasks.push({ ...task, id: savedTaskId });

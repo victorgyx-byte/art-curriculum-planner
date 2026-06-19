@@ -2398,6 +2398,12 @@ button:disabled {
   flex-wrap: wrap;
 }
 
+.rubric-options-grid {
+  display: grid;
+  grid-template-columns: minmax(260px, 1.4fr) minmax(160px, 0.7fr);
+  gap: 10px;
+}
+
 .rubric-based-on {
   display: flex;
   align-items: center;
@@ -4816,6 +4822,10 @@ button:disabled {
   }
 
   .rubric-level-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .rubric-options-grid {
     grid-template-columns: 1fr;
   }
 
