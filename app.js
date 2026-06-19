@@ -1537,6 +1537,7 @@ const els = {
   rubricEditor: document.querySelector("#rubric-editor"),
   rubricOverview: document.querySelector("#rubric-overview"),
   rubricCriteria: document.querySelector("#rubric-criteria"),
+  removeRubric: document.querySelector("#remove-rubric"),
   showRubricOverview: document.querySelector("#show-rubric-overview"),
   editRubric: document.querySelector("#edit-rubric"),
   addRubricCriterion: document.querySelector("#add-rubric-criterion"),
@@ -8574,6 +8575,7 @@ function renderAssessmentRubric(task) {
   if (els.rubricStageCount && hasRubric) els.rubricStageCount.value = String(rubric.stageCount || 4);
   if (els.rubricTotalMarks && hasRubric) els.rubricTotalMarks.value = rubric.totalMarks || "";
   els.rubricEditor.classList.toggle("hidden", !hasRubric);
+  els.removeRubric?.classList.toggle("hidden", !hasRubric);
   els.rubricOverview?.classList.toggle("hidden", !hasRubric || !overviewMode);
   els.rubricCriteria?.classList.toggle("hidden", !hasRubric || overviewMode);
   els.showRubricOverview?.classList.toggle("hidden", !hasRubric || overviewMode);
@@ -8633,7 +8635,7 @@ function renderRubricOverviewTable(rubric) {
   return `
     <div class="rubric-overview-summary">
       <span>${escapeHtml(rubric.stageCount)}-stage analytic rubric</span>
-      ${rubric.totalMarks ? `<strong>${escapeHtml(rubric.totalMarks)}</strong>` : ""}
+      ${rubric.totalMarks ? `<strong>Total Marks: ${escapeHtml(rubric.totalMarks)}</strong>` : ""}
     </div>
     <div class="rubric-table-wrap">
       <table class="rubric-table">
@@ -8648,7 +8650,7 @@ function renderRubricOverviewTable(rubric) {
             <tr>
               <th scope="row">
                 <strong>${escapeHtml(criterion.title || "Untitled Criterion")}</strong>
-                ${criterion.marks ? `<span>${escapeHtml(criterion.marks)}</span>` : ""}
+                ${criterion.marks ? `<span>Criterion Marks: ${escapeHtml(criterion.marks)}</span>` : ""}
                 ${criterion.linkedOutcomes?.length ? `<span>${escapeHtml(criterion.linkedOutcomes.join("; "))}</span>` : ""}
                 ${criterion.focus ? `<div>${renderTeacherText(criterion.focus, { fallback: "" })}</div>` : ""}
               </th>
@@ -8661,6 +8663,27 @@ function renderRubricOverviewTable(rubric) {
       </table>
     </div>
   `;
+}
+
+function rubricWithStageCount(rubric, stageCount) {
+  const normalized = normalizeRubricDraft(rubric);
+  if (!normalized) return null;
+  const levels = rubricLevelsForStageCount(stageCount);
+  return normalizeRubricDraft({
+    ...normalized,
+    stageCount,
+    levels,
+    criteria: normalized.criteria.map((criterion) => {
+      const descriptors = {};
+      levels.forEach((level) => {
+        descriptors[level] = criterion.descriptors?.[level] || "";
+      });
+      return {
+        ...criterion,
+        descriptors,
+      };
+    }),
+  });
 }
 
 function collectRubricEditor() {
@@ -8685,7 +8708,7 @@ function collectRubricEditor() {
   return normalizeRubricDraft({
     ...currentRubric,
     stageCount: Number(els.rubricStageCount?.value) || currentRubric.stageCount || currentRubric.levels.length,
-    totalMarks: els.rubricTotalMarks?.value.trim() || currentRubric.totalMarks || "",
+    totalMarks: els.rubricTotalMarks ? els.rubricTotalMarks.value.trim() : currentRubric.totalMarks || "",
     criteria,
     viewMode: currentRubric.viewMode || "edit",
     generatedAt: currentRubric.generatedAt || new Date().toISOString(),
@@ -9664,6 +9687,21 @@ els.saveAssessmentTask?.addEventListener("click", () => {
 
 els.draftRubric?.addEventListener("click", draftRubricForAssessmentTask);
 
+els.removeRubric?.addEventListener("click", async () => {
+  if (!canEditActivePlan()) return;
+  const task = state.assessmentTasks.find((candidate) => candidate.id === state.editingAssessmentTaskId);
+  if (!task?.rubric) return;
+  if (!window.confirm("Remove this rubric draft? The assessment task will remain.")) return;
+  task.rubric = null;
+  state.assessmentTasks = normalizeAssessmentTasks(state.assessmentTasks);
+  saveState();
+  renderAssessmentRubric(task);
+  setRubricStatus("Removing rubric...", true);
+  const savedOnline = await saveCloudStateNow();
+  renderAssessmentRubric(task);
+  setRubricStatus(savedOnline ? "Rubric removed online." : "Rubric removed locally; online retry pending.");
+});
+
 els.showRubricOverview?.addEventListener("click", () => {
   const task = state.assessmentTasks.find((candidate) => candidate.id === state.editingAssessmentTaskId);
   const rubric = collectRubricEditor() || normalizeRubricDraft(task?.rubric);
@@ -9684,12 +9722,29 @@ els.rubricStageCount?.addEventListener("change", () => {
   const task = state.assessmentTasks.find((candidate) => candidate.id === state.editingAssessmentTaskId);
   const rubric = collectRubricEditor() || normalizeRubricDraft(task?.rubric);
   if (!task || !rubric) return;
+  const stageCount = Number(els.rubricStageCount.value) === 3 ? 3 : 4;
   task.rubric = normalizeRubricDraft({
-    ...rubric,
-    stageCount: Number(els.rubricStageCount.value) === 3 ? 3 : 4,
+    ...rubricWithStageCount(rubric, stageCount),
+    totalMarks: els.rubricTotalMarks ? els.rubricTotalMarks.value.trim() : rubric.totalMarks,
     viewMode: "edit",
   });
   renderAssessmentRubric(task);
+});
+
+els.rubricTotalMarks?.addEventListener("input", () => {
+  const task = state.assessmentTasks.find((candidate) => candidate.id === state.editingAssessmentTaskId);
+  const rubric = normalizeRubricDraft(task?.rubric);
+  if (!task || !rubric) return;
+  task.rubric = normalizeRubricDraft({
+    ...rubric,
+    totalMarks: els.rubricTotalMarks.value.trim(),
+  });
+  saveState();
+  if (rubric.viewMode !== "edit") {
+    const activeElement = document.activeElement;
+    renderAssessmentRubric(task);
+    activeElement?.focus?.();
+  }
 });
 
 els.addRubricCriterion?.addEventListener("click", () => {
