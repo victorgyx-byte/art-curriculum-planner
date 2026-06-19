@@ -7,50 +7,50 @@ const learningOutcomeReferences = {
   LO1: {
     label: "LO1: Gather, record and present observations and personal experiences.",
     rubricFocus: [
-      "quality of observation and recording",
-      "selection and presentation of personal experience",
-      "specific visual evidence gathered from seeing, experiencing, or documenting",
+      "Observation: quality of observation and recording; sensitivity and attentiveness in observing the subject matter; depth and accuracy of visual observation",
+      "Recording: clarity and purposefulness of recording methods; range and variety of recording strategies used; effectiveness of chosen recording method in capturing observations",
+      "Presentation: clarity and organisation in presenting observations; effectiveness of presentation in communicating personal experiences; coherence and completeness of presented observations",
     ],
   },
   LO2: {
     label: "LO2: Make connections to generate ideas and visuals.",
     rubricFocus: [
-      "connections across experiences, sources, contexts, and visual decisions",
-      "idea generation and development",
-      "visual relationships that support meaning",
+      "Making Connections: depth and relevance of connections made between ideas, artworks and personal experiences; ability to draw meaningful links between research and own art making; quality of connections made between visual references and own ideas",
+      "Generating Ideas: originality and inventiveness of ideas generated; range and diversity of visual ideas explored; depth and development of ideas from initial concept to visual outcome",
+      "Generating Visuals: effectiveness of visuals generated in communicating ideas; quality and purposefulness of visual exploration; clarity and intentionality of visual responses to ideas",
     ],
   },
   LO3: {
-    label: "LO3: Explore and experiment with materials and techniques to communicate ideas.",
+    label: "LO3: Explore and experiment with a variety of materials and techniques to communicate independent or shared ideas.",
     rubricFocus: [
-      "purposeful exploration of materials, techniques, tools, and processes",
-      "experimentation linked to intention",
-      "technical decisions that support communication of ideas",
+      "Exploration: breadth and purposefulness of exploration of materials and techniques; willingness and confidence to explore unfamiliar materials and techniques; quality of exploration in relation to intended ideas",
+      "Experimentation: intentionality and effectiveness of experimentation with materials and techniques; range and variety of experimentation undertaken; depth of experimentation in developing visual outcomes",
+      "Communication of Ideas: effectiveness of chosen materials and techniques in communicating ideas; clarity and purposefulness of connection between material choices and intended ideas; strength of personal or shared voice communicated through materials and techniques",
     ],
   },
   LO4: {
     label: "LO4: Develop personally relevant works of art independently or with others, with consideration for aesthetic qualities and social and cultural awareness.",
     rubricFocus: [
-      "development of personally relevant work",
-      "aesthetic decision-making",
-      "social and cultural awareness in art-making",
-      "independent or collaborative development of artwork",
+      "Personal Relevance: depth and sincerity of personal connection to the artwork; clarity and authenticity of personal voice in the artwork; strength of connection between personal experiences and artistic decisions made",
+      "Aesthetic Qualities: sensitivity and intentionality in the use of aesthetic qualities; effectiveness of aesthetic choices in strengthening the artwork; coherence and refinement of aesthetic decisions across the artwork",
+      "Social and Cultural Awareness: depth and thoughtfulness of social and cultural awareness demonstrated; relevance and sensitivity of social and cultural references used; quality of connection between social and cultural awareness and artistic decisions made",
+      "Independence or Collaboration: degree of independence and initiative shown in developing the artwork; quality of collaboration and shared ownership in the art making process; effectiveness of individual contribution within a collaborative art making context",
     ],
   },
   LO5: {
     label: "LO5: Reflect, connect and share views on own and others' works of art.",
     rubricFocus: [
-      "reflection on process and outcome",
-      "connection-making when discussing artworks",
-      "quality of sharing, critique, and response to feedback",
+      "Reflection: depth and thoughtfulness of reflection on own art making process and outcomes; quality of self-assessment and identification of areas for growth; sincerity and insight of reflection on personal artistic development",
+      "Making Connections: depth and relevance of connections made between own and others' works; quality of connections made between artworks and personal experiences or ideas; ability to situate own art making within a broader artistic context",
+      "Sharing Views: clarity and confidence in articulating views on own and others' works; constructiveness and specificity of feedback given to peers; openness and respect shown when receiving and responding to feedback",
     ],
   },
   LO6: {
     label: "LO6: Value art as an avenue for self-discovery and understanding the world.",
     rubricFocus: [
-      "art as a way to understand self, community, and world",
-      "openness to multiple meanings and perspectives",
-      "personal insight developed through art learning",
+      "Self-Discovery: depth and sincerity of self-discovery demonstrated through art making; quality of personal insights gained through the artistic process; authenticity and growth of personal voice developed through art making",
+      "Understanding the World: depth and thoughtfulness of understanding of the world demonstrated through art; quality of connections made between art and social, cultural or contemporary issues; relevance and sensitivity of artistic responses to the world around them",
+      "Valuing Art: sincerity and depth of appreciation for art as a meaningful form of expression; quality of engagement with art as a tool for personal and social understanding; consistency and authenticity of disposition towards art as a lifelong pursuit",
     ],
   },
 };
@@ -133,6 +133,7 @@ function compactContext(body = {}) {
   return {
     plan: body.plan || {},
     assessmentTask: task,
+    rubricOptions: body.rubricOptions || {},
     unit,
     lessonEvidence: Array.isArray(body.lessonEvidence) ? body.lessonEvidence.slice(0, 12) : [],
     references: {
