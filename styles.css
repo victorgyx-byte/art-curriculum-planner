@@ -2154,17 +2154,12 @@ button:disabled {
   text-align: center;
 }
 
-.assessment-matrix-cell.light {
-  background: #f7edda;
-  color: #936515;
-}
-
-.assessment-matrix-cell.moderate {
+.assessment-matrix-cell.featured {
   background: #dbeeed;
   color: var(--accent);
 }
 
-.assessment-matrix-cell.major {
+.assessment-matrix-cell.weighted {
   background: #2f6f73;
   color: #fff;
 }
@@ -2192,17 +2187,16 @@ button:disabled {
   background: rgba(216, 208, 194, 0.72);
 }
 
-.assessment-dot.light {
-  background: #d49a2a;
-}
-
-.assessment-dot.moderate {
+.assessment-dot.featured {
   background: var(--accent);
 }
 
-.assessment-dot.major,
 .assessment-dot.weighted {
   background: #2f6f73;
+}
+
+.assessment-dot.empty {
+  background: rgba(216, 208, 194, 0.72);
 }
 
 .assessment-task-editor {

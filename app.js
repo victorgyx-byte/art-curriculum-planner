@@ -2626,18 +2626,6 @@ function assessmentTaskPlacement(task) {
   };
 }
 
-function assessmentStrengthRank(strength) {
-  return { Light: 1, Moderate: 2, Major: 3 }[strength] || 0;
-}
-
-function strongestAssessmentTask(tasks) {
-  return [...tasks].sort((a, b) => {
-    const weightedDelta = Number(Boolean(b.weighted)) - Number(Boolean(a.weighted));
-    if (weightedDelta) return weightedDelta;
-    return assessmentStrengthRank(b.strength) - assessmentStrengthRank(a.strength);
-  })[0] || null;
-}
-
 function isVisiblePlanningCard(card) {
   return card?.label && !hiddenPlanningCards.has(card.label);
 }
@@ -8329,6 +8317,7 @@ function renderAssessmentMatrix() {
       taskLookup.get(key).push(task);
     });
   });
+  const featuredLookup = assessmentFeaturedOutcomeLookup(terms);
   els.assessmentMatrix.innerHTML = `
     <div class="assessment-matrix-grid" style="--assessment-columns:${terms.length + 1}">
       <div class="assessment-matrix-header">Learning Outcome</div>
@@ -8337,40 +8326,67 @@ function renderAssessmentMatrix() {
         <div class="assessment-matrix-lo">${formatIncidenceLabel(lo, "learningOutcomes")}</div>
         ${terms.map((term) => {
           const tasks = taskLookup.get(`${lo}|${term.year}|${term.term}`) || [];
-          const strongest = strongestAssessmentTask(tasks);
+          const featuredUnits = featuredLookup.get(`${lo}|${term.year}|${term.term}`) || [];
+          const cell = assessmentMatrixCellState(tasks, featuredUnits);
           return `
-            <div class="assessment-matrix-cell ${assessmentMatrixCellClass(strongest)}" title="${escapeAttr(assessmentMatrixCellTitle(tasks))}">
-              ${strongest ? `<span>${escapeHtml(assessmentMatrixCellLabel(strongest))}</span>` : `<span class="not-planned">Gap</span>`}
+            <div class="assessment-matrix-cell ${cell.className}" title="${escapeAttr(cell.title)}">
+              <span class="${cell.className === "empty" ? "not-planned" : ""}">${escapeHtml(cell.label)}</span>
             </div>
           `;
         }).join("")}
       `).join("")}
     </div>
     <div class="assessment-matrix-legend">
-      <span><i class="assessment-dot light"></i>Light</span>
-      <span><i class="assessment-dot moderate"></i>Moderate</span>
-      <span><i class="assessment-dot major"></i>Major</span>
-      <span><i class="assessment-dot weighted"></i>Weighted</span>
+      <span><i class="assessment-dot weighted"></i>Weighted Assessment</span>
+      <span><i class="assessment-dot featured"></i>Featured</span>
+      <span><i class="assessment-dot empty"></i>Gap</span>
     </div>
   `;
 }
 
-function assessmentMatrixCellClass(task) {
-  if (!task) return "empty";
-  if (task.weighted || task.strength === "Major") return "major";
-  if (task.strength === "Moderate") return "moderate";
-  return "light";
+function assessmentFeaturedOutcomeLookup(terms) {
+  const lookup = new Map();
+  const timelineUnits = state.units.filter((unit) => unit.inTimeline !== false);
+  timelineUnits.forEach((unit) => {
+    const unitLos = assessmentUnitLearningOutcomes(unit);
+    if (!unitLos.length) return;
+    const unitStart = unit.start;
+    const unitEnd = unit.start + unitTimelineDuration(unit) - 1;
+    terms.forEach((term) => {
+      const termStart = timelineYearStart(term.year) + (term.term - 1) * TERM_WEEK_COUNT;
+      const termEnd = termStart + TERM_WEEK_COUNT - 1;
+      if (unitEnd < termStart || unitStart > termEnd) return;
+      unitLos.forEach((lo) => {
+        const key = `${lo}|${term.year}|${term.term}`;
+        if (!lookup.has(key)) lookup.set(key, []);
+        lookup.get(key).push(unit);
+      });
+    });
+  });
+  return lookup;
 }
 
-function assessmentMatrixCellLabel(task) {
-  if (!task) return "";
-  if (task.weighted) return "Weighted";
-  return task.strength;
-}
-
-function assessmentMatrixCellTitle(tasks) {
-  if (!tasks.length) return "No formal assessment task";
-  return tasks.map((task) => `${task.title || "Untitled task"} · ${task.strength}${task.weighted ? " · weighted" : ""}`).join("\n");
+function assessmentMatrixCellState(tasks, featuredUnits) {
+  const weightedTasks = tasks.filter((task) => task.weighted);
+  if (weightedTasks.length) {
+    return {
+      className: "weighted",
+      label: "Weighted Assessment",
+      title: weightedTasks.map((task) => task.title || "Untitled weighted assessment").join("\n"),
+    };
+  }
+  if (featuredUnits.length) {
+    return {
+      className: "featured",
+      label: "Featured",
+      title: featuredUnits.map((unit) => unit.title || "Untitled Unit").join("\n"),
+    };
+  }
+  return {
+    className: "empty",
+    label: "Gap",
+    title: "LO not featured or weighted-assessed in this term",
+  };
 }
 
 function renderAssessmentTaskEditor() {
