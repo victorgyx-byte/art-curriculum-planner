@@ -8665,27 +8665,6 @@ function renderRubricOverviewTable(rubric) {
   `;
 }
 
-function rubricWithStageCount(rubric, stageCount) {
-  const normalized = normalizeRubricDraft(rubric);
-  if (!normalized) return null;
-  const levels = rubricLevelsForStageCount(stageCount);
-  return normalizeRubricDraft({
-    ...normalized,
-    stageCount,
-    levels,
-    criteria: normalized.criteria.map((criterion) => {
-      const descriptors = {};
-      levels.forEach((level) => {
-        descriptors[level] = criterion.descriptors?.[level] || "";
-      });
-      return {
-        ...criterion,
-        descriptors,
-      };
-    }),
-  });
-}
-
 function collectRubricEditor() {
   const task = state.assessmentTasks.find((candidate) => candidate.id === state.editingAssessmentTaskId);
   const currentRubric = normalizeRubricDraft(task?.rubric);
@@ -8707,7 +8686,7 @@ function collectRubricEditor() {
   });
   return normalizeRubricDraft({
     ...currentRubric,
-    stageCount: Number(els.rubricStageCount?.value) || currentRubric.stageCount || currentRubric.levels.length,
+    stageCount: currentRubric.stageCount || currentRubric.levels.length,
     totalMarks: els.rubricTotalMarks ? els.rubricTotalMarks.value.trim() : currentRubric.totalMarks || "",
     criteria,
     viewMode: currentRubric.viewMode || "edit",
@@ -8906,7 +8885,7 @@ async function draftRubricForAssessmentTask() {
     setRubricStatus("Sign in online before drafting a rubric.");
     return;
   }
-  const savedTaskId = saveAssessmentTaskFromForm({ keepEditorOpen: true, skipRender: true });
+  const savedTaskId = saveAssessmentTaskFromForm({ keepEditorOpen: true, skipRender: true, skipRubricCollect: true });
   if (!savedTaskId) {
     setRubricStatus("Add a linked unit, unit LO, and evidence first.");
     renderAssessmentTaskEditor();
@@ -8981,7 +8960,7 @@ function saveAssessmentTaskFromForm(options = {}) {
   if (!task.title.trim()) task.title = `${task.type} Task`;
   const existingIndex = state.assessmentTasks.findIndex((candidate) => candidate.id === state.editingAssessmentTaskId);
   let savedTaskId = state.editingAssessmentTaskId;
-  const editedRubric = collectRubricEditor();
+  const editedRubric = options.skipRubricCollect ? null : collectRubricEditor();
   if (existingIndex >= 0) {
     state.assessmentTasks[existingIndex] = {
       ...state.assessmentTasks[existingIndex],
@@ -9720,15 +9699,13 @@ els.editRubric?.addEventListener("click", () => {
 
 els.rubricStageCount?.addEventListener("change", () => {
   const task = state.assessmentTasks.find((candidate) => candidate.id === state.editingAssessmentTaskId);
-  const rubric = collectRubricEditor() || normalizeRubricDraft(task?.rubric);
-  if (!task || !rubric) return;
+  const rubric = normalizeRubricDraft(task?.rubric);
   const stageCount = Number(els.rubricStageCount.value) === 3 ? 3 : 4;
-  task.rubric = normalizeRubricDraft({
-    ...rubricWithStageCount(rubric, stageCount),
-    totalMarks: els.rubricTotalMarks ? els.rubricTotalMarks.value.trim() : rubric.totalMarks,
-    viewMode: "edit",
-  });
-  renderAssessmentRubric(task);
+  if (rubric?.criteria?.length && stageCount !== rubric.stageCount) {
+    setRubricStatus(`Stage setting changed to ${stageCount}. Redraft the rubric to apply it.`);
+  } else {
+    setRubricStatus(`Next draft will use ${stageCount} stages.`);
+  }
 });
 
 els.rubricTotalMarks?.addEventListener("input", () => {
