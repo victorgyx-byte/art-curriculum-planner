@@ -1535,7 +1535,10 @@ const els = {
   rubricTotalMarks: document.querySelector("#rubric-total-marks"),
   rubricBasedOn: document.querySelector("#rubric-based-on"),
   rubricEditor: document.querySelector("#rubric-editor"),
+  rubricOverview: document.querySelector("#rubric-overview"),
   rubricCriteria: document.querySelector("#rubric-criteria"),
+  showRubricOverview: document.querySelector("#show-rubric-overview"),
+  editRubric: document.querySelector("#edit-rubric"),
   addRubricCriterion: document.querySelector("#add-rubric-criterion"),
   saveRubric: document.querySelector("#save-rubric"),
   lessonLanding: document.querySelector("#lesson-landing"),
@@ -2635,8 +2638,11 @@ function normalizeAssessmentPlacement(placement = {}) {
 
 function normalizeRubricDraft(rubric) {
   if (!rubric || typeof rubric !== "object") return null;
-  const requestedLevels = rubricLevelsForStageCount(rubric.stageCount || rubric.levels?.length || 4);
-  const levels = Array.isArray(rubric.levels) && rubric.levels.length
+  const explicitStageCount = Number(rubric.stageCount) === 3 || Number(rubric.stageCount) === 4
+    ? Number(rubric.stageCount)
+    : null;
+  const requestedLevels = rubricLevelsForStageCount(explicitStageCount || rubric.levels?.length || 4);
+  const levels = !explicitStageCount && Array.isArray(rubric.levels) && rubric.levels.length
     ? rubric.levels.map((level) => String(level || "").trim()).filter(Boolean).slice(0, 6)
     : requestedLevels;
   const safeLevels = levels.length ? levels : requestedLevels;
@@ -2662,6 +2668,7 @@ function normalizeRubricDraft(rubric) {
     generatedAt: rubric.generatedAt || new Date().toISOString(),
     reviewReminder: rubric.reviewReminder || "AI draft. Teacher review required before use.",
     sourcesUsed: uniqueReadableValues(rubric.sourcesUsed || []),
+    viewMode: rubric.viewMode === "edit" ? "edit" : "overview",
     stageCount: safeLevels.length,
     totalMarks: String(rubric.totalMarks || "").trim(),
     levels: safeLevels,
@@ -8562,10 +8569,17 @@ function renderAssessmentRubric(task) {
   if (!els.rubricEditor || !els.rubricCriteria) return;
   const rubric = normalizeRubricDraft(task.rubric);
   const hasRubric = Boolean(rubric?.criteria?.length);
+  const overviewMode = hasRubric && rubric.viewMode !== "edit";
   if (els.draftRubric) els.draftRubric.textContent = hasRubric ? "Redraft Rubric" : "Draft Rubric";
-  if (els.rubricStageCount) els.rubricStageCount.value = String(rubric?.stageCount || 4);
-  if (els.rubricTotalMarks) els.rubricTotalMarks.value = rubric?.totalMarks || "";
+  if (els.rubricStageCount && hasRubric) els.rubricStageCount.value = String(rubric.stageCount || 4);
+  if (els.rubricTotalMarks && hasRubric) els.rubricTotalMarks.value = rubric.totalMarks || "";
   els.rubricEditor.classList.toggle("hidden", !hasRubric);
+  els.rubricOverview?.classList.toggle("hidden", !hasRubric || !overviewMode);
+  els.rubricCriteria?.classList.toggle("hidden", !hasRubric || overviewMode);
+  els.showRubricOverview?.classList.toggle("hidden", !hasRubric || overviewMode);
+  els.editRubric?.classList.toggle("hidden", !hasRubric || !overviewMode);
+  els.addRubricCriterion?.classList.toggle("hidden", !hasRubric || overviewMode);
+  els.saveRubric?.classList.toggle("hidden", !hasRubric || overviewMode);
   if (els.rubricDraftStatus) els.rubricDraftStatus.textContent = "";
   if (els.rubricBasedOn) {
     els.rubricBasedOn.innerHTML = hasRubric && rubric.sourcesUsed.length
@@ -8577,8 +8591,10 @@ function renderAssessmentRubric(task) {
   }
   if (!hasRubric) {
     els.rubricCriteria.innerHTML = "";
+    if (els.rubricOverview) els.rubricOverview.innerHTML = "";
     return;
   }
+  if (els.rubricOverview) els.rubricOverview.innerHTML = renderRubricOverviewTable(rubric);
   els.rubricCriteria.innerHTML = rubric.criteria.map((criterion, index) => `
     <article class="rubric-criterion" data-criterion-index="${index}">
       <div class="rubric-criterion-heading">
@@ -8612,6 +8628,41 @@ function renderAssessmentRubric(task) {
   `).join("");
 }
 
+function renderRubricOverviewTable(rubric) {
+  const levels = rubric.levels || [];
+  return `
+    <div class="rubric-overview-summary">
+      <span>${escapeHtml(rubric.stageCount)}-stage analytic rubric</span>
+      ${rubric.totalMarks ? `<strong>${escapeHtml(rubric.totalMarks)}</strong>` : ""}
+    </div>
+    <div class="rubric-table-wrap">
+      <table class="rubric-table">
+        <thead>
+          <tr>
+            <th scope="col">Focus</th>
+            ${levels.map((level) => `<th scope="col">${escapeHtml(level)}</th>`).join("")}
+          </tr>
+        </thead>
+        <tbody>
+          ${rubric.criteria.map((criterion) => `
+            <tr>
+              <th scope="row">
+                <strong>${escapeHtml(criterion.title || "Untitled Criterion")}</strong>
+                ${criterion.marks ? `<span>${escapeHtml(criterion.marks)}</span>` : ""}
+                ${criterion.linkedOutcomes?.length ? `<span>${escapeHtml(criterion.linkedOutcomes.join("; "))}</span>` : ""}
+                ${criterion.focus ? `<div>${renderTeacherText(criterion.focus, { fallback: "" })}</div>` : ""}
+              </th>
+              ${levels.map((level) => `
+                <td>${renderTeacherText(criterion.descriptors?.[level] || "Not yet described", { fallback: "Not yet described" })}</td>
+              `).join("")}
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
 function collectRubricEditor() {
   const task = state.assessmentTasks.find((candidate) => candidate.id === state.editingAssessmentTaskId);
   const currentRubric = normalizeRubricDraft(task?.rubric);
@@ -8636,6 +8687,7 @@ function collectRubricEditor() {
     stageCount: Number(els.rubricStageCount?.value) || currentRubric.stageCount || currentRubric.levels.length,
     totalMarks: els.rubricTotalMarks?.value.trim() || currentRubric.totalMarks || "",
     criteria,
+    viewMode: currentRubric.viewMode || "edit",
     generatedAt: currentRubric.generatedAt || new Date().toISOString(),
   });
 }
@@ -8873,6 +8925,7 @@ async function draftRubricForAssessmentTask() {
     if (!rubric?.criteria?.length) {
       throw new Error("The draft returned no rubric criteria.");
     }
+    rubric.viewMode = "edit";
     task.rubric = rubric;
     state.assessmentTasks = normalizeAssessmentTasks(state.assessmentTasks);
     saveState();
@@ -9611,6 +9664,34 @@ els.saveAssessmentTask?.addEventListener("click", () => {
 
 els.draftRubric?.addEventListener("click", draftRubricForAssessmentTask);
 
+els.showRubricOverview?.addEventListener("click", () => {
+  const task = state.assessmentTasks.find((candidate) => candidate.id === state.editingAssessmentTaskId);
+  const rubric = collectRubricEditor() || normalizeRubricDraft(task?.rubric);
+  if (!task || !rubric) return;
+  task.rubric = normalizeRubricDraft({ ...rubric, viewMode: "overview" });
+  renderAssessmentRubric(task);
+});
+
+els.editRubric?.addEventListener("click", () => {
+  const task = state.assessmentTasks.find((candidate) => candidate.id === state.editingAssessmentTaskId);
+  const rubric = normalizeRubricDraft(task?.rubric);
+  if (!task || !rubric) return;
+  task.rubric = normalizeRubricDraft({ ...rubric, viewMode: "edit" });
+  renderAssessmentRubric(task);
+});
+
+els.rubricStageCount?.addEventListener("change", () => {
+  const task = state.assessmentTasks.find((candidate) => candidate.id === state.editingAssessmentTaskId);
+  const rubric = collectRubricEditor() || normalizeRubricDraft(task?.rubric);
+  if (!task || !rubric) return;
+  task.rubric = normalizeRubricDraft({
+    ...rubric,
+    stageCount: Number(els.rubricStageCount.value) === 3 ? 3 : 4,
+    viewMode: "edit",
+  });
+  renderAssessmentRubric(task);
+});
+
 els.addRubricCriterion?.addEventListener("click", () => {
   if (!canEditActivePlan()) return;
   const task = state.assessmentTasks.find((candidate) => candidate.id === state.editingAssessmentTaskId);
@@ -9625,9 +9706,10 @@ els.addRubricCriterion?.addEventListener("click", () => {
     title: "New Criterion",
     linkedOutcomes: assessmentTaskValidLearningOutcomes(task).slice(0, 1),
     focus: "",
+    marks: "",
     descriptors,
   });
-  task.rubric = normalizeRubricDraft(rubric);
+  task.rubric = normalizeRubricDraft({ ...rubric, viewMode: "edit" });
   renderAssessmentRubric(task);
 });
 
@@ -9639,7 +9721,7 @@ els.rubricCriteria?.addEventListener("click", (event) => {
   const criterionNode = removeButton.closest(".rubric-criterion");
   if (!task || !rubric || !criterionNode) return;
   rubric.criteria.splice(Number(criterionNode.dataset.criterionIndex), 1);
-  task.rubric = normalizeRubricDraft(rubric);
+  task.rubric = normalizeRubricDraft({ ...rubric, viewMode: "edit" });
   renderAssessmentRubric(task);
 });
 
@@ -9648,11 +9730,12 @@ els.saveRubric?.addEventListener("click", async () => {
   const task = state.assessmentTasks.find((candidate) => candidate.id === state.editingAssessmentTaskId);
   const rubric = collectRubricEditor();
   if (!task || !rubric) return;
-  task.rubric = rubric;
+  task.rubric = normalizeRubricDraft({ ...rubric, viewMode: "overview" });
   state.assessmentTasks = normalizeAssessmentTasks(state.assessmentTasks);
   saveState();
   setRubricStatus("Saving rubric...", true);
   const savedOnline = await saveCloudStateNow();
+  renderAssessmentRubric(task);
   setRubricStatus(savedOnline ? "Rubric saved online." : "Rubric saved locally; online retry pending.");
 });
 

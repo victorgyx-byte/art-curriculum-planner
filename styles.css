@@ -2423,6 +2423,13 @@ button:disabled {
   flex-wrap: wrap;
 }
 
+.rubric-mode-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
 .rubric-options-grid {
   display: grid;
   grid-template-columns: minmax(260px, 1.4fr) minmax(160px, 0.7fr);
@@ -2462,6 +2469,96 @@ button:disabled {
 .rubric-criteria {
   display: grid;
   gap: 12px;
+}
+
+.rubric-overview {
+  display: grid;
+  gap: 10px;
+}
+
+.rubric-overview-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.rubric-overview-summary strong,
+.rubric-overview-summary span {
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: rgba(219, 238, 237, 0.72);
+  color: var(--accent);
+}
+
+.rubric-table-wrap {
+  overflow-x: auto;
+  border: 1px solid rgba(216, 208, 194, 0.86);
+  border-radius: 10px;
+  background: rgba(255, 253, 250, 0.96);
+}
+
+.rubric-table {
+  width: 100%;
+  min-width: 780px;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.rubric-table th,
+.rubric-table td {
+  border-right: 1px solid rgba(216, 208, 194, 0.72);
+  border-bottom: 1px solid rgba(216, 208, 194, 0.72);
+  padding: 10px;
+  vertical-align: top;
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.42;
+}
+
+.rubric-table th:last-child,
+.rubric-table td:last-child {
+  border-right: 0;
+}
+
+.rubric-table tr:last-child th,
+.rubric-table tr:last-child td {
+  border-bottom: 0;
+}
+
+.rubric-table thead th {
+  background: rgba(246, 241, 233, 0.9);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.rubric-table tbody th {
+  width: 24%;
+  background: rgba(230, 245, 244, 0.42);
+  text-align: left;
+}
+
+.rubric-table tbody th strong,
+.rubric-table tbody th span {
+  display: block;
+}
+
+.rubric-table tbody th strong {
+  margin-bottom: 6px;
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.rubric-table tbody th span {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
 }
 
 .rubric-criterion {
