@@ -47,8 +47,12 @@ const assessmentLabelMap = {
   "End-of-year evidence": "Summative Assessment",
 };
 const learningOutcomeLabelMap = {
+  "LO3: Explore and experiment with materials and techniques to communicate ideas.":
+    "LO3: Explore and experiment with a variety of materials and techniques to communicate independent or shared ideas.",
   "LO4: Develop personally relevant works of art independently or with others.":
     "LO4: Develop personally relevant works of art independently or with others, with consideration for aesthetic qualities and social and cultural awareness.",
+  "LO6: Value art as an avenue for self-discovery and understanding the world.":
+    "LO6: Value art as an avenue for self-discovery and for understanding the world.",
 };
 const naturalSortCollator = new Intl.Collator(undefined, {
   numeric: true,
@@ -76,10 +80,10 @@ const defaultCardLibrary = [
     items: [
       "LO1: Gather, record and present observations and personal experiences.",
       "LO2: Make connections to generate ideas and visuals.",
-      "LO3: Explore and experiment with materials and techniques to communicate ideas.",
+      "LO3: Explore and experiment with a variety of materials and techniques to communicate independent or shared ideas.",
       "LO4: Develop personally relevant works of art independently or with others, with consideration for aesthetic qualities and social and cultural awareness.",
       "LO5: Reflect, connect and share views on own and others' works of art.",
-      "LO6: Value art as an avenue for self-discovery and understanding the world.",
+      "LO6: Value art as an avenue for self-discovery and for understanding the world.",
     ],
   },
   {
@@ -222,6 +226,54 @@ const libraryCardDetails = {
     detailLabel: "Context",
     context: [
       "Art is inseparable from daily life. Almost everything around us had been put together using visual principles. Art is present as part of our daily living, from the design and ergonomics of things we use, to advertisements we see around us, to the design of everyday spaces we navigate through. Over time, many of these unique images, artefacts and dwelling spaces have come to represent the cultures from which they originate. Artists use their knowledge of how images work to communicate certain ideas and persuade people to take actions.",
+    ],
+  },
+  "LO1: Gather, record and present observations and personal experiences.": {
+    tone: "learningOutcomes",
+    title: "LO1: Gather, record and present observations and personal experiences.",
+    detailLabel: "",
+    context: [
+      "Students develop the habit of looking closely and carefully at the world around them. They learn to capture what they observe using a range of recording strategies, from sketching and photography to written notes, and present their observations in a clear and organised way. The focus is on developing visual acuity and sensitivity, so that students begin to notice details, qualities and experiences that others might overlook.",
+    ],
+  },
+  "LO2: Make connections to generate ideas and visuals.": {
+    tone: "learningOutcomes",
+    title: "LO2: Make connections to generate ideas and visuals.",
+    detailLabel: "",
+    context: [
+      "Students learn to draw meaningful links between what they have observed, researched and experienced, and use these connections as a springboard for generating new ideas and visuals. This goes beyond simply gathering information. Students are expected to synthesise and transform what they have learned into original visual responses. The focus is on developing inventive and creative thinking as a core artistic habit.",
+    ],
+  },
+  "LO3: Explore and experiment with a variety of materials and techniques to communicate independent or shared ideas.": {
+    tone: "learningOutcomes",
+    title: "LO3: Explore and experiment with a variety of materials and techniques to communicate independent or shared ideas.",
+    detailLabel: "",
+    context: [
+      "Students develop confidence and intentionality in working with a range of art materials, tools and techniques. They are encouraged to experiment purposefully, trying different approaches and making deliberate choices about how their materials can best express their ideas. The focus is on developing students' understanding of how the choice of media and technique is itself a form of communication.",
+    ],
+  },
+  "LO4: Develop personally relevant works of art independently or with others, with consideration for aesthetic qualities and social and cultural awareness.": {
+    tone: "learningOutcomes",
+    title: "LO4: Develop personally relevant works of art independently or with others, with consideration for aesthetic qualities and social and cultural awareness.",
+    detailLabel: "",
+    context: [
+      "Students develop works of art that are personally meaningful and reflect their own voice, experiences and perspectives. They are expected to make thoughtful aesthetic decisions and demonstrate awareness of the social and cultural contexts that shape both their own work and the work of others. The focus is on developing students' capacity to create art that is authentic, considered and connected to the world around them.",
+    ],
+  },
+  "LO5: Reflect, connect and share views on own and others' works of art.": {
+    tone: "learningOutcomes",
+    title: "LO5: Reflect, connect and share views on own and others' works of art.",
+    detailLabel: "",
+    context: [
+      "Students develop the habit of thinking critically and reflectively about art, their own and others'. They learn to articulate their views clearly and respectfully, make connections between different artworks and experiences, and engage in meaningful dialogue with their peers. The focus is on developing students' confidence and capacity to participate in art discussions as both makers and informed audience members.",
+    ],
+  },
+  "LO6: Value art as an avenue for self-discovery and for understanding the world.": {
+    tone: "learningOutcomes",
+    title: "LO6: Value art as an avenue for self-discovery and for understanding the world.",
+    detailLabel: "",
+    context: [
+      "Students develop an appreciation for art as more than a set of skills or techniques, recognising it as a powerful means of exploring identity, making sense of experiences, and understanding the world around them. They are encouraged to reflect on how their engagement with art has shaped their thinking, feelings and sense of self. The focus is on nurturing in students a genuine and lasting relationship with art as a lifelong pursuit.",
     ],
   },
   "Critical Thinking": {

@@ -46,7 +46,7 @@ const learningOutcomeReferences = {
     ],
   },
   LO6: {
-    label: "LO6: Value art as an avenue for self-discovery and understanding the world.",
+    label: "LO6: Value art as an avenue for self-discovery and for understanding the world.",
     rubricFocus: [
       "Self-Discovery: depth and sincerity of self-discovery demonstrated through art making; quality of personal insights gained through the artistic process; authenticity and growth of personal voice developed through art making",
       "Understanding the World: depth and thoughtfulness of understanding of the world demonstrated through art; quality of connections made between art and social, cultural or contemporary issues; relevance and sensitivity of artistic responses to the world around them",
