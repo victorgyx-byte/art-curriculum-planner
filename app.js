@@ -1519,6 +1519,7 @@ const els = {
   assessmentTaskEditorTitle: document.querySelector("#assessment-task-editor-title"),
   assessmentTaskTitle: document.querySelector("#assessment-task-title"),
   assessmentTaskUnit: document.querySelector("#assessment-task-unit"),
+  assessmentTaskPlacement: document.querySelector("#assessment-task-placement"),
   assessmentTaskType: document.querySelector("#assessment-task-type"),
   assessmentTaskStrength: document.querySelector("#assessment-task-strength"),
   assessmentTaskLos: document.querySelector("#assessment-task-los"),
@@ -2617,8 +2618,19 @@ function normalizeAssessmentTasks(tasks) {
       weightedNote: task.weightedNote || "",
       notes: task.notes || "",
       rubric: normalizeRubricDraft(task.rubric),
+      placement: normalizeAssessmentPlacement(task.placement),
     }))
     .filter((task) => task.unitId || task.title || task.learningOutcomes.length || task.evidence);
+}
+
+function normalizeAssessmentPlacement(placement = {}) {
+  return {
+    unitId: placement.unitId || "",
+    unitTitle: placement.unitTitle || "",
+    year: Number(placement.year) || null,
+    term: Number(placement.term) || null,
+    label: placement.label || "",
+  };
 }
 
 function normalizeRubricDraft(rubric) {
@@ -2665,7 +2677,16 @@ function rubricLevelsForStageCount(stageCount) {
 
 function assessmentTaskPlacement(task) {
   const unit = state.units.find((candidate) => candidate.id === task.unitId);
-  if (!unit) return { unit: null, year: null, term: null, label: "Unlinked unit" };
+  const fallback = normalizeAssessmentPlacement(task.placement);
+  if (!unit) {
+    return {
+      unit: null,
+      year: fallback.year,
+      term: fallback.term,
+      label: fallback.label || "Unlinked unit",
+      stale: Boolean(fallback.label),
+    };
+  }
   if (unit.inTimeline === false) return { unit, year: null, term: null, label: "Unit not in 2YIP" };
   const year = timelineYearForStart(unit.start);
   const localWeek = timelineLocalWeek(unit.start);
@@ -2676,6 +2697,37 @@ function assessmentTaskPlacement(task) {
     term,
     label: `Sec ${year} · Term ${term}`,
   };
+}
+
+function assessmentTaskPlacementMeta(task) {
+  const placement = assessmentTaskPlacement(task);
+  return {
+    unitId: task.unitId || "",
+    unitTitle: placement.unit?.title || "",
+    year: placement.year || null,
+    term: placement.term || null,
+    label: placement.label || "",
+  };
+}
+
+function syncAssessmentTaskPlacements() {
+  state.assessmentTasks = normalizeAssessmentTasks(state.assessmentTasks || []).map((task) => {
+    const livePlacement = assessmentTaskPlacementMeta(task);
+    const currentPlacement = normalizeAssessmentPlacement(task.placement);
+    if (
+      currentPlacement.unitId === livePlacement.unitId &&
+      currentPlacement.unitTitle === livePlacement.unitTitle &&
+      currentPlacement.year === livePlacement.year &&
+      currentPlacement.term === livePlacement.term &&
+      currentPlacement.label === livePlacement.label
+    ) {
+      return task;
+    }
+    return {
+      ...task,
+      placement: livePlacement,
+    };
+  });
 }
 
 function isVisiblePlanningCard(card) {
@@ -8314,7 +8366,7 @@ function renderHealth() {
 
 function renderAssessmentStudio() {
   if (!els.assessmentScreen) return;
-  state.assessmentTasks = normalizeAssessmentTasks(state.assessmentTasks || []);
+  syncAssessmentTaskPlacements();
   syncAssessmentSelection();
   renderAssessmentMatrix();
   renderAssessmentTaskEditor();
@@ -8462,8 +8514,28 @@ function renderAssessmentTaskEditor() {
   els.assessmentTaskWeighted.checked = Boolean(task.weighted);
   els.assessmentTaskWeightedNote.value = task.weightedNote || "";
   els.assessmentTaskNotes.value = task.notes || "";
+  renderAssessmentTaskPlacementPreview(task);
   renderAssessmentLoPicker(task);
   renderAssessmentRubric(task);
+}
+
+function renderAssessmentTaskPlacementPreview(task) {
+  if (!els.assessmentTaskPlacement) return;
+  const previewTask = {
+    ...task,
+    unitId: els.assessmentTaskUnit?.value || task.unitId || "",
+  };
+  const placement = assessmentTaskPlacement(previewTask);
+  const linkedUnit = state.units.find((unit) => unit.id === previewTask.unitId);
+  const message = placement.year && placement.term
+    ? `${placement.label} from current 2YIP placement`
+    : placement.label || "Choose a linked unit";
+  els.assessmentTaskPlacement.innerHTML = `
+    <span class="field-label">2YIP Tag</span>
+    <strong>${escapeHtml(message)}</strong>
+    ${linkedUnit && placement.year && placement.term ? `<span>${escapeHtml(linkedUnit.title || "Untitled Unit")}</span>` : ""}
+  `;
+  els.assessmentTaskPlacement.classList.toggle("warning", !placement.year || !placement.term);
 }
 
 function renderAssessmentLoPicker(task) {
@@ -8641,6 +8713,7 @@ function assessmentTaskCardHtml(task, placement) {
         </div>
       </div>
       <div class="assessment-task-meta">
+        <span>${escapeHtml(placement.label)}</span>
         <span>${escapeHtml(task.type)}</span>
         <span>${escapeHtml(task.strength)}</span>
         ${task.weightedNote ? `<span>${escapeHtml(task.weightedNote)}</span>` : ""}
@@ -8820,6 +8893,7 @@ async function draftRubricForAssessmentTask() {
 function saveAssessmentTaskFromForm(options = {}) {
   if (!canEditActivePlan()) return "";
   const task = collectAssessmentTaskForm();
+  task.placement = assessmentTaskPlacementMeta(task);
   if (!task.unitId) {
     renderCloudStatus("Create a unit before adding assessment tasks", "Sign out");
     return "";
@@ -8844,6 +8918,7 @@ function saveAssessmentTaskFromForm(options = {}) {
     state.assessmentTasks.push({ ...task, id: savedTaskId });
   }
   state.assessmentTasks = normalizeAssessmentTasks(state.assessmentTasks);
+  syncAssessmentTaskPlacements();
   state.selectedAssessmentTaskId = savedTaskId;
   state.editingAssessmentTaskId = savedTaskId;
   if (!options.keepEditorOpen) state.assessmentTaskEditorOpen = false;
@@ -9514,10 +9589,20 @@ els.cancelAssessmentTask?.addEventListener("click", () => {
 });
 
 els.assessmentTaskUnit?.addEventListener("change", () => {
-  const existing = state.assessmentTasks.find((task) => task.id === state.editingAssessmentTaskId) || blankAssessmentTask();
+  const existingIndex = state.assessmentTasks.findIndex((task) => task.id === state.editingAssessmentTaskId);
+  const existing = existingIndex >= 0 ? state.assessmentTasks[existingIndex] : blankAssessmentTask();
   existing.unitId = els.assessmentTaskUnit.value;
   existing.learningOutcomes = selectedAssessmentTaskLos();
+  existing.placement = assessmentTaskPlacementMeta(existing);
+  if (existingIndex >= 0) {
+    state.assessmentTasks[existingIndex] = existing;
+    syncAssessmentTaskPlacements();
+  }
+  renderAssessmentTaskPlacementPreview(existing);
   renderAssessmentLoPicker(existing);
+  renderAssessmentMatrix();
+  renderAssessmentTaskList();
+  if (existingIndex >= 0) saveState();
 });
 
 els.saveAssessmentTask?.addEventListener("click", () => {

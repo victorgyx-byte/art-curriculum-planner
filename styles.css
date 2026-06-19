@@ -2073,6 +2073,31 @@ button:disabled {
   overflow: auto;
 }
 
+.assessment-task-placement {
+  align-self: end;
+  border: 1px solid rgba(47, 125, 128, 0.22);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: rgba(230, 245, 244, 0.7);
+  color: var(--ink);
+  display: grid;
+  gap: 2px;
+}
+
+.assessment-task-placement strong {
+  font-size: 0.98rem;
+}
+
+.assessment-task-placement span:last-child {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.assessment-task-placement.warning {
+  border-color: rgba(218, 164, 42, 0.35);
+  background: rgba(255, 247, 225, 0.82);
+}
+
 .assessment-rail-heading {
   display: grid;
   gap: 10px;
