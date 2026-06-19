@@ -8451,7 +8451,7 @@ function renderAssessmentMatrix() {
     <div class="assessment-matrix-legend">
       <span><i class="assessment-dot weighted"></i>Weighted Assessment</span>
       <span><i class="assessment-dot featured"></i>Featured</span>
-      <span><i class="assessment-dot empty"></i>Gap</span>
+      <span><i class="assessment-dot empty"></i>-</span>
     </div>
   `;
 }
@@ -8496,7 +8496,7 @@ function assessmentMatrixCellState(tasks, featuredUnits) {
   }
   return {
     className: "empty",
-    label: "Gap",
+    label: "-",
     title: "LO not featured or weighted-assessed in this term",
   };
 }
@@ -8663,6 +8663,40 @@ function renderRubricOverviewTable(rubric) {
       </table>
     </div>
   `;
+}
+
+function numericRubricTotalMarks(totalMarks) {
+  const match = String(totalMarks || "").match(/(\d+(?:\.\d+)?)/);
+  return match ? Number(match[1]) : null;
+}
+
+function rubricCriterionMarkSplit(totalMarks, count) {
+  const total = numericRubricTotalMarks(totalMarks);
+  if (!total || !count) return null;
+  const share = Math.floor((total / count) * 10) / 10;
+  const marks = Array.from({ length: count }, () => share);
+  const used = share * count;
+  marks[count - 1] = Math.round((marks[count - 1] + (total - used)) * 10) / 10;
+  return marks.map((mark) => `${Number.isInteger(mark) ? mark : mark.toFixed(1)} marks`);
+}
+
+function forceRubricDraftOptions(rubric, stageCount, totalMarks) {
+  const levels = rubricLevelsForStageCount(stageCount);
+  const normalized = normalizeRubricDraft({
+    ...rubric,
+    stageCount,
+    levels,
+    totalMarks: totalMarks || "",
+  });
+  if (!normalized) return null;
+  const markSplit = totalMarks ? rubricCriterionMarkSplit(totalMarks, normalized.criteria.length) : null;
+  return normalizeRubricDraft({
+    ...normalized,
+    criteria: normalized.criteria.map((criterion, index) => ({
+      ...criterion,
+      marks: markSplit?.[index] || criterion.marks || "",
+    })),
+  });
 }
 
 function collectRubricEditor() {
@@ -8908,7 +8942,9 @@ async function draftRubricForAssessmentTask() {
     els.draftRubric.disabled = true;
     els.draftRubric.textContent = "Drafting...";
   }
-  setRubricStatus("Drafting with curated syllabus references...", true);
+  const requestedStageCount = Number(els.rubricStageCount?.value) === 3 ? 3 : 4;
+  const requestedTotalMarks = els.rubricTotalMarks?.value.trim() || "";
+  setRubricStatus(`Drafting ${requestedStageCount}-stage rubric${requestedTotalMarks ? `, ${requestedTotalMarks} total marks` : ""}...`, true);
   try {
     const token = await cloud.user.getIdToken();
     const response = await fetch("/api/draft-rubric", {
@@ -8923,7 +8959,7 @@ async function draftRubricForAssessmentTask() {
     if (!response.ok) {
       throw new Error(payload.error || "Rubric draft failed.");
     }
-    const rubric = normalizeRubricDraft(payload.rubric);
+    const rubric = forceRubricDraftOptions(payload.rubric, requestedStageCount, requestedTotalMarks);
     if (!rubric?.criteria?.length) {
       throw new Error("The draft returned no rubric criteria.");
     }

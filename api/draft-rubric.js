@@ -211,6 +211,54 @@ function rubricSchema(stageCount = 4) {
   };
 }
 
+function requestedStageCount(context) {
+  return Number(context.rubricOptions?.stageCount) === 3 ? 3 : 4;
+}
+
+function requestedTotalMarks(context) {
+  return String(context.rubricOptions?.totalMarks || "").trim();
+}
+
+function numericTotalMarks(totalMarks) {
+  const match = String(totalMarks || "").match(/(\d+(?:\.\d+)?)/);
+  return match ? Number(match[1]) : null;
+}
+
+function splitCriterionMarks(totalMarks, count) {
+  const total = numericTotalMarks(totalMarks);
+  if (!total || !count) return null;
+  const roundedShare = Math.floor((total / count) * 10) / 10;
+  const marks = Array.from({ length: count }, () => roundedShare);
+  const used = roundedShare * count;
+  marks[count - 1] = Math.round((marks[count - 1] + (total - used)) * 10) / 10;
+  return marks.map((mark) => `${Number.isInteger(mark) ? mark : mark.toFixed(1)} marks`);
+}
+
+function enforceRubricOptions(draft, context) {
+  const stageCount = requestedStageCount(context);
+  const levels = rubricLevelsForStageCount(stageCount);
+  const totalMarks = requestedTotalMarks(context);
+  const criteria = Array.isArray(draft.criteria) ? draft.criteria : [];
+  const markSplit = requestedTotalMarks(context) ? splitCriterionMarks(totalMarks, criteria.length) : null;
+  return {
+    ...draft,
+    stageCount,
+    levels,
+    totalMarks,
+    criteria: criteria.map((criterion, index) => {
+      const descriptors = {};
+      levels.forEach((level) => {
+        descriptors[level] = String(criterion?.descriptors?.[level] || "").trim();
+      });
+      return {
+        ...criterion,
+        marks: markSplit?.[index] || criterion?.marks || "",
+        descriptors,
+      };
+    }),
+  };
+}
+
 function extractJsonText(data) {
   return data?.choices?.[0]?.message?.content || "";
 }
@@ -218,8 +266,9 @@ function extractJsonText(data) {
 async function callOpenAI(context) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw Object.assign(new Error("Server is missing OPENAI_API_KEY."), { status: 500 });
-  const stageCount = Number(context.rubricOptions?.stageCount) === 3 ? 3 : 4;
+  const stageCount = requestedStageCount(context);
   const levels = rubricLevelsForStageCount(stageCount);
+  const totalMarks = requestedTotalMarks(context);
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -247,7 +296,9 @@ async function callOpenAI(context) {
             "Do not assess student behaviour, compliance, effort, or neatness unless directly evidenced by the task.",
             "Write concise, teacher-editable descriptors that describe observable evidence.",
             `Use exactly these rubric levels: ${levels.join(", ")}.`,
-            "Suggest marks per criterion if total marks are provided; otherwise leave marks as a short editable suggestion.",
+            totalMarks
+              ? `Use exactly this total mark value in totalMarks: ${totalMarks}. Distribute criterion marks so they align with this total. Do not invent 10 marks unless the teacher selected 10.`
+              : "If total marks are not provided, leave totalMarks blank and leave marks as a short editable suggestion.",
             "Return only the required structured JSON.",
           ].join(" "),
         },
@@ -284,8 +335,8 @@ module.exports = async function handler(req, res) {
       json(res, 400, { error: "Rubric drafting needs selected LOs and an evidence description." });
       return;
     }
-    const draft = await callOpenAI(context);
-    const stageCount = Number(context.rubricOptions?.stageCount) === 3 ? 3 : 4;
+    const draft = enforceRubricOptions(await callOpenAI(context), context);
+    const stageCount = requestedStageCount(context);
     const sourcesUsed = [
       ...selectedLos.map(loCode).filter(Boolean),
       context.unit?.title ? "Unit Performance Task" : "",
@@ -296,7 +347,7 @@ module.exports = async function handler(req, res) {
         ...draft,
         stageCount,
         levels: rubricLevelsForStageCount(stageCount),
-        totalMarks: draft.totalMarks || context.rubricOptions?.totalMarks || "",
+        totalMarks: requestedTotalMarks(context),
         sourcesUsed: Array.from(new Set([...(draft.sourcesUsed || []), ...sourcesUsed])),
         generatedAt: new Date().toISOString(),
         status: "draft",
