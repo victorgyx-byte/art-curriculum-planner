@@ -7035,6 +7035,7 @@ function setLessonImageStatus(lesson, message, tone = "") {
 }
 
 function renderLessonPlanningBoard(lesson) {
+  const unit = selectedUnit();
   els.lessonBoardZones.forEach((zone) => {
     zone.querySelector(".zone-cards").innerHTML = "";
   });
@@ -7057,6 +7058,8 @@ function renderLessonPlanningBoard(lesson) {
       `;
       node.querySelector(".board-card-remove").addEventListener("click", (event) => {
         event.stopPropagation();
+        event.preventDefault();
+        if (!unit) return;
         selectLessonZone(card.zone || lessonZoneForType(card.type));
         if (card.inherited) {
           lesson.removedUnitCardKeys = lesson.removedUnitCardKeys || [];
@@ -7065,6 +7068,7 @@ function renderLessonPlanningBoard(lesson) {
           removeLessonOriginCardFromUnit(unit, lesson, card);
         }
         lesson.boardCards = lesson.boardCards.filter((candidate) => candidate.id !== card.id);
+        saveState();
         render();
       });
       node.addEventListener("click", (event) => {
