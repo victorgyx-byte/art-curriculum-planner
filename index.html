@@ -167,6 +167,24 @@
               <p class="timeline-note">Drag units from the left into Sec 1 or Sec 2. Unit length follows lesson count: 1 lesson = 1 week.</p>
             </div>
 
+            <div class="timeline-view-switch" aria-label="2YIP view">
+              <button class="timeline-view-button active" type="button" data-timeline-view="overview">Overview</button>
+              <button class="timeline-view-button" type="button" data-timeline-view="planning">Planning</button>
+            </div>
+
+            <div id="timeline-planning-tools" class="timeline-planning-tools hidden" aria-label="2YIP planning tools">
+              <div class="timeline-layer-tabs" aria-label="Planning layer">
+                <button class="timeline-layer-button active" type="button" data-timeline-layer="meaning">Meaning Core</button>
+                <button class="timeline-layer-button" type="button" data-timeline-layer="alignment">CPA Alignment</button>
+                <button class="timeline-layer-button" type="button" data-timeline-layer="content">Learning Content</button>
+                <button class="timeline-layer-button" type="button" data-timeline-layer="core">Core Learning Experience</button>
+              </div>
+              <div class="timeline-planning-copy">
+                Drop cards onto a unit. Unit-level cards flow down to lessons unless a lesson removes that inherited card.
+              </div>
+              <div id="timeline-planning-library" class="timeline-planning-library"></div>
+            </div>
+
             <div class="timeline-scroll">
               <div id="timeline" class="timeline" aria-label="Two-year curriculum timeline">
                 <div id="timeline-grid" class="timeline-grid"></div>

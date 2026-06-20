@@ -1305,6 +1305,8 @@ const defaultState = {
   selectedUnitId: "u1",
   selectedLessonId: "",
   currentScreen: "timeline",
+  timelineView: "overview",
+  timelinePlanningLayer: "meaning",
   selectedBoardZone: "meaning",
   selectedLessonZone: "curricular",
   lessonOverviewOpen: false,
@@ -1557,6 +1559,10 @@ const els = {
   timeline: document.querySelector("#timeline"),
   timelineHealth: document.querySelector("#timeline-health"),
   timelineScreen: document.querySelector("#timeline-screen"),
+  timelinePlanningTools: document.querySelector("#timeline-planning-tools"),
+  timelinePlanningLibrary: document.querySelector("#timeline-planning-library"),
+  timelineViewButtons: document.querySelectorAll(".timeline-view-button"),
+  timelineLayerButtons: document.querySelectorAll(".timeline-layer-button"),
   workspace: document.querySelector(".workspace"),
   cardLibraryPanel: document.querySelector(".card-library-panel"),
   boardScreen: document.querySelector("#board-screen"),
@@ -1731,6 +1737,10 @@ function normalizeState(candidate) {
   normalized.plan = normalizePlanMetadata(candidate.plan);
   normalized.cardLibrary = normalizeCardLibrary(candidate.cardLibrary);
   normalized.currentScreen = normalized.currentScreen || "timeline";
+  normalized.timelineView = ["overview", "planning"].includes(normalized.timelineView) ? normalized.timelineView : "overview";
+  normalized.timelinePlanningLayer = ["meaning", "alignment", "content", "core"].includes(normalized.timelinePlanningLayer)
+    ? normalized.timelinePlanningLayer
+    : "meaning";
   normalized.selectedLessonId = normalized.selectedLessonId || "";
   normalized.lessonOverviewOpen = false;
   normalized.unitOverviewOpen = Boolean(normalized.unitOverviewOpen);
@@ -4266,6 +4276,10 @@ function timelineLaneLabelWidth() {
   return Number.parseFloat(style.getPropertyValue("--lane-label")) || 88;
 }
 
+function timelineLaneHeight() {
+  return state.timelineView === "planning" ? 270 : TIMELINE_LANE_HEIGHT;
+}
+
 function lessonWeekCount(unit) {
   return unit.lessons?.length || 0;
 }
@@ -4340,6 +4354,7 @@ function render() {
   renderPlanSetup();
   renderWorkspaceSetup();
   renderLibrary();
+  renderTimelinePlanningControls();
   renderTimelineGrid();
   renderUnits();
   renderHealth();
@@ -4367,12 +4382,15 @@ function renderScreens() {
   els.workspaceScreen.classList.toggle("hidden", !showWorkspace);
   els.plannerWorkspace.classList.toggle("hidden", showWorkspace);
   els.timelineScreen.classList.toggle("hidden", !showTimeline);
+  els.timelineScreen.classList.toggle("timeline-planning-mode", showTimeline && state.timelineView === "planning");
+  els.timelineScreen.classList.toggle("timeline-overview-mode", showTimeline && state.timelineView !== "planning");
   els.boardScreen.classList.toggle("hidden", !showBoard);
   els.lessonScreen.classList.toggle("hidden", !showLesson);
   els.assessmentScreen?.classList.toggle("hidden", !showAssessment);
   els.workspace.classList.toggle("timeline-mode", showTimeline || showAssessment);
   els.workspace.classList.toggle("assessment-mode", showAssessment);
   els.cardLibraryPanel.classList.toggle("hidden", showTimeline || showAssessment);
+  els.timelineHealth?.classList.toggle("hidden", !showTimeline || state.timelineView === "planning");
   els.workspaceHome.classList.toggle("hidden", showWorkspace);
   els.modeSwitch.classList.toggle("hidden", showWorkspace);
   els.resetDemo?.classList.toggle("hidden", true);
@@ -5001,6 +5019,147 @@ function createLibraryCategory(title, key) {
   return wrapper;
 }
 
+function renderTimelinePlanningControls() {
+  const planning = state.currentScreen === "timeline" && state.timelineView === "planning";
+  els.timelinePlanningTools?.classList.toggle("hidden", !planning);
+  els.timeline?.classList.toggle("planning-view", planning);
+  els.timeline?.classList.toggle("overview-view", !planning);
+  els.timelineViewButtons?.forEach((button) => {
+    button.classList.toggle("active", button.dataset.timelineView === state.timelineView);
+  });
+  els.timelineLayerButtons?.forEach((button) => {
+    button.classList.toggle("active", button.dataset.timelineLayer === state.timelinePlanningLayer);
+  });
+  if (!planning || !els.timelinePlanningLibrary) {
+    if (els.timelinePlanningLibrary) els.timelinePlanningLibrary.innerHTML = "";
+    return;
+  }
+  renderTimelinePlanningLibrary();
+}
+
+function timelineLayerDefinitions() {
+  return [
+    { key: "meaning", label: "Meaning Core", types: ["bigIdeas", "meaningText"] },
+    { key: "alignment", label: "CPA Alignment", types: ["learningOutcomes", "cc21", "pedagogy", "assessment"] },
+    { key: "content", label: "Learning Content", types: ["media", "context", "artisticProcesses", "visualQualities", "visualQualityText"] },
+    { key: "core", label: "Core Learning Experience", types: ["coreExperiences"] },
+  ];
+}
+
+function activeTimelineLayer() {
+  return timelineLayerDefinitions().find((layer) => layer.key === state.timelinePlanningLayer) || timelineLayerDefinitions()[0];
+}
+
+function timelineLayerAllowsType(type) {
+  return activeTimelineLayer().types.includes(type);
+}
+
+function timelineLayerLabel() {
+  return activeTimelineLayer().label;
+}
+
+function renderTimelinePlanningLibrary() {
+  els.timelinePlanningLibrary.innerHTML = "";
+  const layer = activeTimelineLayer();
+  activeCardLibrary().forEach((category) => {
+    const entries = category.items
+      .map((entry) => normalizeLibraryEntry(category, entry))
+      .filter((entry) => layer.types.includes(entry.type))
+      .filter((entry) => !(entry.type === "meaningText" && entry.label === "Guiding Question"))
+      .filter((entry) => entry.type !== "teachingMoves");
+    if (!entries.length) return;
+    const group = document.createElement("section");
+    group.className = "timeline-planning-card-group";
+    group.innerHTML = `<h3>${escapeHtml(category.title)}</h3><div class="timeline-planning-card-row"></div>`;
+    const row = group.querySelector(".timeline-planning-card-row");
+    entries.forEach(({ label, type }) => {
+      const item = document.createElement("button");
+      item.className = "timeline-planning-card";
+      item.type = "button";
+      item.draggable = true;
+      item.dataset.type = type;
+      item.dataset.label = label;
+      item.innerHTML = `
+        <span>${escapeHtml(timelineCardDisplayLabel({ type, label }))}</span>
+        <small>${escapeHtml(cardTypeLabel(type, { type, label }))}</small>
+      `;
+      item.addEventListener("dragstart", (event) => {
+        dragPayload = { type, label, source: "timelinePlanning" };
+        event.dataTransfer.setData("text/plain", JSON.stringify(dragPayload));
+        event.dataTransfer.setData("application/json", JSON.stringify(dragPayload));
+        event.dataTransfer.effectAllowed = "copy";
+      });
+      item.addEventListener("dragend", () => {
+        dragPayload = null;
+      });
+      item.addEventListener("click", () => {
+        const unit = selectedUnit();
+        if (!unit) return;
+        handleLibraryCardClick({ type, label }, () => addTimelinePlanningCardToUnit(unit, { type, label }));
+      });
+      row.append(item);
+    });
+    els.timelinePlanningLibrary.append(group);
+  });
+  if (!els.timelinePlanningLibrary.children.length) {
+    els.timelinePlanningLibrary.innerHTML = `<p class="library-empty">No cards available for ${escapeHtml(layer.label)} yet.</p>`;
+  }
+}
+
+function addTimelinePlanningCardToUnit(unit, payload) {
+  if (!unit || !payload || !timelineLayerAllowsType(payload.type)) return;
+  const normalized = {
+    ...payload,
+    label: normalizePlanningLabel(payload.label || "", payload.type),
+  };
+  if (normalized.type === "meaningText" && normalized.label === "Theme") {
+    const theme = window.prompt("Theme for this unit", unit.theme || "");
+    if (!theme?.trim()) return;
+    normalized.value = theme.trim();
+  }
+  addBoardCard(unit, normalized, {
+    zone: zoneForType(normalized.type),
+  });
+}
+
+function timelineLayerCardsForUnit(unit) {
+  const layer = activeTimelineLayer();
+  return sortedPlanningCards(unit.boardCards || [], {
+    zoneForType,
+    typeOrder: unitCardTypeOrder(),
+  })
+    .filter((card) => layer.types.includes(card.type))
+    .filter((card) => !(card.type === "meaningText" && card.label === "Guiding Question"))
+    .filter((card) => readableCardValue(card) || card.label);
+}
+
+function timelineCardDisplayLabel(card) {
+  const label = readableCardValue(card) || normalizePlanningLabel(card.label || "", card.type);
+  if (card.type === "learningOutcomes") return label.match(/\bLO\d\b/)?.[0] || label;
+  if (card.type === "artisticProcesses") return label.match(/\bAP\d\b/)?.[0] || label;
+  if (card.type === "cc21Goals") return label.split(":")[0];
+  if (card.type === "meaningText" && card.label === "Theme") return label;
+  return label.length > 34 ? `${label.slice(0, 31)}...` : label;
+}
+
+function renderTimelineUnitChips(unit) {
+  if (state.timelineView !== "planning") return "";
+  const cards = timelineLayerCardsForUnit(unit);
+  if (!cards.length) {
+    return `<div class="timeline-unit-card-empty">No ${escapeHtml(timelineLayerLabel())} cards yet</div>`;
+  }
+  return `
+    <div class="timeline-unit-card-chips">
+      ${cards.map((card) => `
+        <span class="timeline-unit-chip ${card.lessonOrigin ? "lesson-origin" : ""}" data-card-id="${escapeAttr(card.id)}" title="${escapeAttr(card.lessonOrigin ? "Lesson-specific card" : "Unit-level card")}">
+          <button class="timeline-chip-preview" type="button" data-card-id="${escapeAttr(card.id)}">${escapeHtml(timelineCardDisplayLabel(card))}</button>
+          <button class="timeline-chip-remove" type="button" data-card-id="${escapeAttr(card.id)}" aria-label="Remove ${escapeAttr(timelineCardDisplayLabel(card))}">×</button>
+        </span>
+      `).join("")}
+    </div>
+  `;
+}
+
 function boardZoneLabel(zone) {
   return boardZoneDefinitions().find((definition) => definition.key === zone)?.label || "Selected Window";
 }
@@ -5068,6 +5227,7 @@ function renderUnits() {
   packAllTimelineYears();
   const overlaps = findOverlaps();
   const width = weekWidth();
+  const laneHeight = timelineLaneHeight();
 
   state.units
     .slice()
@@ -5090,8 +5250,8 @@ function renderUnits() {
       block.title = `${unit.title || "Untitled Unit"} · Sec ${year} · ${timelineWeekRangeLabel(unit)} · Click to select, double click to open Unit Board`;
       block.style.left = `${timelineLaneLabelWidth() + (timelineLocalWeek(unit.start) - 1) * width + 4}px`;
       block.style.width = `${unitTimelineDuration(unit) * width - 8}px`;
-      block.style.top = `${TIMELINE_HEADER_HEIGHT + (year - 1) * TIMELINE_LANE_HEIGHT + 10}px`;
-      block.style.height = `${TIMELINE_LANE_HEIGHT - 20}px`;
+      block.style.top = `${TIMELINE_HEADER_HEIGHT + (year - 1) * laneHeight + 10}px`;
+      block.style.height = `${laneHeight - 20}px`;
       block.innerHTML = `
         <button class="unit-block-delete" data-unit-id="${escapeAttr(unit.id)}" type="button" title="Remove from 2YIP" aria-label="Remove ${escapeAttr(unit.title || "unit")} from 2YIP">×</button>
         <span class="unit-short-code">${escapeHtml(unitTimelineDuration(unit))}L</span>
@@ -5101,6 +5261,7 @@ function renderUnits() {
         </div>
         <div class="unit-meta">Sec ${year} • ${timelineWeekRangeLabel(unit)}</div>
         ${unit.artTask ? `<p class="unit-task">${escapeHtml(unit.artTask)}</p>` : ""}
+        ${renderTimelineUnitChips(unit)}
       `;
 
       const removeButton = block.querySelector(".unit-block-delete");
@@ -5116,18 +5277,57 @@ function renderUnits() {
         event.stopPropagation();
         removeUnitFromTimeline(unit.id);
       });
+      block.querySelectorAll(".timeline-chip-preview").forEach((button) => {
+        button.addEventListener("click", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          const card = unit.boardCards.find((candidate) => candidate.id === button.dataset.cardId);
+          if (!card) return;
+          openCardDetail(card, null, { mode: "view" });
+        });
+      });
+      block.querySelectorAll(".timeline-chip-remove").forEach((button) => {
+        button.addEventListener("click", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          const card = unit.boardCards.find((candidate) => candidate.id === button.dataset.cardId);
+          if (!card) return;
+          removeTimelinePlanningCard(unit, card);
+        });
+      });
       block.addEventListener("click", (event) => {
-        if (event.target.closest(".unit-block-delete")) return;
+        if (event.target.closest(".unit-block-delete, .timeline-unit-chip")) return;
         state.selectedUnitId = unit.id;
         render();
       });
       block.addEventListener("dblclick", (event) => {
-        if (event.target.closest(".unit-block-delete")) return;
+        if (event.target.closest(".unit-block-delete, .timeline-unit-chip")) return;
         event.preventDefault();
         state.selectedUnitId = unit.id;
         state.unitOverviewOpen = false;
         state.currentScreen = "board";
         render();
+      });
+      block.addEventListener("dragover", (event) => {
+        const payload = getDropPayload(event);
+        if (state.timelineView !== "planning" || !payload || payload.kind === "timelineUnit") return;
+        if (!timelineLayerAllowsType(payload.type)) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "copy";
+        block.classList.add("unit-block-drop-target");
+      });
+      block.addEventListener("dragleave", (event) => {
+        if (!block.contains(event.relatedTarget)) block.classList.remove("unit-block-drop-target");
+      });
+      block.addEventListener("drop", (event) => {
+        const payload = getDropPayload(event);
+        if (state.timelineView !== "planning" || !payload || payload.kind === "timelineUnit") return;
+        if (!timelineLayerAllowsType(payload.type)) return;
+        event.preventDefault();
+        event.stopPropagation();
+        block.classList.remove("unit-block-drop-target");
+        state.selectedUnitId = unit.id;
+        addTimelinePlanningCardToUnit(unit, payload);
       });
       block.addEventListener("keydown", (event) => {
         if (event.key !== "Enter" && event.key !== " ") return;
@@ -5140,7 +5340,7 @@ function renderUnits() {
         render();
       });
       block.addEventListener("pointerdown", (event) => {
-        if (event.target.closest(".unit-block-delete")) return;
+        if (event.target.closest(".unit-block-delete, .timeline-unit-chip")) return;
         startTimelinePointer(event, unit, block);
       });
       els.unitLayer.append(block);
@@ -6827,6 +7027,8 @@ function renderLessonPlanningBoard(lesson) {
         if (card.inherited) {
           lesson.removedUnitCardKeys = lesson.removedUnitCardKeys || [];
           addUnique(lesson.removedUnitCardKeys, card.unitCardKey || cardKey(card));
+        } else {
+          removeLessonOriginCardFromUnit(unit, lesson, card);
         }
         lesson.boardCards = lesson.boardCards.filter((candidate) => candidate.id !== card.id);
         render();
@@ -7798,8 +8000,8 @@ function addBoardCard(unit, payload, point) {
     label: normalizedPayload.label,
     zone,
     order: nextBoardOrder(unit, zone),
-    value: defaultTextCardValue(unit, normalizedPayload),
-    confirmed: Boolean(defaultTextCardValue(unit, normalizedPayload)),
+    value: normalizedPayload.value || defaultTextCardValue(unit, normalizedPayload),
+    confirmed: Boolean(normalizedPayload.value || defaultTextCardValue(unit, normalizedPayload)),
     purpose: defaultPurpose(normalizedPayload),
   };
   unit.boardCards.push(card);
@@ -7835,6 +8037,76 @@ function removeBoardCard(unit, card) {
   }
   syncMeaningTextCardsToUnit(unit);
   saveState();
+}
+
+function removeUnitCardValues(unit, card) {
+  const value = card.label;
+  if (card.type === "learningOutcomes") {
+    removeValueAtPath(unit, "learningOutcomes.primary", value);
+    removeValueAtPath(unit, "learningOutcomes.supporting", value);
+  } else if (["bigIdeas", "media", "coreExperiences", "cc21", "assessment", "pedagogy"].includes(card.type)) {
+    removeValueAtPath(unit, card.type, value);
+  } else if (card.type === "context") {
+    removeValueAtPath(unit, "learningContent.contextCards", value);
+  } else if (card.type === "artisticProcesses") {
+    removeValueAtPath(unit, "learningContent.artisticProcessCards", value);
+  } else if (card.type === "visualQualities") {
+    removeValueAtPath(unit, "learningContent.visualQualityCards", value);
+  }
+  syncMeaningTextCardsToUnit(unit);
+}
+
+function removeTimelinePlanningCard(unit, card) {
+  if (!unit || !card || !canEditActivePlan()) return;
+  const label = readableCardValue(card) || card.label;
+  if (card.lessonOrigin) {
+    const removeLessonSpecific = window.confirm(`Remove lesson-specific card "${label}" from the 2YIP planning view? This will not remove the lesson card itself.`);
+    if (!removeLessonSpecific) return;
+    unit.boardCards = unit.boardCards.filter((candidate) => candidate.id !== card.id);
+    removeUnitCardValues(unit, card);
+    saveState();
+    render();
+    return;
+  }
+  const action = window.prompt(
+    `Remove "${label}" from this unit?\n\nType 1 to remove it from the unit and inherited lesson copies.\nType 2 to remove it from the unit only, keeping existing lesson copies as lesson-specific.\nLeave blank to cancel.`,
+    "1",
+  );
+  if (action !== "1" && action !== "2") return;
+  if (action === "1") {
+    removeBoardCard(unit, card);
+    render();
+    return;
+  }
+  const key = cardKey(card);
+  unit.lessons?.forEach((lesson) => {
+    (lesson.boardCards || [])
+      .filter((lessonCard) => lessonCard.unitCardKey === key)
+      .forEach((lessonCard) => {
+        lessonCard.inherited = false;
+        lessonCard.unitCardKey = "";
+      });
+  });
+  unit.boardCards = unit.boardCards.filter((candidate) => candidate.id !== card.id);
+  removeUnitCardValues(unit, card);
+  saveState();
+  render();
+}
+
+function removeLessonOriginCardFromUnit(unit, lesson, card) {
+  if (!unit || !lesson || !card || card.inherited) return;
+  const key = cardKey(card);
+  const unitCard = (unit.boardCards || []).find((candidate) => candidate.lessonOrigin && cardKey(candidate) === key);
+  if (!unitCard) return;
+  unitCard.sourceLessonIds = (unitCard.sourceLessonIds || []).filter((id) => id !== lesson.id);
+  const remainingLessonIds = (unit.lessons || [])
+    .filter((candidateLesson) => candidateLesson.id !== lesson.id)
+    .filter((candidateLesson) => (candidateLesson.boardCards || []).some((lessonCard) => !lessonCard.inherited && cardKey(lessonCard) === key))
+    .map((candidateLesson) => candidateLesson.id);
+  remainingLessonIds.forEach((lessonId) => addUnique(unitCard.sourceLessonIds, lessonId));
+  if (unitCard.sourceLessonIds.length) return;
+  unit.boardCards = unit.boardCards.filter((candidate) => candidate.id !== unitCard.id);
+  removeUnitCardValues(unit, unitCard);
 }
 
 function addLessonBoardCard(unit, lesson, payload, options = {}) {
@@ -7897,8 +8169,8 @@ function ensureUnitHasCard(unit, payload, options = {}) {
     label: normalizedPayload.label,
     zone,
     order: nextBoardOrder(unit, zone),
-    value: defaultTextCardValue(unit, normalizedPayload),
-    confirmed: Boolean(defaultTextCardValue(unit, normalizedPayload)),
+    value: normalizedPayload.value || defaultTextCardValue(unit, normalizedPayload),
+    confirmed: Boolean(normalizedPayload.value || defaultTextCardValue(unit, normalizedPayload)),
     purpose: defaultPurpose(normalizedPayload),
     lessonOrigin: options.source === "lesson",
     sourceLessonIds: options.sourceLessonId ? [options.sourceLessonId] : [],
@@ -8325,7 +8597,7 @@ function updateTimelineDragPreview(unit, block) {
   const width = weekWidth();
   const year = timelineYearForStart(unit.start);
   block.style.left = `${timelineLaneLabelWidth() + (timelineLocalWeek(unit.start) - 1) * width + 4}px`;
-  block.style.top = `${TIMELINE_HEADER_HEIGHT + (year - 1) * TIMELINE_LANE_HEIGHT + 10}px`;
+  block.style.top = `${TIMELINE_HEADER_HEIGHT + (year - 1) * timelineLaneHeight() + 10}px`;
 }
 
 function timelineYearAtPoint(clientY) {
@@ -10006,6 +10278,20 @@ els.modeButtons.forEach((button) => {
   button.addEventListener("click", () => {
     state.currentScreen = button.dataset.screen;
     if (state.currentScreen === "lesson") state.lessonOverviewOpen = false;
+    render();
+  });
+});
+
+els.timelineViewButtons?.forEach((button) => {
+  button.addEventListener("click", () => {
+    state.timelineView = button.dataset.timelineView === "planning" ? "planning" : "overview";
+    render();
+  });
+});
+
+els.timelineLayerButtons?.forEach((button) => {
+  button.addEventListener("click", () => {
+    state.timelinePlanningLayer = button.dataset.timelineLayer || "meaning";
     render();
   });
 });
