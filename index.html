@@ -143,10 +143,12 @@
 
           <section id="timeline-planning-tools" class="timeline-planning-tools hidden" aria-label="2YIP planning tools">
             <div class="timeline-layer-tabs" aria-label="Planning layer">
-              <button class="timeline-layer-button active" type="button" data-timeline-layer="meaning">Meaning Core</button>
-              <button class="timeline-layer-button" type="button" data-timeline-layer="alignment">CPA Alignment</button>
+              <button class="timeline-layer-button active" type="button" data-timeline-layer="meaning">Big Ideas</button>
+              <button class="timeline-layer-button" type="button" data-timeline-layer="curricular">Curricular Goals</button>
               <button class="timeline-layer-button" type="button" data-timeline-layer="content">Learning Content</button>
-              <button class="timeline-layer-button" type="button" data-timeline-layer="core">Core Learning Experience</button>
+              <button class="timeline-layer-button" type="button" data-timeline-layer="experiences">Learning Experiences</button>
+              <button class="timeline-layer-button" type="button" data-timeline-layer="pedagogy">Pedagogy</button>
+              <button class="timeline-layer-button" type="button" data-timeline-layer="assessment">Assessment</button>
             </div>
             <div class="timeline-planning-copy">
               Drop cards onto a unit. Unit-level cards flow down to lessons unless a lesson removes that inherited card.
@@ -190,6 +192,17 @@
                 </div>
               </div>
             </div>
+
+            <section id="phase-band-panel" class="phase-band-panel hidden" aria-label="2YIP phase bands">
+              <div class="phase-band-heading">
+                <div>
+                  <p class="eyebrow">Phase Bands</p>
+                  <h3>Student Development And Teaching Focus</h3>
+                </div>
+                <button id="add-phase-band" class="ghost-button" type="button">Add Phase Band</button>
+              </div>
+              <div id="phase-band-list" class="phase-band-list"></div>
+            </section>
 
             <div class="timeline-scroll">
               <div id="timeline" class="timeline" aria-label="Two-year curriculum timeline">

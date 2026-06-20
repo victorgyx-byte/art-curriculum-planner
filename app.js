@@ -146,6 +146,11 @@ const defaultCardLibrary = [
     ],
   },
   {
+    title: "Elective Learning Experiences",
+    type: "learningExperienceText",
+    items: ["Elective Learning Experience"],
+  },
+  {
     title: "Pedagogy",
     type: "pedagogy",
     items: [
@@ -1307,6 +1312,7 @@ const defaultState = {
   currentScreen: "timeline",
   timelineView: "overview",
   timelinePlanningLayer: "meaning",
+  phaseBands: [],
   selectedBoardZone: "meaning",
   selectedLessonZone: "curricular",
   lessonOverviewOpen: false,
@@ -1561,6 +1567,9 @@ const els = {
   timelineScreen: document.querySelector("#timeline-screen"),
   timelinePlanningTools: document.querySelector("#timeline-planning-tools"),
   timelinePlanningLibrary: document.querySelector("#timeline-planning-library"),
+  phaseBandPanel: document.querySelector("#phase-band-panel"),
+  phaseBandList: document.querySelector("#phase-band-list"),
+  addPhaseBand: document.querySelector("#add-phase-band"),
   timelineViewButtons: document.querySelectorAll("[data-timeline-view]"),
   timelineLayerButtons: document.querySelectorAll(".timeline-layer-button"),
   save2Yip: document.querySelector("#save-2yip"),
@@ -1743,9 +1752,12 @@ function normalizeState(candidate) {
   normalized.cardLibrary = normalizeCardLibrary(candidate.cardLibrary);
   normalized.currentScreen = normalized.currentScreen || "timeline";
   normalized.timelineView = ["overview", "planning"].includes(normalized.timelineView) ? normalized.timelineView : "overview";
-  normalized.timelinePlanningLayer = ["meaning", "alignment", "content", "core"].includes(normalized.timelinePlanningLayer)
+  if (normalized.timelinePlanningLayer === "alignment") normalized.timelinePlanningLayer = "curricular";
+  if (normalized.timelinePlanningLayer === "core") normalized.timelinePlanningLayer = "experiences";
+  normalized.timelinePlanningLayer = timelineLayerDefinitions().some((layer) => layer.key === normalized.timelinePlanningLayer)
     ? normalized.timelinePlanningLayer
     : "meaning";
+  normalized.phaseBands = normalizePhaseBands(normalized.phaseBands || []);
   normalized.selectedLessonId = normalized.selectedLessonId || "";
   normalized.lessonOverviewOpen = false;
   normalized.unitOverviewOpen = Boolean(normalized.unitOverviewOpen);
@@ -2669,6 +2681,31 @@ function normalizePlanningLabel(value, type) {
   if (type === "assessment") return assessmentLabelMap[value] || value;
   if (type === "learningOutcomes") return learningOutcomeLabelMap[value] || value;
   return value;
+}
+
+function normalizePhaseBands(phaseBands) {
+  return (phaseBands || []).map((band) => {
+    const year = clamp(Number(band.year) || 1, 1, YEAR_COUNT);
+    const startTerm = clamp(Number(band.startTerm) || 1, 1, 4);
+    const startWeek = clamp(Number(band.startWeek) || 1, 1, TERM_WEEK_COUNT);
+    const rawEndTerm = clamp(Number(band.endTerm) || startTerm, 1, 4);
+    const rawEndWeek = clamp(Number(band.endWeek) || TERM_WEEK_COUNT, 1, TERM_WEEK_COUNT);
+    const startLocal = localWeekFromTermWeek(startTerm, startWeek);
+    const rawEndLocal = localWeekFromTermWeek(rawEndTerm, rawEndWeek);
+    const endLocal = Math.max(startLocal, rawEndLocal);
+    const endPoint = termWeekLabel(endLocal);
+    return {
+      id: band.id || uid("phase"),
+      year,
+      startTerm,
+      startWeek,
+      endTerm: endPoint.term,
+      endWeek: endPoint.week,
+      label: band.label || "",
+      studentDevelopment: band.studentDevelopment || "",
+      teachingFocus: band.teachingFocus || "",
+    };
+  });
 }
 
 function allLearningOutcomeLabels() {
@@ -4390,6 +4427,7 @@ function render() {
   renderWorkspaceSetup();
   renderLibrary();
   renderTimelinePlanningControls();
+  renderPhaseBands();
   renderTimelineGrid();
   renderUnits();
   renderHealth();
@@ -4901,6 +4939,7 @@ function cardPreviewTone(type) {
     visualQualities: "tone-visual-qualities",
     visualQualityText: "tone-visual-qualities",
     coreExperiences: "tone-core-experiences",
+    learningExperienceText: "tone-core-experiences",
     teachingMoves: "tone-teaching-moves",
     assessment: "tone-assessment",
     pedagogy: "tone-pedagogy",
@@ -5074,12 +5113,70 @@ function renderTimelinePlanningControls() {
   renderTimelinePlanningLibrary();
 }
 
+function renderPhaseBands() {
+  if (!els.phaseBandPanel || !els.phaseBandList) return;
+  const show = state.currentScreen === "timeline";
+  els.phaseBandPanel.classList.toggle("hidden", !show);
+  if (!show) {
+    els.phaseBandList.innerHTML = "";
+    return;
+  }
+  const bands = state.phaseBands || [];
+  if (!bands.length) {
+    els.phaseBandList.innerHTML = `
+      <div class="phase-band-empty">
+        Add phase bands when student development or teaching focus spans across several units.
+      </div>
+    `;
+    return;
+  }
+  els.phaseBandList.innerHTML = bands.map((band) => `
+    <article class="phase-band-row" data-phase-id="${escapeAttr(band.id)}">
+      <div class="phase-band-range">
+        <strong>${escapeHtml(phaseBandRangeLabel(band))}</strong>
+        <input class="text-input phase-band-input" data-field="label" value="${escapeAttr(band.label || "")}" placeholder="Phase label, e.g. Bridging" />
+      </div>
+      <label>
+        <span>Sec</span>
+        <select data-field="year">
+          ${[1, 2].map((year) => `<option value="${year}" ${Number(band.year) === year ? "selected" : ""}>${year}</option>`).join("")}
+        </select>
+      </label>
+      <label>
+        <span>Start</span>
+        <div class="phase-band-mini-fields">
+          <select data-field="startTerm">${[1, 2, 3, 4].map((term) => `<option value="${term}" ${Number(band.startTerm) === term ? "selected" : ""}>T${term}</option>`).join("")}</select>
+          <select data-field="startWeek">${Array.from({ length: TERM_WEEK_COUNT }, (_, index) => index + 1).map((week) => `<option value="${week}" ${Number(band.startWeek) === week ? "selected" : ""}>W${week}</option>`).join("")}</select>
+        </div>
+      </label>
+      <label>
+        <span>End</span>
+        <div class="phase-band-mini-fields">
+          <select data-field="endTerm">${[1, 2, 3, 4].map((term) => `<option value="${term}" ${Number(band.endTerm) === term ? "selected" : ""}>T${term}</option>`).join("")}</select>
+          <select data-field="endWeek">${Array.from({ length: TERM_WEEK_COUNT }, (_, index) => index + 1).map((week) => `<option value="${week}" ${Number(band.endWeek) === week ? "selected" : ""}>W${week}</option>`).join("")}</select>
+        </div>
+      </label>
+      <label class="phase-band-wide">
+        <span>Student Development</span>
+        <textarea class="text-area" data-field="studentDevelopment" rows="2" placeholder="Developmental phase or needs">${escapeHtml(band.studentDevelopment || "")}</textarea>
+      </label>
+      <label class="phase-band-wide">
+        <span>Teaching & Learning Focus</span>
+        <textarea class="text-area" data-field="teachingFocus" rows="2" placeholder="Subject focus for this phase">${escapeHtml(band.teachingFocus || "")}</textarea>
+      </label>
+      <button class="ghost-button phase-band-delete" type="button">Remove</button>
+    </article>
+  `).join("");
+}
+
 function timelineLayerDefinitions() {
   return [
-    { key: "meaning", label: "Meaning Core", types: ["bigIdeas", "meaningText"] },
-    { key: "alignment", label: "CPA Alignment", types: ["learningOutcomes", "cc21", "pedagogy", "assessment"] },
+    { key: "meaning", label: "Big Ideas", types: ["bigIdeas"] },
+    { key: "curricular", label: "Curricular Goals", types: ["learningOutcomes", "cc21"] },
     { key: "content", label: "Learning Content", types: ["media", "context", "artisticProcesses", "visualQualities", "visualQualityText"] },
-    { key: "core", label: "Core Learning Experience", types: ["coreExperiences"] },
+    { key: "experiences", label: "Learning Experiences", types: ["coreExperiences", "learningExperienceText"] },
+    { key: "pedagogy", label: "Pedagogy", types: ["pedagogy"] },
+    { key: "assessment", label: "Assessment", types: ["assessment"] },
   ];
 }
 
@@ -5102,7 +5199,6 @@ function renderTimelinePlanningLibrary() {
     const entries = category.items
       .map((entry) => normalizeLibraryEntry(category, entry))
       .filter((entry) => layer.types.includes(entry.type))
-      .filter((entry) => !(entry.type === "meaningText" && entry.label === "Guiding Question"))
       .filter((entry) => entry.type !== "teachingMoves");
     if (!entries.length) return;
     const group = document.createElement("section");
@@ -5149,11 +5245,6 @@ function addTimelinePlanningCardToUnit(unit, payload) {
     ...payload,
     label: normalizePlanningLabel(payload.label || "", payload.type),
   };
-  if (normalized.type === "meaningText" && normalized.label === "Theme") {
-    const theme = window.prompt("Theme for this unit", unit.theme || "");
-    if (!theme?.trim()) return;
-    normalized.value = theme.trim();
-  }
   addBoardCard(unit, normalized, {
     zone: zoneForType(normalized.type),
   });
@@ -5166,7 +5257,6 @@ function timelineLayerCardsForUnit(unit) {
     typeOrder: unitCardTypeOrder(),
   })
     .filter((card) => layer.types.includes(card.type))
-    .filter((card) => !(card.type === "meaningText" && card.label === "Guiding Question"))
     .filter((card) => readableCardValue(card) || card.label);
 }
 
@@ -5410,6 +5500,45 @@ function termWeekLabel(localWeek) {
   };
 }
 
+function localWeekFromTermWeek(term, week) {
+  return (clamp(Number(term) || 1, 1, 4) - 1) * TERM_WEEK_COUNT + clamp(Number(week) || 1, 1, TERM_WEEK_COUNT);
+}
+
+function absoluteWeekFromPhaseBand(band, point = "start") {
+  const term = point === "end" ? band.endTerm : band.startTerm;
+  const week = point === "end" ? band.endWeek : band.startWeek;
+  return timelineYearStart(band.year || 1) + localWeekFromTermWeek(term, week) - 1;
+}
+
+function phaseBandRangeLabel(band) {
+  const startLocal = localWeekFromTermWeek(band.startTerm, band.startWeek);
+  const endLocal = Math.max(startLocal, localWeekFromTermWeek(band.endTerm, band.endWeek));
+  const startPoint = termWeekLabel(startLocal);
+  const endPoint = termWeekLabel(endLocal);
+  const range = startPoint.term === endPoint.term
+    ? `T${startPoint.term}W${startPoint.week}-${endPoint.week}`
+    : `T${startPoint.term}W${startPoint.week}-T${endPoint.term}W${endPoint.week}`;
+  return `Sec ${band.year || 1} · ${range}`;
+}
+
+function phaseBandsForUnit(unit) {
+  if (!unit) return [];
+  const unitStart = unit.start || 1;
+  const unitEnd = unitStart + unitTimelineDuration(unit) - 1;
+  return (state.phaseBands || []).filter((band) => {
+    const bandStart = absoluteWeekFromPhaseBand(band, "start");
+    const bandEnd = absoluteWeekFromPhaseBand(band, "end");
+    return band.year === timelineYearForStart(unitStart) && bandStart <= unitEnd && bandEnd >= unitStart;
+  });
+}
+
+function phaseBandTextForUnit(unit, field) {
+  const values = phaseBandsForUnit(unit)
+    .map((band) => band[field])
+    .filter(Boolean);
+  return values.length ? uniqueReadableValues(values).join("\n") : "";
+}
+
 function renderBoard() {
   const unit = selectedUnit();
   if (!unit) {
@@ -5625,7 +5754,7 @@ function renderUnitOverview(unit) {
         ])}</dd>
         <dt>Pedagogy</dt><dd>${unitOverviewInlineGroups([["Pedagogy", overviewValues(unit, "pedagogy")]])}</dd>
         <dt>Assessment</dt><dd>${unitOverviewInlineGroups([["Assessment", overviewValues(unit, "assessment")]])}</dd>
-        <dt>Core Learning Experiences</dt><dd>${unitOverviewInlineGroups([["Core Learning Experiences", overviewValues(unit, "coreExperiences")]])}</dd>
+        <dt>Learning Experiences</dt><dd>${unitOverviewInlineGroups([["Learning Experiences", learningExperienceOverviewValues(unit)]])}</dd>
         <dt>Lesson Sequence</dt><dd>${lessonSequenceOverviewList(unit)}</dd>
       </dl>
     </article>
@@ -5772,6 +5901,17 @@ function visualQualityOverviewValues(unit) {
   ]), "visualQualities");
 }
 
+function learningExperienceOverviewValues(unit) {
+  const cardValues = sortedPlanningCards(unit.boardCards || [], {
+    zoneForType,
+    typeOrder: unitCardTypeOrder(),
+  })
+    .filter((card) => card.type === "coreExperiences" || card.type === "learningExperienceText")
+    .map((card) => readableCardValue(card));
+  if (cardValues.length) return uniqueReadableValues(cardValues);
+  return sortedReadableValues(uniqueReadableValues(unit.coreExperiences || []), "coreExperiences");
+}
+
 function themeValues(unit) {
   const cardValues = sortedPlanningCards(unit.boardCards || [], {
     zoneForType,
@@ -5861,8 +6001,8 @@ function twoYipOverviewExportRows(units) {
     row("Level", units.map((unit) => `Sec ${timelineYearForStart(unit.start)}`)),
     row("Duration", units.map((unit) => `Sec ${timelineYearForStart(unit.start)} · ${timelineWeekRangeLabel(unit)}`)),
     row("Lesson Count", units.map(unitLessonCountLabel)),
-    row("Student Development", units.map((unit) => unit.studentDevelopment || "Not yet planned")),
-    row("Teaching & Learning Focus", units.map((unit) => unit.teachingFocus || "Not yet planned")),
+    row("Student Development", units.map((unit) => phaseBandTextForUnit(unit, "studentDevelopment") || unit.studentDevelopment || "Not yet planned")),
+    row("Teaching & Learning Focus", units.map((unit) => phaseBandTextForUnit(unit, "teachingFocus") || unit.teachingFocus || "Not yet planned")),
     row("Unit Title", units.map((unit) => unit.title || "Untitled Unit")),
     row("Art Task", units.map((unit) => unit.artTask || "Not yet planned")),
     row("Big Idea(s)", units.map((unit) => listForExcel(overviewValues(unit, "bigIdeas")))),
@@ -5874,7 +6014,7 @@ function twoYipOverviewExportRows(units) {
     row("Context", units.map((unit) => listForExcel(contextOverviewValues(unit)))),
     row("Artistic Processes", units.map((unit) => listForExcel(overviewValues(unit, "artisticProcesses")))),
     row("Visual Qualities", units.map((unit) => listForExcel(visualQualityOverviewValues(unit)))),
-    row("Core Learning Experiences", units.map((unit) => listForExcel(overviewValues(unit, "coreExperiences")))),
+    row("Learning Experiences", units.map((unit) => listForExcel(learningExperienceOverviewValues(unit)))),
     row("Pedagogy", units.map((unit) => listForExcel(overviewValues(unit, "pedagogy")))),
     row("Assessment", units.map((unit) => listForExcel(overviewValues(unit, "assessment")))),
     row("Lesson Sequence", units.map(lessonSequenceExcelText)),
@@ -6084,7 +6224,10 @@ function lessonWordExportHtml(unit, lesson) {
       ["Visual Qualities", lessonOverviewValues(lesson, "visualQualities")],
       ["Other Visual Qualities", lessonOverviewValues(lesson, "visualQualityText")],
     ])}
-    ${wordGroupedSection("Core Learning Experiences", [["Core Learning Experiences", lessonOverviewValues(lesson, "coreExperiences")]])}
+    ${wordGroupedSection("Learning Experiences", [
+      ["Core Learning Experiences", lessonOverviewValues(lesson, "coreExperiences")],
+      ["Elective Learning Experiences", lessonOverviewValues(lesson, "learningExperienceText")],
+    ])}
     ${wordGroupedSection("Pedagogy", [
       ["Pedagogy", lessonOverviewValues(lesson, "pedagogy")],
       ["Legacy Teaching Action Cards", lessonOverviewValues(lesson, "teachingMoves")],
@@ -6278,7 +6421,7 @@ function unitOverviewCopySections(unit) {
     ["Curricular Goals", [["Learning Outcomes", overviewValues(unit, "learningOutcomes")], ["21CC Outcomes", overviewValues(unit, "cc21")]]],
     ["Pedagogy", [["Pedagogy", overviewValues(unit, "pedagogy")]]],
     ["Assessment", [["Assessment", overviewValues(unit, "assessment")]]],
-    ["Core Learning Experiences", [["Core Learning Experiences", overviewValues(unit, "coreExperiences")]]],
+    ["Learning Experiences", [["Learning Experiences", learningExperienceOverviewValues(unit)]]],
   ];
 }
 
@@ -7067,7 +7210,10 @@ function lessonConfirmedSummary(unit, lesson) {
           ["Visual Qualities", "visualQualities"],
           ["Other Visual Qualities", "visualQualityText"],
         ])}</dd>
-        <dt>Core Learning Experiences</dt><dd>${lessonOverviewGroups(lesson, [["Core Learning Experiences", "coreExperiences"]])}</dd>
+        <dt>Learning Experiences</dt><dd>${lessonOverviewGroups(lesson, [
+          ["Core Learning Experiences", "coreExperiences"],
+          ["Elective Learning Experiences", "learningExperienceText"],
+        ])}</dd>
         <dt>Pedagogy</dt><dd>${lessonOverviewGroups(lesson, [
           ["Pedagogy", "pedagogy"],
           ["Legacy Teaching Action Cards", "teachingMoves"],
@@ -8133,6 +8279,7 @@ function cardTypeLabel(type, card = {}) {
     visualQualities: "Visual Quality",
     visualQualityText: "Visual Quality",
     coreExperiences: "Core Experience",
+    learningExperienceText: card.label || "Learning Experience",
     teachingMoves: "Teaching Action",
     assessment: "Assessment",
     pedagogy: "Pedagogy",
@@ -8450,6 +8597,7 @@ function zoneForType(type) {
     visualQualities: "content",
     visualQualityText: "content",
     coreExperiences: "core",
+    learningExperienceText: "core",
   };
   return zones[type] || "content";
 }
@@ -8468,6 +8616,7 @@ function lessonZoneForType(type) {
     visualQualities: "content",
     visualQualityText: "content",
     coreExperiences: "core",
+    learningExperienceText: "core",
   };
   return zones[type] || "content";
 }
@@ -8495,7 +8644,7 @@ function zoneAllowsType(zone, type) {
     meaning: ["bigIdeas", "meaningText"],
     alignment: ["learningOutcomes", "pedagogy", "assessment", "cc21"],
     content: ["media", "context", "artisticProcesses", "visualQualities", "visualQualityText"],
-    core: ["coreExperiences"],
+    core: ["coreExperiences", "learningExperienceText"],
   };
   return Boolean(zone && allowed[zone]?.includes(type));
 }
@@ -8506,17 +8655,20 @@ function lessonZoneAllowsType(zone, type) {
     pedagogy: ["pedagogy", "teachingMoves"],
     assessment: ["assessment"],
     content: ["media", "context", "artisticProcesses", "visualQualities", "visualQualityText"],
-    core: ["coreExperiences"],
+    core: ["coreExperiences", "learningExperienceText"],
   };
   return Boolean(zone && allowed[zone]?.includes(type));
 }
 
 function isTextCard(type) {
-  return ["meaningText", "visualQualityText", "context"].includes(type);
+  return ["meaningText", "visualQualityText", "context", "learningExperienceText"].includes(type);
 }
 
 function allowsDuplicateBoardCard(type, label = "") {
-  return type === "visualQualityText" || type === "context" || (type === "meaningText" && label === "Guiding Question");
+  return type === "visualQualityText"
+    || type === "context"
+    || type === "learningExperienceText"
+    || (type === "meaningText" && label === "Guiding Question");
 }
 
 function textCardContent(card) {
@@ -8542,6 +8694,7 @@ function textCardInput(card) {
 
 function textCardPlaceholder(card) {
   if (card.type === "visualQualityText") return "Enter a visual quality focus";
+  if (card.type === "learningExperienceText") return "Enter an elective learning experience";
   if (card.type === "context") return `Enter details for ${card.label}`;
   return card.label;
 }
@@ -8621,6 +8774,7 @@ function unitCardTypeOrder() {
     "visualQualities",
     "visualQualityText",
     "coreExperiences",
+    "learningExperienceText",
     "learningOutcomes",
     "cc21",
     "pedagogy",
@@ -10028,6 +10182,7 @@ function defaultPurpose(payload) {
     teachingMoves: "What should students notice, practise, evidence, or reflect on here?",
     assessment: "What evidence of learning will this gather, and how will feedback move learning forward?",
     coreExperiences: "How does this build drawing or portfolio habits?",
+    learningExperienceText: "What elective experience will extend or enrich the unit?",
     media: "How does this medium serve the inquiry or intended learning?",
   };
   return prompts[payload.type] || "";
@@ -10478,6 +10633,55 @@ els.arrangeTimeline?.addEventListener("click", () => {
 });
 
 els.export2YipExcel?.addEventListener("click", export2YipOverviewExcel);
+
+els.addPhaseBand?.addEventListener("click", () => {
+  if (!canEditActivePlan()) return;
+  state.phaseBands.push(normalizePhaseBands([{
+    year: 1,
+    startTerm: 1,
+    startWeek: 1,
+    endTerm: 1,
+    endWeek: 10,
+    label: "",
+    studentDevelopment: "",
+    teachingFocus: "",
+  }])[0]);
+  saveState();
+  render();
+});
+
+els.phaseBandList?.addEventListener("input", (event) => {
+  const field = event.target.dataset.field;
+  const row = event.target.closest(".phase-band-row");
+  if (!field || !row || !canEditActivePlan()) return;
+  const band = state.phaseBands.find((candidate) => candidate.id === row.dataset.phaseId);
+  if (!band) return;
+  band[field] = event.target.value;
+  state.phaseBands = normalizePhaseBands(state.phaseBands);
+  saveState();
+});
+
+els.phaseBandList?.addEventListener("change", (event) => {
+  if (event.target.tagName !== "SELECT") return;
+  const field = event.target.dataset.field;
+  const row = event.target.closest(".phase-band-row");
+  if (!field || !row || !canEditActivePlan()) return;
+  const band = state.phaseBands.find((candidate) => candidate.id === row.dataset.phaseId);
+  if (!band) return;
+  band[field] = Number(event.target.value);
+  state.phaseBands = normalizePhaseBands(state.phaseBands);
+  saveState();
+  render();
+});
+
+els.phaseBandList?.addEventListener("click", (event) => {
+  const removeButton = event.target.closest(".phase-band-delete");
+  if (!removeButton || !canEditActivePlan()) return;
+  const row = removeButton.closest(".phase-band-row");
+  state.phaseBands = (state.phaseBands || []).filter((band) => band.id !== row?.dataset.phaseId);
+  saveState();
+  render();
+});
 
 els.timelineLayerButtons?.forEach((button) => {
   button.addEventListener("click", () => {
