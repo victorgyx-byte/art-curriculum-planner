@@ -978,7 +978,7 @@ button:disabled {
   width: max-content;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  margin: 0 14px 12px;
+  margin: 0 auto 12px;
   overflow: hidden;
   background: rgba(255, 253, 250, 0.86);
 }
