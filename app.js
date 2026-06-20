@@ -4319,7 +4319,7 @@ function timelineLaneLabelWidth() {
 }
 
 function timelineLaneHeight() {
-  if (state.timelineView !== "planning") return TIMELINE_LANE_HEIGHT;
+  if (state.timelineView !== "planning") return TIMELINE_LANE_HEIGHT + maxPhaseBandRows() * 28;
   return estimatePlanningTimelineLaneHeight();
 }
 
@@ -5115,7 +5115,7 @@ function renderTimelinePlanningControls() {
 
 function renderPhaseBands() {
   if (!els.phaseBandPanel || !els.phaseBandList) return;
-  const show = state.currentScreen === "timeline";
+  const show = state.currentScreen === "timeline" && state.timelineView === "planning";
   els.phaseBandPanel.classList.toggle("hidden", !show);
   if (!show) {
     els.phaseBandList.innerHTML = "";
@@ -5363,6 +5363,7 @@ function renderUnits() {
   const overlaps = findOverlaps();
   const width = weekWidth();
   const laneHeight = timelineLaneHeight();
+  if (state.timelineView !== "planning") renderTimelinePhaseBandOverlays(width, laneHeight);
 
   state.units
     .slice()
@@ -5383,10 +5384,12 @@ function renderUnits() {
       block.tabIndex = 0;
       block.dataset.unitId = unit.id;
       block.title = `${unit.title || "Untitled Unit"} · Sec ${year} · ${timelineWeekRangeLabel(unit)} · Click to select, double click to open Unit Board`;
+      const phaseRows = state.timelineView === "planning" ? 0 : phaseBandLayout(year).rows.length;
+      const phaseOffset = phaseRows * 28;
       block.style.left = `${timelineLaneLabelWidth() + (timelineLocalWeek(unit.start) - 1) * width + 4}px`;
       block.style.width = `${unitTimelineDuration(unit) * width - 8}px`;
-      block.style.top = `${TIMELINE_HEADER_HEIGHT + (year - 1) * laneHeight + 10}px`;
-      block.style.height = `${laneHeight - 20}px`;
+      block.style.top = `${TIMELINE_HEADER_HEIGHT + (year - 1) * laneHeight + 10 + phaseOffset}px`;
+      block.style.height = `${Math.max(84, laneHeight - 20 - phaseOffset)}px`;
       block.innerHTML = `
         <button class="unit-block-delete" data-unit-id="${escapeAttr(unit.id)}" type="button" title="Remove from 2YIP" aria-label="Remove ${escapeAttr(unit.title || "unit")} from 2YIP">×</button>
         <span class="unit-short-code">${escapeHtml(unitTimelineDuration(unit))}L</span>
@@ -5482,6 +5485,27 @@ function renderUnits() {
     });
 }
 
+function renderTimelinePhaseBandOverlays(width, laneHeight) {
+  for (let year = 1; year <= YEAR_COUNT; year += 1) {
+    const layout = phaseBandLayout(year);
+    layout.items.forEach(({ band, row }) => {
+      const startLocal = localWeekFromTermWeek(band.startTerm, band.startWeek);
+      const endLocal = Math.max(startLocal, localWeekFromTermWeek(band.endTerm, band.endWeek));
+      const bandNode = document.createElement("article");
+      bandNode.className = "timeline-phase-band";
+      bandNode.style.left = `${timelineLaneLabelWidth() + (startLocal - 1) * width + 4}px`;
+      bandNode.style.width = `${(endLocal - startLocal + 1) * width - 8}px`;
+      bandNode.style.top = `${TIMELINE_HEADER_HEIGHT + (year - 1) * laneHeight + 8 + row * 28}px`;
+      bandNode.title = phaseBandTooltip(band);
+      bandNode.innerHTML = `
+        <strong>${escapeHtml(band.label || "Phase Band")}</strong>
+        <span>${escapeHtml(phaseBandRangeLabel(band))}</span>
+      `;
+      els.unitLayer.append(bandNode);
+    });
+  }
+}
+
 function timelineWeekRangeLabel(unit) {
   const start = timelineLocalWeek(unit.start);
   const end = start + unitTimelineDuration(unit) - 1;
@@ -5519,6 +5543,41 @@ function phaseBandRangeLabel(band) {
     ? `T${startPoint.term}W${startPoint.week}-${endPoint.week}`
     : `T${startPoint.term}W${startPoint.week}-T${endPoint.term}W${endPoint.week}`;
   return `Sec ${band.year || 1} · ${range}`;
+}
+
+function phaseBandLayout(year) {
+  const rows = [];
+  const items = [];
+  (state.phaseBands || [])
+    .filter((band) => Number(band.year) === year)
+    .slice()
+    .sort((a, b) => localWeekFromTermWeek(a.startTerm, a.startWeek) - localWeekFromTermWeek(b.startTerm, b.startWeek))
+    .forEach((band) => {
+      const start = localWeekFromTermWeek(band.startTerm, band.startWeek);
+      const end = Math.max(start, localWeekFromTermWeek(band.endTerm, band.endWeek));
+      let row = rows.findIndex((lastEnd) => start > lastEnd);
+      if (row < 0) {
+        row = rows.length;
+        rows.push(0);
+      }
+      rows[row] = end;
+      items.push({ band, row });
+    });
+  return { rows, items };
+}
+
+function maxPhaseBandRows() {
+  if (state.currentScreen !== "timeline" || state.timelineView === "planning") return 0;
+  return Math.max(0, ...Array.from({ length: YEAR_COUNT }, (_, index) => phaseBandLayout(index + 1).rows.length));
+}
+
+function phaseBandTooltip(band) {
+  return [
+    band.label || "Phase Band",
+    phaseBandRangeLabel(band),
+    band.studentDevelopment ? `Student Development: ${band.studentDevelopment}` : "",
+    band.teachingFocus ? `Teaching & Learning Focus: ${band.teachingFocus}` : "",
+  ].filter(Boolean).join("\n");
 }
 
 function phaseBandsForUnit(unit) {
