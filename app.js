@@ -1565,6 +1565,7 @@ const els = {
   timelineLayerButtons: document.querySelectorAll(".timeline-layer-button"),
   save2Yip: document.querySelector("#save-2yip"),
   arrangeTimeline: document.querySelector("#arrange-timeline"),
+  export2YipExcel: document.querySelector("#export-2yip-excel"),
   workspace: document.querySelector(".workspace"),
   cardLibraryPanel: document.querySelector(".card-library-panel"),
   boardScreen: document.querySelector("#board-screen"),
@@ -5059,6 +5060,7 @@ function renderTimelinePlanningControls() {
   els.timeline?.classList.toggle("planning-view", planning);
   els.timeline?.classList.toggle("overview-view", !planning);
   els.arrangeTimeline?.classList.toggle("hidden", !planning);
+  els.export2YipExcel?.classList.toggle("hidden", planning || state.currentScreen !== "timeline");
   els.timelineViewButtons?.forEach((button) => {
     button.classList.toggle("active", button.dataset.timelineView === state.timelineView);
   });
@@ -5832,6 +5834,140 @@ function exportUnitWord(unit) {
   const title = `${unit.title || "Untitled Unit"} Unit Plan`;
   downloadWordDocument(`${safeDownloadName(unit.title || "unit-plan")}-unit-plan.doc`, title, unitWordExportHtml(unit));
   showSaveStatus("Unit Word document downloaded");
+}
+
+function export2YipOverviewExcel() {
+  const units = state.units
+    .filter((unit) => unit.inTimeline !== false)
+    .slice()
+    .sort((a, b) => (a.start || 0) - (b.start || 0));
+  if (!units.length) {
+    showSaveStatus("No units on 2YIP to export");
+    return;
+  }
+  const rows = twoYipOverviewExportRows(units);
+  const xml = excelWorkbookXml(activePlanTitle() || "2YIP Overview", rows);
+  const filename = `${safeDownloadName(activePlanTitle() || "2yip-overview")}-2yip-overview.xls`;
+  downloadExcelXml(filename, xml);
+  showSaveStatus("2YIP Excel overview downloaded");
+}
+
+function twoYipOverviewExportRows(units) {
+  const row = (label, values, style = "") => ({ label, values, style });
+  return [
+    { title: activePlanTitle() || "2YIP Overview" },
+    row("Exported", [new Date().toLocaleString()], "meta"),
+    row("Unit", units.map((unit) => unit.title || "Untitled Unit"), "unitHeader"),
+    row("Level", units.map((unit) => `Sec ${timelineYearForStart(unit.start)}`)),
+    row("Duration", units.map((unit) => `Sec ${timelineYearForStart(unit.start)} · ${timelineWeekRangeLabel(unit)}`)),
+    row("Lesson Count", units.map(unitLessonCountLabel)),
+    row("Student Development", units.map((unit) => unit.studentDevelopment || "Not yet planned")),
+    row("Teaching & Learning Focus", units.map((unit) => unit.teachingFocus || "Not yet planned")),
+    row("Unit Title", units.map((unit) => unit.title || "Untitled Unit")),
+    row("Art Task", units.map((unit) => unit.artTask || "Not yet planned")),
+    row("Big Idea(s)", units.map((unit) => listForExcel(overviewValues(unit, "bigIdeas")))),
+    row("Guiding Question(s)", units.map((unit) => listForExcel(guidingQuestionValues(unit)))),
+    row("Theme", units.map((unit) => listForExcel(themeValues(unit)))),
+    row("Learning Outcomes", units.map((unit) => listForExcel(overviewValues(unit, "learningOutcomes")))),
+    row("21CC Outcomes", units.map((unit) => listForExcel(overviewValues(unit, "cc21")))),
+    row("Media / Art Forms", units.map((unit) => listForExcel(overviewValues(unit, "media")))),
+    row("Context", units.map((unit) => listForExcel(contextOverviewValues(unit)))),
+    row("Artistic Processes", units.map((unit) => listForExcel(overviewValues(unit, "artisticProcesses")))),
+    row("Visual Qualities", units.map((unit) => listForExcel(visualQualityOverviewValues(unit)))),
+    row("Core Learning Experiences", units.map((unit) => listForExcel(overviewValues(unit, "coreExperiences")))),
+    row("Pedagogy", units.map((unit) => listForExcel(overviewValues(unit, "pedagogy")))),
+    row("Assessment", units.map((unit) => listForExcel(overviewValues(unit, "assessment")))),
+    row("Lesson Sequence", units.map(lessonSequenceExcelText)),
+  ];
+}
+
+function listForExcel(values) {
+  const list = uniqueReadableValues(values || []);
+  return list.length ? list.join("\n") : "Not yet planned";
+}
+
+function lessonSequenceExcelText(unit) {
+  const lessons = unit.lessons || [];
+  if (!lessons.length) return "Not yet planned";
+  return lessons.map((lesson, index) => {
+    const title = lesson.title || `Lesson ${index + 1}`;
+    const description = lesson.description || lesson.details || "";
+    return `Lesson ${index + 1}: ${title}${description ? `\n${description}` : ""}`;
+  }).join("\n\n");
+}
+
+function excelWorkbookXml(title, rows) {
+  const columnCount = Math.max(1, ...rows.map((row) => row.values?.length || 1)) + 1;
+  const titleMerge = Math.max(0, columnCount - 1);
+  const tableRows = rows.map((row) => {
+    if (row.title) {
+      return `<Row ss:Height="30"><Cell ss:MergeAcross="${titleMerge}" ss:StyleID="Title"><Data ss:Type="String">${escapeExcelXml(row.title)}</Data></Cell></Row>`;
+    }
+    const labelCell = excelCell(row.label, "Label");
+    const style = row.style === "unitHeader" ? "UnitHeader" : "Text";
+    const valueCells = (row.values || []).map((value) => excelCell(value, style)).join("");
+    return `<Row ss:AutoFitHeight="1">${labelCell}${valueCells}</Row>`;
+  }).join("");
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-com:office:excel"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:html="http://www.w3.org/TR/REC-html40">
+ <DocumentProperties xmlns="urn:schemas-microsoft-com:office:office">
+  <Title>${escapeExcelXml(title)}</Title>
+ </DocumentProperties>
+ <Styles>
+  <Style ss:ID="Default" ss:Name="Normal"><Alignment ss:Vertical="Top" ss:WrapText="1"/><Font ss:FontName="Aptos" ss:Size="11"/></Style>
+  <Style ss:ID="Title"><Font ss:FontName="Aptos Display" ss:Size="18" ss:Bold="1"/><Interior ss:Color="#DBEEED" ss:Pattern="Solid"/><Alignment ss:Vertical="Center"/></Style>
+  <Style ss:ID="Label"><Font ss:FontName="Aptos" ss:Size="11" ss:Bold="1" ss:Color="#2F6F73"/><Interior ss:Color="#F4EFE6" ss:Pattern="Solid"/><Alignment ss:Vertical="Top" ss:WrapText="1"/></Style>
+  <Style ss:ID="UnitHeader"><Font ss:FontName="Aptos" ss:Size="12" ss:Bold="1"/><Interior ss:Color="#DBEEED" ss:Pattern="Solid"/><Alignment ss:Vertical="Top" ss:WrapText="1"/></Style>
+  <Style ss:ID="Text"><Font ss:FontName="Aptos" ss:Size="11"/><Alignment ss:Vertical="Top" ss:WrapText="1"/></Style>
+ </Styles>
+ <Worksheet ss:Name="2YIP Overview">
+  <Table>
+   <Column ss:Width="190"/>
+   ${Array.from({ length: columnCount - 1 }, () => `<Column ss:Width="230"/>`).join("")}
+   ${tableRows}
+  </Table>
+  <WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel">
+   <FreezePanes/>
+   <FrozenNoSplit/>
+   <SplitHorizontal>3</SplitHorizontal>
+   <TopRowBottomPane>3</TopRowBottomPane>
+   <SplitVertical>1</SplitVertical>
+   <LeftColumnRightPane>1</LeftColumnRightPane>
+   <ActivePane>0</ActivePane>
+  </WorksheetOptions>
+ </Worksheet>
+</Workbook>`;
+}
+
+function excelCell(value, styleId = "Text") {
+  return `<Cell ss:StyleID="${styleId}"><Data ss:Type="String">${escapeExcelXml(value || "Not yet planned")}</Data></Cell>`;
+}
+
+function escapeExcelXml(value = "") {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&apos;")
+    .replace(/\r\n|\r|\n/g, "&#10;");
+}
+
+function downloadExcelXml(filename, xml) {
+  const blob = new Blob([xml], { type: "application/vnd.ms-excel;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 500);
 }
 
 function exportLessonWord(unit, lesson) {
@@ -10340,6 +10476,8 @@ els.arrangeTimeline?.addEventListener("click", () => {
   saveState();
   render();
 });
+
+els.export2YipExcel?.addEventListener("click", export2YipOverviewExcel);
 
 els.timelineLayerButtons?.forEach((button) => {
   button.addEventListener("click", () => {
