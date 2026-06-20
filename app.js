@@ -5151,7 +5151,7 @@ function renderTimelineUnitChips(unit) {
   return `
     <div class="timeline-unit-card-chips">
       ${cards.map((card) => `
-        <span class="timeline-unit-chip ${card.lessonOrigin ? "lesson-origin" : ""}" data-card-id="${escapeAttr(card.id)}" title="${escapeAttr(card.lessonOrigin ? "Lesson-specific card" : "Unit-level card")}">
+        <span class="timeline-unit-chip ${card.lessonOrigin ? "lesson-origin" : ""}" data-card-id="${escapeAttr(card.id)}" data-type="${escapeAttr(card.type)}" title="${escapeAttr(card.lessonOrigin ? "Lesson-specific card" : "Unit-level card")}">
           <button class="timeline-chip-preview" type="button" data-card-id="${escapeAttr(card.id)}">${escapeHtml(timelineCardDisplayLabel(card))}</button>
           <button class="timeline-chip-remove" type="button" data-card-id="${escapeAttr(card.id)}" aria-label="Remove ${escapeAttr(timelineCardDisplayLabel(card))}">×</button>
         </span>

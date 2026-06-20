@@ -951,11 +951,34 @@ button:disabled {
   overflow: hidden;
 }
 
+.timeline-panel.timeline-planning-mode {
+  display: grid;
+  grid-template-columns: minmax(270px, 340px) minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.timeline-panel.timeline-planning-mode .timeline-heading,
+.timeline-panel.timeline-planning-mode .timeline-view-switch {
+  grid-column: 1 / -1;
+}
+
+.timeline-panel.timeline-planning-mode .timeline-planning-tools {
+  grid-column: 1;
+  margin: 0 0 14px 14px;
+}
+
+.timeline-panel.timeline-planning-mode .timeline-scroll {
+  grid-column: 2;
+  padding: 0 14px 14px 0;
+}
+
 .timeline-view-switch {
   display: inline-flex;
   width: max-content;
   border: 1px solid var(--line);
   border-radius: var(--radius);
+  margin: 0 14px 12px;
   overflow: hidden;
   background: rgba(255, 253, 250, 0.86);
 }
@@ -994,10 +1017,17 @@ button:disabled {
   background: rgba(255, 253, 250, 0.86);
 }
 
+.timeline-panel.timeline-planning-mode .timeline-planning-tools {
+  max-height: calc(100vh - 210px);
+  overflow: auto;
+  position: sticky;
+  top: 12px;
+}
+
 .timeline-layer-tabs {
   display: flex;
   flex-wrap: wrap;
-  width: max-content;
+  width: 100%;
   max-width: 100%;
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -1012,17 +1042,13 @@ button:disabled {
 }
 
 .timeline-planning-library {
-  display: flex;
+  display: grid;
   gap: 10px;
-  overflow-x: auto;
-  overscroll-behavior-x: contain;
-  padding-bottom: 4px;
-  scrollbar-gutter: stable;
+  min-height: 0;
 }
 
 .timeline-planning-card-group {
   display: grid;
-  flex: 0 0 min(560px, 88vw);
   gap: 8px;
 }
 
@@ -1036,21 +1062,19 @@ button:disabled {
 }
 
 .timeline-planning-card-row {
-  display: flex;
+  display: grid;
   gap: 8px;
-  overflow-x: auto;
-  padding-bottom: 2px;
 }
 
 .timeline-planning-card {
   display: grid;
-  flex: 0 0 190px;
   gap: 5px;
-  min-height: 78px;
+  width: 100%;
+  min-height: 86px;
   border: 1px solid var(--line);
   border-left: 5px solid var(--accent);
   border-radius: var(--radius);
-  padding: 9px 10px;
+  padding: 10px 12px;
   background: #fff;
   color: var(--ink);
   text-align: left;
@@ -1072,6 +1096,49 @@ button:disabled {
   font-size: 10px;
   font-weight: 850;
   text-transform: uppercase;
+}
+
+.timeline-planning-card[data-type="learningOutcomes"] {
+  border-left-color: var(--accent-2);
+}
+
+.timeline-planning-card[data-type="meaningText"],
+.timeline-planning-card[data-type="bigIdeas"] {
+  border-left-color: var(--accent);
+}
+
+.timeline-planning-card[data-type="media"] {
+  border-left-color: var(--accent-3);
+}
+
+.timeline-planning-card[data-type="context"] {
+  border-left-color: #7a7f38;
+}
+
+.timeline-planning-card[data-type="artisticProcesses"] {
+  border-left-color: #c06d32;
+}
+
+.timeline-planning-card[data-type="visualQualities"],
+.timeline-planning-card[data-type="visualQualityText"] {
+  border-left-color: #bf5f82;
+}
+
+.timeline-planning-card[data-type="assessment"] {
+  border-left-color: var(--accent-4);
+}
+
+.timeline-planning-card[data-type="pedagogy"] {
+  border-left-color: #2d6e9f;
+}
+
+.timeline-planning-card[data-type="coreExperiences"] {
+  border-left-color: #34815d;
+}
+
+.timeline-planning-card[data-type="cc21"],
+.timeline-planning-card[data-type="cc21Goals"] {
+  border-left-color: #9c6b2f;
 }
 
 .board-panel {
@@ -1876,21 +1943,65 @@ button:disabled {
   max-width: 100%;
   align-items: center;
   overflow: hidden;
-  border: 1px solid rgba(47, 111, 115, 0.24);
-  border-radius: 999px;
-  background: rgba(255, 253, 250, 0.88);
+  border: 0;
+  border-radius: 7px;
+  background: var(--accent);
+  box-shadow: 0 4px 10px rgba(39, 44, 38, 0.16);
 }
 
 .timeline-unit-chip.lesson-origin {
-  border-style: dashed;
-  background: rgba(255, 253, 250, 0.54);
+  outline: 2px dashed rgba(255, 255, 255, 0.78);
+  outline-offset: -4px;
+}
+
+.timeline-unit-chip[data-type="learningOutcomes"] {
+  background: var(--accent-2);
+}
+
+.timeline-unit-chip[data-type="bigIdeas"],
+.timeline-unit-chip[data-type="meaningText"] {
+  background: var(--accent);
+}
+
+.timeline-unit-chip[data-type="media"] {
+  background: #b97621;
+}
+
+.timeline-unit-chip[data-type="context"] {
+  background: #7a7f38;
+}
+
+.timeline-unit-chip[data-type="artisticProcesses"] {
+  background: #c06d32;
+}
+
+.timeline-unit-chip[data-type="visualQualities"],
+.timeline-unit-chip[data-type="visualQualityText"] {
+  background: #bf5f82;
+}
+
+.timeline-unit-chip[data-type="assessment"] {
+  background: var(--accent-4);
+}
+
+.timeline-unit-chip[data-type="pedagogy"] {
+  background: #2d6e9f;
+}
+
+.timeline-unit-chip[data-type="coreExperiences"] {
+  background: #34815d;
+}
+
+.timeline-unit-chip[data-type="cc21"],
+.timeline-unit-chip[data-type="cc21Goals"] {
+  background: #9c6b2f;
 }
 
 .timeline-chip-preview,
 .timeline-chip-remove {
   border: 0;
   background: transparent;
-  color: var(--accent);
+  color: #fffdfa;
   font: inherit;
   font-size: 11px;
   font-weight: 900;
@@ -1900,15 +2011,18 @@ button:disabled {
 .timeline-chip-preview {
   overflow: hidden;
   max-width: 150px;
-  padding: 4px 7px;
+  padding: 5px 8px;
   text-overflow: ellipsis;
+  text-shadow: 0 1px 2px rgba(35, 35, 35, 0.18);
   white-space: nowrap;
 }
 
 .timeline-chip-remove {
   flex: 0 0 auto;
-  padding: 4px 7px 4px 3px;
-  color: rgba(181, 73, 58, 0.88);
+  align-self: stretch;
+  padding: 5px 7px 5px 4px;
+  background: rgba(35, 35, 35, 0.14);
+  color: #fffdfa;
 }
 
 .unit-chips {
@@ -5304,6 +5418,29 @@ button:disabled {
 
   .timeline-heading {
     flex-direction: column;
+  }
+
+  .timeline-panel.timeline-planning-mode {
+    display: block;
+  }
+
+  .timeline-panel.timeline-planning-mode .timeline-planning-tools {
+    position: static;
+    max-height: none;
+    margin: 0 14px 12px;
+  }
+
+  .timeline-panel.timeline-planning-mode .timeline-scroll {
+    padding: 14px;
+  }
+
+  .timeline-layer-tabs {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+  }
+
+  .timeline-layer-button {
+    flex: 0 0 auto;
   }
 
   .board-heading {
