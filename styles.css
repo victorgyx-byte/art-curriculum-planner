@@ -1925,11 +1925,6 @@ button:disabled {
   box-shadow: 0 4px 10px rgba(39, 44, 38, 0.16);
 }
 
-.timeline-unit-chip.lesson-origin {
-  outline: 2px dashed rgba(255, 255, 255, 0.78);
-  outline-offset: -4px;
-}
-
 .timeline-unit-chip[data-type="learningOutcomes"] {
   background: var(--accent-2);
 }

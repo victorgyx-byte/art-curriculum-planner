@@ -5080,7 +5080,7 @@ function renderTimelinePlanningLibrary() {
       item.dataset.type = type;
       item.dataset.label = label;
       item.innerHTML = `
-        <span>${escapeHtml(timelineCardDisplayLabel({ type, label }))}</span>
+        <span>${escapeHtml(timelineDrawerCardDisplayLabel({ type, label }))}</span>
         <small>${escapeHtml(cardTypeLabel(type, { type, label }))}</small>
       `;
       item.addEventListener("dragstart", (event) => {
@@ -5140,6 +5140,11 @@ function timelineCardDisplayLabel(card) {
   if (card.type === "cc21Goals") return label.split(":")[0];
   if (card.type === "meaningText" && card.label === "Theme") return label;
   return label.length > 34 ? `${label.slice(0, 31)}...` : label;
+}
+
+function timelineDrawerCardDisplayLabel(card) {
+  const label = readableCardValue(card) || normalizePlanningLabel(card.label || "", card.type);
+  return label || card.label || "";
 }
 
 function renderTimelineUnitChips(unit) {
