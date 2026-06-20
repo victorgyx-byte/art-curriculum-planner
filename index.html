@@ -50,35 +50,39 @@
 
     <div id="app-shell" class="app-shell hidden">
       <header class="topbar">
-        <div class="topbar-brand">
-          <div class="weave-logo weave-logo-compact" aria-label="Weave">
-            <span class="weave-mark" aria-hidden="true">
-              <span class="weave-thread thread-a"></span>
-              <span class="weave-thread thread-b"></span>
-              <span class="weave-thread thread-c"></span>
-            </span>
-            <span class="weave-word">Weave</span>
+        <div class="topbar-main">
+          <div class="topbar-brand">
+            <div class="weave-logo weave-logo-compact" aria-label="Weave">
+              <span class="weave-mark" aria-hidden="true">
+                <span class="weave-thread thread-a"></span>
+                <span class="weave-thread thread-b"></span>
+                <span class="weave-thread thread-c"></span>
+              </span>
+              <span class="weave-word">Weave</span>
+            </div>
+            <div class="planner-heading">
+              <p id="planner-kicker" class="eyebrow">Workspace</p>
+              <h1 id="planner-title">Weave</h1>
+            </div>
           </div>
-          <div class="planner-heading">
-            <p id="planner-kicker" class="eyebrow">Workspace</p>
-            <h1 id="planner-title">Weave</h1>
+          <div class="topbar-actions">
+            <button id="workspace-home" class="ghost-button" type="button">Workspace</button>
+            <div id="lock-panel" class="lock-panel hidden" aria-live="polite">
+              <span id="lock-status">Read-only</span>
+              <button id="take-over-lock" class="ghost-button" type="button">Take Over Editing</button>
+            </div>
+            <div id="cloud-panel" class="cloud-panel" aria-live="polite">
+              <span id="cloud-status">Online save</span>
+              <button id="cloud-auth" class="ghost-button" type="button">Sign in</button>
+            </div>
           </div>
         </div>
-        <div class="topbar-actions">
-          <button id="workspace-home" class="ghost-button" type="button">Workspace</button>
+        <div class="topbar-nav-row">
           <div id="mode-switch" class="mode-switch" aria-label="Editor mode">
-            <button class="mode-button active" data-screen="timeline" type="button">2YIP Timeline</button>
-            <button class="mode-button" data-screen="board" type="button">Unit Board</button>
-            <button class="mode-button" data-screen="lesson" type="button">Lesson Board</button>
-            <button class="mode-button" data-screen="assessment" type="button">Assessment Studio</button>
-          </div>
-          <div id="lock-panel" class="lock-panel hidden" aria-live="polite">
-            <span id="lock-status">Read-only</span>
-            <button id="take-over-lock" class="ghost-button" type="button">Take Over Editing</button>
-          </div>
-          <div id="cloud-panel" class="cloud-panel" aria-live="polite">
-            <span id="cloud-status">Online save</span>
-            <button id="cloud-auth" class="ghost-button" type="button">Sign in</button>
+            <button class="mode-button active" data-screen="timeline" type="button">2YIP Plan</button>
+            <button class="mode-button" data-screen="board" type="button">Units</button>
+            <button class="mode-button" data-screen="lesson" type="button">Lessons</button>
+            <button class="mode-button" data-screen="assessment" type="button">Assessment</button>
           </div>
         </div>
       </header>

@@ -4436,7 +4436,7 @@ function renderScreens() {
   els.workspaceHome.classList.toggle("hidden", showWorkspace);
   els.modeSwitch.classList.toggle("hidden", showWorkspace);
   els.resetDemo?.classList.toggle("hidden", true);
-  els.plannerKicker.textContent = showWorkspace ? "Workspace" : workspaceLabel();
+  els.plannerKicker.textContent = showWorkspace ? "Workspace" : `2YIP Plan · ${workspaceLabel()}`;
   els.plannerTitle.textContent = showWorkspace ? "Weave" : activePlanTitle();
   els.modeButtons.forEach((button) => {
     button.classList.toggle("active", button.dataset.screen === state.currentScreen);
