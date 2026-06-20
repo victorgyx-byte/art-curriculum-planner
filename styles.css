@@ -956,7 +956,7 @@ button:disabled {
   width: max-content;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  margin: 0 auto 12px;
+  margin: 0;
   overflow: hidden;
   background: rgba(255, 253, 250, 0.86);
 }
@@ -1538,6 +1538,13 @@ button:disabled {
   justify-content: space-between;
   gap: 12px;
   padding: 14px 14px 0;
+}
+
+.timeline-heading-actions {
+  display: grid;
+  justify-items: end;
+  gap: 8px;
+  max-width: 540px;
 }
 
 .panel-heading h2,
@@ -5387,6 +5394,12 @@ button:disabled {
 
   .timeline-heading {
     flex-direction: column;
+  }
+
+  .timeline-heading-actions {
+    justify-items: start;
+    max-width: none;
+    width: 100%;
   }
 
   .timeline-layer-tabs {
