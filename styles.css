@@ -1121,81 +1121,6 @@ button:disabled {
   border-left-color: #9c6b2f;
 }
 
-.phase-band-panel {
-  display: grid;
-  gap: 12px;
-  margin: 14px 0;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: 14px;
-  background: #fffdfa;
-}
-
-.phase-band-heading {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.phase-band-heading h3 {
-  margin: 0;
-  font-size: 18px;
-}
-
-.phase-band-list {
-  display: grid;
-  gap: 10px;
-}
-
-.phase-band-empty {
-  color: var(--muted);
-  font-weight: 760;
-}
-
-.phase-band-row {
-  display: grid;
-  grid-template-columns: minmax(180px, 1.1fr) 84px minmax(120px, 0.7fr) minmax(120px, 0.7fr) minmax(220px, 1.4fr) minmax(220px, 1.4fr) auto;
-  gap: 10px;
-  align-items: end;
-  border: 1px solid rgba(216, 208, 194, 0.86);
-  border-left: 6px solid var(--accent);
-  border-radius: var(--radius);
-  padding: 12px;
-  background: rgba(241, 250, 249, 0.65);
-}
-
-.phase-band-row label,
-.phase-band-range {
-  display: grid;
-  gap: 5px;
-}
-
-.phase-band-row label span,
-.phase-band-range strong {
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 900;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.phase-band-row select,
-.phase-band-row .text-input,
-.phase-band-row .text-area {
-  width: 100%;
-}
-
-.phase-band-mini-fields {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px;
-}
-
-.phase-band-delete {
-  align-self: center;
-}
-
 .board-panel {
   overflow: hidden;
 }
@@ -1878,37 +1803,6 @@ button:disabled {
   position: absolute;
   inset: 0;
   pointer-events: none;
-}
-
-.timeline-phase-band {
-  position: absolute;
-  z-index: 1;
-  display: flex;
-  min-width: 0;
-  height: 22px;
-  align-items: center;
-  gap: 8px;
-  overflow: hidden;
-  border: 1px solid rgba(47, 111, 115, 0.36);
-  border-radius: 7px;
-  padding: 2px 8px;
-  background: rgba(47, 111, 115, 0.13);
-  color: #2f4d4c;
-  font-size: 11px;
-  font-weight: 850;
-  pointer-events: auto;
-}
-
-.timeline-phase-band strong,
-.timeline-phase-band span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.timeline-phase-band span {
-  color: rgba(35, 35, 35, 0.62);
-  font-weight: 750;
 }
 
 .unit-block {
@@ -5398,8 +5292,7 @@ button:disabled {
   .reflection-flow-content,
   .lesson-activity-display,
   .reflection-checkpoint-display,
-  .assessment-form-grid,
-  .phase-band-row {
+  .assessment-form-grid {
     grid-template-columns: 1fr;
   }
 
@@ -5415,11 +5308,6 @@ button:disabled {
 
   .rubric-level-grid {
     grid-template-columns: 1fr;
-  }
-
-  .phase-band-heading {
-    align-items: stretch;
-    flex-direction: column;
   }
 
   .rubric-options-grid {

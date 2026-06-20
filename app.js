@@ -1312,7 +1312,6 @@ const defaultState = {
   currentScreen: "timeline",
   timelineView: "overview",
   timelinePlanningLayer: "meaning",
-  phaseBands: [],
   selectedBoardZone: "meaning",
   selectedLessonZone: "curricular",
   lessonOverviewOpen: false,
@@ -1567,9 +1566,6 @@ const els = {
   timelineScreen: document.querySelector("#timeline-screen"),
   timelinePlanningTools: document.querySelector("#timeline-planning-tools"),
   timelinePlanningLibrary: document.querySelector("#timeline-planning-library"),
-  phaseBandPanel: document.querySelector("#phase-band-panel"),
-  phaseBandList: document.querySelector("#phase-band-list"),
-  addPhaseBand: document.querySelector("#add-phase-band"),
   timelineViewButtons: document.querySelectorAll("[data-timeline-view]"),
   timelineLayerButtons: document.querySelectorAll(".timeline-layer-button"),
   save2Yip: document.querySelector("#save-2yip"),
@@ -1757,7 +1753,6 @@ function normalizeState(candidate) {
   normalized.timelinePlanningLayer = timelineLayerDefinitions().some((layer) => layer.key === normalized.timelinePlanningLayer)
     ? normalized.timelinePlanningLayer
     : "meaning";
-  normalized.phaseBands = normalizePhaseBands(normalized.phaseBands || []);
   normalized.selectedLessonId = normalized.selectedLessonId || "";
   normalized.lessonOverviewOpen = false;
   normalized.unitOverviewOpen = Boolean(normalized.unitOverviewOpen);
@@ -2681,31 +2676,6 @@ function normalizePlanningLabel(value, type) {
   if (type === "assessment") return assessmentLabelMap[value] || value;
   if (type === "learningOutcomes") return learningOutcomeLabelMap[value] || value;
   return value;
-}
-
-function normalizePhaseBands(phaseBands) {
-  return (phaseBands || []).map((band) => {
-    const year = clamp(Number(band.year) || 1, 1, YEAR_COUNT);
-    const startTerm = clamp(Number(band.startTerm) || 1, 1, 4);
-    const startWeek = clamp(Number(band.startWeek) || 1, 1, TERM_WEEK_COUNT);
-    const rawEndTerm = clamp(Number(band.endTerm) || startTerm, 1, 4);
-    const rawEndWeek = clamp(Number(band.endWeek) || TERM_WEEK_COUNT, 1, TERM_WEEK_COUNT);
-    const startLocal = localWeekFromTermWeek(startTerm, startWeek);
-    const rawEndLocal = localWeekFromTermWeek(rawEndTerm, rawEndWeek);
-    const endLocal = Math.max(startLocal, rawEndLocal);
-    const endPoint = termWeekLabel(endLocal);
-    return {
-      id: band.id || uid("phase"),
-      year,
-      startTerm,
-      startWeek,
-      endTerm: endPoint.term,
-      endWeek: endPoint.week,
-      label: band.label || "",
-      studentDevelopment: band.studentDevelopment || "",
-      teachingFocus: band.teachingFocus || "",
-    };
-  });
 }
 
 function allLearningOutcomeLabels() {
@@ -4319,7 +4289,7 @@ function timelineLaneLabelWidth() {
 }
 
 function timelineLaneHeight() {
-  if (state.timelineView !== "planning") return TIMELINE_LANE_HEIGHT + maxPhaseBandRows() * 28;
+  if (state.timelineView !== "planning") return TIMELINE_LANE_HEIGHT;
   return estimatePlanningTimelineLaneHeight();
 }
 
@@ -4427,7 +4397,6 @@ function render() {
   renderWorkspaceSetup();
   renderLibrary();
   renderTimelinePlanningControls();
-  renderPhaseBands();
   renderTimelineGrid();
   renderUnits();
   renderHealth();
@@ -5113,62 +5082,6 @@ function renderTimelinePlanningControls() {
   renderTimelinePlanningLibrary();
 }
 
-function renderPhaseBands() {
-  if (!els.phaseBandPanel || !els.phaseBandList) return;
-  const show = state.currentScreen === "timeline" && state.timelineView === "planning";
-  els.phaseBandPanel.classList.toggle("hidden", !show);
-  if (!show) {
-    els.phaseBandList.innerHTML = "";
-    return;
-  }
-  const bands = state.phaseBands || [];
-  if (!bands.length) {
-    els.phaseBandList.innerHTML = `
-      <div class="phase-band-empty">
-        Add phase bands when student development or teaching focus spans across several units.
-      </div>
-    `;
-    return;
-  }
-  els.phaseBandList.innerHTML = bands.map((band) => `
-    <article class="phase-band-row" data-phase-id="${escapeAttr(band.id)}">
-      <div class="phase-band-range">
-        <strong>${escapeHtml(phaseBandRangeLabel(band))}</strong>
-        <input class="text-input phase-band-input" data-field="label" value="${escapeAttr(band.label || "")}" placeholder="Phase label, e.g. Bridging" />
-      </div>
-      <label>
-        <span>Sec</span>
-        <select data-field="year">
-          ${[1, 2].map((year) => `<option value="${year}" ${Number(band.year) === year ? "selected" : ""}>${year}</option>`).join("")}
-        </select>
-      </label>
-      <label>
-        <span>Start</span>
-        <div class="phase-band-mini-fields">
-          <select data-field="startTerm">${[1, 2, 3, 4].map((term) => `<option value="${term}" ${Number(band.startTerm) === term ? "selected" : ""}>T${term}</option>`).join("")}</select>
-          <select data-field="startWeek">${Array.from({ length: TERM_WEEK_COUNT }, (_, index) => index + 1).map((week) => `<option value="${week}" ${Number(band.startWeek) === week ? "selected" : ""}>W${week}</option>`).join("")}</select>
-        </div>
-      </label>
-      <label>
-        <span>End</span>
-        <div class="phase-band-mini-fields">
-          <select data-field="endTerm">${[1, 2, 3, 4].map((term) => `<option value="${term}" ${Number(band.endTerm) === term ? "selected" : ""}>T${term}</option>`).join("")}</select>
-          <select data-field="endWeek">${Array.from({ length: TERM_WEEK_COUNT }, (_, index) => index + 1).map((week) => `<option value="${week}" ${Number(band.endWeek) === week ? "selected" : ""}>W${week}</option>`).join("")}</select>
-        </div>
-      </label>
-      <label class="phase-band-wide">
-        <span>Student Development</span>
-        <textarea class="text-area" data-field="studentDevelopment" rows="2" placeholder="Developmental phase or needs">${escapeHtml(band.studentDevelopment || "")}</textarea>
-      </label>
-      <label class="phase-band-wide">
-        <span>Teaching & Learning Focus</span>
-        <textarea class="text-area" data-field="teachingFocus" rows="2" placeholder="Subject focus for this phase">${escapeHtml(band.teachingFocus || "")}</textarea>
-      </label>
-      <button class="ghost-button phase-band-delete" type="button">Remove</button>
-    </article>
-  `).join("");
-}
-
 function timelineLayerDefinitions() {
   return [
     { key: "meaning", label: "Big Ideas", types: ["bigIdeas"] },
@@ -5363,7 +5276,6 @@ function renderUnits() {
   const overlaps = findOverlaps();
   const width = weekWidth();
   const laneHeight = timelineLaneHeight();
-  if (state.timelineView !== "planning") renderTimelinePhaseBandOverlays(width, laneHeight);
 
   state.units
     .slice()
@@ -5384,12 +5296,10 @@ function renderUnits() {
       block.tabIndex = 0;
       block.dataset.unitId = unit.id;
       block.title = `${unit.title || "Untitled Unit"} · Sec ${year} · ${timelineWeekRangeLabel(unit)} · Click to select, double click to open Unit Board`;
-      const phaseRows = state.timelineView === "planning" ? 0 : phaseBandLayout(year).rows.length;
-      const phaseOffset = phaseRows * 28;
       block.style.left = `${timelineLaneLabelWidth() + (timelineLocalWeek(unit.start) - 1) * width + 4}px`;
       block.style.width = `${unitTimelineDuration(unit) * width - 8}px`;
-      block.style.top = `${TIMELINE_HEADER_HEIGHT + (year - 1) * laneHeight + 10 + phaseOffset}px`;
-      block.style.height = `${Math.max(84, laneHeight - 20 - phaseOffset)}px`;
+      block.style.top = `${TIMELINE_HEADER_HEIGHT + (year - 1) * laneHeight + 10}px`;
+      block.style.height = `${Math.max(84, laneHeight - 20)}px`;
       block.innerHTML = `
         <button class="unit-block-delete" data-unit-id="${escapeAttr(unit.id)}" type="button" title="Remove from 2YIP" aria-label="Remove ${escapeAttr(unit.title || "unit")} from 2YIP">×</button>
         <span class="unit-short-code">${escapeHtml(unitTimelineDuration(unit))}L</span>
@@ -5485,27 +5395,6 @@ function renderUnits() {
     });
 }
 
-function renderTimelinePhaseBandOverlays(width, laneHeight) {
-  for (let year = 1; year <= YEAR_COUNT; year += 1) {
-    const layout = phaseBandLayout(year);
-    layout.items.forEach(({ band, row }) => {
-      const startLocal = localWeekFromTermWeek(band.startTerm, band.startWeek);
-      const endLocal = Math.max(startLocal, localWeekFromTermWeek(band.endTerm, band.endWeek));
-      const bandNode = document.createElement("article");
-      bandNode.className = "timeline-phase-band";
-      bandNode.style.left = `${timelineLaneLabelWidth() + (startLocal - 1) * width + 4}px`;
-      bandNode.style.width = `${(endLocal - startLocal + 1) * width - 8}px`;
-      bandNode.style.top = `${TIMELINE_HEADER_HEIGHT + (year - 1) * laneHeight + 8 + row * 28}px`;
-      bandNode.title = phaseBandTooltip(band);
-      bandNode.innerHTML = `
-        <strong>${escapeHtml(band.label || "Phase Band")}</strong>
-        <span>${escapeHtml(phaseBandRangeLabel(band))}</span>
-      `;
-      els.unitLayer.append(bandNode);
-    });
-  }
-}
-
 function timelineWeekRangeLabel(unit) {
   const start = timelineLocalWeek(unit.start);
   const end = start + unitTimelineDuration(unit) - 1;
@@ -5526,76 +5415,6 @@ function termWeekLabel(localWeek) {
 
 function localWeekFromTermWeek(term, week) {
   return (clamp(Number(term) || 1, 1, 4) - 1) * TERM_WEEK_COUNT + clamp(Number(week) || 1, 1, TERM_WEEK_COUNT);
-}
-
-function absoluteWeekFromPhaseBand(band, point = "start") {
-  const term = point === "end" ? band.endTerm : band.startTerm;
-  const week = point === "end" ? band.endWeek : band.startWeek;
-  return timelineYearStart(band.year || 1) + localWeekFromTermWeek(term, week) - 1;
-}
-
-function phaseBandRangeLabel(band) {
-  const startLocal = localWeekFromTermWeek(band.startTerm, band.startWeek);
-  const endLocal = Math.max(startLocal, localWeekFromTermWeek(band.endTerm, band.endWeek));
-  const startPoint = termWeekLabel(startLocal);
-  const endPoint = termWeekLabel(endLocal);
-  const range = startPoint.term === endPoint.term
-    ? `T${startPoint.term}W${startPoint.week}-${endPoint.week}`
-    : `T${startPoint.term}W${startPoint.week}-T${endPoint.term}W${endPoint.week}`;
-  return `Sec ${band.year || 1} · ${range}`;
-}
-
-function phaseBandLayout(year) {
-  const rows = [];
-  const items = [];
-  (state.phaseBands || [])
-    .filter((band) => Number(band.year) === year)
-    .slice()
-    .sort((a, b) => localWeekFromTermWeek(a.startTerm, a.startWeek) - localWeekFromTermWeek(b.startTerm, b.startWeek))
-    .forEach((band) => {
-      const start = localWeekFromTermWeek(band.startTerm, band.startWeek);
-      const end = Math.max(start, localWeekFromTermWeek(band.endTerm, band.endWeek));
-      let row = rows.findIndex((lastEnd) => start > lastEnd);
-      if (row < 0) {
-        row = rows.length;
-        rows.push(0);
-      }
-      rows[row] = end;
-      items.push({ band, row });
-    });
-  return { rows, items };
-}
-
-function maxPhaseBandRows() {
-  if (state.currentScreen !== "timeline" || state.timelineView === "planning") return 0;
-  return Math.max(0, ...Array.from({ length: YEAR_COUNT }, (_, index) => phaseBandLayout(index + 1).rows.length));
-}
-
-function phaseBandTooltip(band) {
-  return [
-    band.label || "Phase Band",
-    phaseBandRangeLabel(band),
-    band.studentDevelopment ? `Student Development: ${band.studentDevelopment}` : "",
-    band.teachingFocus ? `Teaching & Learning Focus: ${band.teachingFocus}` : "",
-  ].filter(Boolean).join("\n");
-}
-
-function phaseBandsForUnit(unit) {
-  if (!unit) return [];
-  const unitStart = unit.start || 1;
-  const unitEnd = unitStart + unitTimelineDuration(unit) - 1;
-  return (state.phaseBands || []).filter((band) => {
-    const bandStart = absoluteWeekFromPhaseBand(band, "start");
-    const bandEnd = absoluteWeekFromPhaseBand(band, "end");
-    return band.year === timelineYearForStart(unitStart) && bandStart <= unitEnd && bandEnd >= unitStart;
-  });
-}
-
-function phaseBandTextForUnit(unit, field) {
-  const values = phaseBandsForUnit(unit)
-    .map((band) => band[field])
-    .filter(Boolean);
-  return values.length ? uniqueReadableValues(values).join("\n") : "";
 }
 
 function renderBoard() {
@@ -6060,8 +5879,8 @@ function twoYipOverviewExportRows(units) {
     row("Level", units.map((unit) => `Sec ${timelineYearForStart(unit.start)}`)),
     row("Duration", units.map((unit) => `Sec ${timelineYearForStart(unit.start)} · ${timelineWeekRangeLabel(unit)}`)),
     row("Lesson Count", units.map(unitLessonCountLabel)),
-    row("Student Development", units.map((unit) => phaseBandTextForUnit(unit, "studentDevelopment") || unit.studentDevelopment || "Not yet planned")),
-    row("Teaching & Learning Focus", units.map((unit) => phaseBandTextForUnit(unit, "teachingFocus") || unit.teachingFocus || "Not yet planned")),
+    row("Student Development", units.map((unit) => unit.studentDevelopment || "Not yet planned")),
+    row("Teaching & Learning Focus", units.map((unit) => unit.teachingFocus || "Not yet planned")),
     row("Unit Title", units.map((unit) => unit.title || "Untitled Unit")),
     row("Art Task", units.map((unit) => unit.artTask || "Not yet planned")),
     row("Big Idea(s)", units.map((unit) => listForExcel(overviewValues(unit, "bigIdeas")))),
@@ -10692,55 +10511,6 @@ els.arrangeTimeline?.addEventListener("click", () => {
 });
 
 els.export2YipExcel?.addEventListener("click", export2YipOverviewExcel);
-
-els.addPhaseBand?.addEventListener("click", () => {
-  if (!canEditActivePlan()) return;
-  state.phaseBands.push(normalizePhaseBands([{
-    year: 1,
-    startTerm: 1,
-    startWeek: 1,
-    endTerm: 1,
-    endWeek: 10,
-    label: "",
-    studentDevelopment: "",
-    teachingFocus: "",
-  }])[0]);
-  saveState();
-  render();
-});
-
-els.phaseBandList?.addEventListener("input", (event) => {
-  const field = event.target.dataset.field;
-  const row = event.target.closest(".phase-band-row");
-  if (!field || !row || !canEditActivePlan()) return;
-  const band = state.phaseBands.find((candidate) => candidate.id === row.dataset.phaseId);
-  if (!band) return;
-  band[field] = event.target.value;
-  state.phaseBands = normalizePhaseBands(state.phaseBands);
-  saveState();
-});
-
-els.phaseBandList?.addEventListener("change", (event) => {
-  if (event.target.tagName !== "SELECT") return;
-  const field = event.target.dataset.field;
-  const row = event.target.closest(".phase-band-row");
-  if (!field || !row || !canEditActivePlan()) return;
-  const band = state.phaseBands.find((candidate) => candidate.id === row.dataset.phaseId);
-  if (!band) return;
-  band[field] = Number(event.target.value);
-  state.phaseBands = normalizePhaseBands(state.phaseBands);
-  saveState();
-  render();
-});
-
-els.phaseBandList?.addEventListener("click", (event) => {
-  const removeButton = event.target.closest(".phase-band-delete");
-  if (!removeButton || !canEditActivePlan()) return;
-  const row = removeButton.closest(".phase-band-row");
-  state.phaseBands = (state.phaseBands || []).filter((band) => band.id !== row?.dataset.phaseId);
-  saveState();
-  render();
-});
 
 els.timelineLayerButtons?.forEach((button) => {
   button.addEventListener("click", () => {
