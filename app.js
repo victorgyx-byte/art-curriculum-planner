@@ -4277,7 +4277,37 @@ function timelineLaneLabelWidth() {
 }
 
 function timelineLaneHeight() {
-  return state.timelineView === "planning" ? 270 : TIMELINE_LANE_HEIGHT;
+  if (state.timelineView !== "planning") return TIMELINE_LANE_HEIGHT;
+  return estimatePlanningTimelineLaneHeight();
+}
+
+function estimatePlanningTimelineLaneHeight() {
+  const width = weekWidth();
+  const visibleUnits = state.units.filter((unit) => unit.inTimeline !== false);
+  if (!visibleUnits.length) return 270;
+  const requiredHeights = visibleUnits.map((unit) => {
+    const blockWidth = Math.max(64, unitTimelineDuration(unit) * width - 32);
+    const titleCharsPerLine = Math.max(5, Math.floor(blockWidth / 12));
+    const titleLines = Math.min(4, Math.ceil((unit.title || "Untitled Unit").length / titleCharsPerLine));
+    const titleHeight = Math.max(26, titleLines * 24);
+    const taskHeight = unit.artTask ? 58 : 0;
+    const cards = timelineLayerCardsForUnit(unit);
+    let rows = 0;
+    let rowWidth = 0;
+    cards.forEach((card) => {
+      const label = timelineCardDisplayLabel(card);
+      const chipWidth = Math.min(190, Math.max(58, label.length * 8 + 42));
+      if (rowWidth && rowWidth + chipWidth + 6 > blockWidth) {
+        rows += 1;
+        rowWidth = 0;
+      }
+      rowWidth += chipWidth + 6;
+    });
+    if (rowWidth) rows += 1;
+    const chipHeight = rows ? rows * 32 + 10 : 34;
+    return titleHeight + taskHeight + chipHeight + 92;
+  });
+  return Math.min(900, Math.max(270, Math.ceil(Math.max(...requiredHeights) / 10) * 10));
 }
 
 function lessonWeekCount(unit) {
@@ -5180,6 +5210,9 @@ function boardZoneDefinitions() {
 
 function renderTimelineGrid() {
   els.timelineGrid.innerHTML = "";
+  const laneHeight = timelineLaneHeight();
+  els.timelineGrid.style.gridTemplateRows = `42px 34px ${laneHeight}px ${laneHeight}px`;
+  els.timeline.style.minHeight = `${TIMELINE_HEADER_HEIGHT + laneHeight * YEAR_COUNT}px`;
 
   const corner = document.createElement("div");
   corner.className = "timeline-corner";

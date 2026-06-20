@@ -1908,9 +1908,7 @@ button:disabled {
   flex-wrap: wrap;
   align-content: start;
   gap: 6px;
-  max-height: 126px;
   margin-top: 10px;
-  overflow: auto;
   padding-right: 2px;
 }
 
