@@ -981,7 +981,6 @@ button:disabled {
 .timeline-view-button,
 .timeline-layer-button {
   border: 0;
-  border-right: 1px solid var(--line);
   padding: 9px 14px;
   background: transparent;
   color: var(--muted);
@@ -991,8 +990,11 @@ button:disabled {
   cursor: pointer;
 }
 
-.timeline-view-button:last-child,
-.timeline-layer-button:last-child {
+.timeline-view-button {
+  border-right: 1px solid var(--line);
+}
+
+.timeline-view-button:last-child {
   border-right: 0;
 }
 
@@ -1018,14 +1020,31 @@ button:disabled {
 }
 
 .timeline-layer-tabs {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   width: 100%;
   max-width: 100%;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   overflow: hidden;
   background: #fffdfa;
+}
+
+.timeline-layer-button {
+  display: grid;
+  min-height: 48px;
+  place-items: center;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  text-align: center;
+}
+
+.timeline-layer-button:nth-child(2n) {
+  border-right: 0;
+}
+
+.timeline-layer-button:nth-last-child(-n + 2) {
+  border-bottom: 0;
 }
 
 .timeline-planning-copy {
@@ -5505,15 +5524,6 @@ button:disabled {
     justify-items: start;
     max-width: none;
     width: 100%;
-  }
-
-  .timeline-layer-tabs {
-    overflow-x: auto;
-    flex-wrap: nowrap;
-  }
-
-  .timeline-layer-button {
-    flex: 0 0 auto;
   }
 
   .board-heading {
