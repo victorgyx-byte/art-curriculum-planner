@@ -2984,6 +2984,36 @@ button:disabled {
   justify-content: flex-end;
 }
 
+.board-header-actions {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.board-view-controls {
+  display: grid;
+  gap: 8px;
+  justify-items: stretch;
+}
+
+.board-view-switch {
+  justify-self: stretch;
+}
+
+.board-arrange-action {
+  width: 100%;
+  min-height: 34px;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.board-header-actions .save-status {
+  flex: 1 0 100%;
+  text-align: right;
+}
+
 .save-status {
   align-self: center;
   min-width: 48px;
@@ -3045,6 +3075,15 @@ button:disabled {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.unit-overview-export-actions {
+  justify-content: flex-end;
+  border: 1px solid var(--line);
+  border-bottom: 0;
+  border-radius: var(--radius) var(--radius) 0 0;
+  padding: 14px 16px 0;
+  background: #fffdfa;
 }
 
 .unit-document {
@@ -3585,7 +3624,7 @@ button:disabled {
 
 .lesson-editor-actions {
   flex: 0 0 auto;
-  max-width: 340px;
+  max-width: 460px;
 }
 
 .lesson-editor-actions .primary-button,
@@ -3595,6 +3634,13 @@ button:disabled {
   padding: 6px 10px;
   font-size: 13px;
   font-weight: 720;
+}
+
+.lesson-editor-actions .primary-button {
+  min-height: 40px;
+  padding: 10px 14px;
+  font-size: 14px;
+  font-weight: 900;
 }
 
 .lesson-bottom-actions {

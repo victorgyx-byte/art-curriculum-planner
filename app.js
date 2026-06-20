@@ -1561,8 +1561,10 @@ const els = {
   timelineScreen: document.querySelector("#timeline-screen"),
   timelinePlanningTools: document.querySelector("#timeline-planning-tools"),
   timelinePlanningLibrary: document.querySelector("#timeline-planning-library"),
-  timelineViewButtons: document.querySelectorAll(".timeline-view-button"),
+  timelineViewButtons: document.querySelectorAll("[data-timeline-view]"),
   timelineLayerButtons: document.querySelectorAll(".timeline-layer-button"),
+  save2Yip: document.querySelector("#save-2yip"),
+  arrangeTimeline: document.querySelector("#arrange-timeline"),
   workspace: document.querySelector(".workspace"),
   cardLibraryPanel: document.querySelector(".card-library-panel"),
   boardScreen: document.querySelector("#board-screen"),
@@ -1607,6 +1609,7 @@ const els = {
   lessonEditView: document.querySelector("#lesson-edit-view"),
   confirmLessonBoard: document.querySelector("#confirm-lesson-board"),
   editLessonBoard: document.querySelector("#edit-lesson-board"),
+  lessonPlanView: document.querySelector("#lesson-plan-view"),
   arrangeLessonBoard: document.querySelector("#arrange-lesson-board"),
   saveLessonBottom: document.querySelector("#save-lesson-bottom"),
   lessonTopSaveStatus: document.querySelector("#lesson-top-save-status"),
@@ -1655,6 +1658,7 @@ const els = {
   boardZones: document.querySelectorAll(".board-zone"),
   saveUnit: document.querySelector("#save-unit"),
   saveStatus: document.querySelector("#save-status"),
+  unitPlanView: document.querySelector("#unit-plan-view"),
   arrangeBoard: document.querySelector("#arrange-board"),
   overviewUnit: document.querySelector("#overview-unit"),
   clearBoard: document.querySelector("#clear-board"),
@@ -5054,6 +5058,7 @@ function renderTimelinePlanningControls() {
   els.timelinePlanningTools?.classList.toggle("hidden", !planning);
   els.timeline?.classList.toggle("planning-view", planning);
   els.timeline?.classList.toggle("overview-view", !planning);
+  els.arrangeTimeline?.classList.toggle("hidden", !planning);
   els.timelineViewButtons?.forEach((button) => {
     button.classList.toggle("active", button.dataset.timelineView === state.timelineView);
   });
@@ -5421,7 +5426,7 @@ function renderBoard() {
   }
   renderBoardHeader(unit);
   const showOverview = Boolean(state.unitOverviewOpen);
-  els.boardHeading.classList.toggle("hidden", showOverview);
+  els.boardHeading.classList.remove("hidden");
   els.unitBoard.classList.toggle("hidden", showOverview);
   els.mobileBoardTabs.classList.toggle("hidden", showOverview);
   els.mobileUnitCardPicker.classList.toggle("hidden", showOverview);
@@ -5429,7 +5434,8 @@ function renderBoard() {
   els.unitOverview.classList.toggle("hidden", !showOverview);
   els.clearBoard.classList.add("hidden");
   els.arrangeBoard.classList.toggle("hidden", showOverview);
-  els.overviewUnit.classList.toggle("hidden", showOverview);
+  els.unitPlanView?.classList.toggle("active", !showOverview);
+  els.overviewUnit?.classList.toggle("active", showOverview);
   if (showOverview) {
     renderUnitOverview(unit);
     return;
@@ -5592,16 +5598,9 @@ function renderBoardHeader(unit) {
 
 function renderUnitOverview(unit) {
   els.unitOverview.innerHTML = `
-    <div class="unit-overview-heading">
-      <div>
-        <p class="eyebrow">Unit Board</p>
-        <h2>${escapeHtml(unit.title || "Untitled Unit")}</h2>
-      </div>
-      <div class="unit-overview-actions">
-        <button class="ghost-button back-to-planning" type="button">Back To Unit</button>
-        <button class="ghost-button copy-unit-overview" type="button">Copy for Google Docs</button>
-        <button class="ghost-button export-unit-word" type="button">Download Word</button>
-      </div>
+    <div class="unit-overview-actions unit-overview-export-actions">
+      <button class="ghost-button copy-unit-overview" type="button">Copy for Google Docs</button>
+      <button class="ghost-button export-unit-word" type="button">Download Word</button>
     </div>
     <article class="unit-document">
       <dl class="lap-summary-list unit-summary-list">
@@ -5630,10 +5629,6 @@ function renderUnitOverview(unit) {
     </article>
   `;
 
-  els.unitOverview.querySelector(".back-to-planning").addEventListener("click", () => {
-    state.unitOverviewOpen = false;
-    render();
-  });
   els.unitOverview.querySelector(".copy-unit-overview").addEventListener("click", async () => {
     await copyUnitOverview(unit);
   });
@@ -6306,9 +6301,10 @@ function renderLessonBoard() {
   const showOverview = Boolean(state.lessonOverviewOpen);
   els.lessonEditView.classList.toggle("hidden", showOverview);
   els.lessonConfirmedView.classList.toggle("hidden", !showOverview);
-  els.confirmLessonBoard.classList.toggle("hidden", showOverview);
+  els.confirmLessonBoard.classList.remove("hidden");
   els.arrangeLessonBoard.classList.toggle("hidden", showOverview);
-  els.editLessonBoard.textContent = showOverview ? "Back To Lesson" : "Overview";
+  els.lessonPlanView?.classList.toggle("active", !showOverview);
+  els.editLessonBoard?.classList.toggle("active", showOverview);
 
   if (showOverview) {
     els.lessonConfirmedView.innerHTML = lessonConfirmedSummary(unit, lesson);
@@ -10327,6 +10323,20 @@ els.timelineViewButtons?.forEach((button) => {
   });
 });
 
+els.save2Yip?.addEventListener("click", async () => {
+  await commitPlanSaveNow({
+    buttons: [els.save2Yip],
+    successMessage: "2YIP saved online",
+  });
+});
+
+els.arrangeTimeline?.addEventListener("click", () => {
+  if (!canEditActivePlan()) return;
+  packAllTimelineYears();
+  saveState();
+  render();
+});
+
 els.timelineLayerButtons?.forEach((button) => {
   button.addEventListener("click", () => {
     state.timelinePlanningLayer = button.dataset.timelineLayer || "meaning";
@@ -10529,6 +10539,11 @@ els.arrangeBoard.addEventListener("click", () => {
   render();
 });
 
+els.unitPlanView?.addEventListener("click", () => {
+  state.unitOverviewOpen = false;
+  render();
+});
+
 els.overviewUnit.addEventListener("click", () => {
   const unit = selectedUnit();
   if (!unit) return;
@@ -10672,8 +10687,9 @@ els.lessonObjectives.addEventListener("input", (event) => {
 async function saveCurrentLesson() {
   const lesson = selectedLesson();
   if (!lesson) return;
+  const keepOverviewOpen = Boolean(state.lessonOverviewOpen);
   lesson.confirmed = true;
-  state.lessonOverviewOpen = false;
+  state.lessonOverviewOpen = keepOverviewOpen;
   render();
   await commitPlanSaveNow({
     statusElement: els.lessonSaveStatus,
@@ -10696,10 +10712,15 @@ els.arrangeLessonBoard.addEventListener("click", () => {
   render();
 });
 
+els.lessonPlanView?.addEventListener("click", () => {
+  state.lessonOverviewOpen = false;
+  render();
+});
+
 els.editLessonBoard.addEventListener("click", () => {
   const lesson = selectedLesson();
   if (!lesson) return;
-  state.lessonOverviewOpen = !state.lessonOverviewOpen;
+  state.lessonOverviewOpen = true;
   render();
 });
 

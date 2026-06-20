@@ -177,10 +177,14 @@
                 <p class="eyebrow">2YIP Curriculum Map</p>
                 <h2>Sec 1 And Sec 2 Sequence</h2>
               </div>
-              <div class="timeline-heading-actions">
-                <div class="timeline-view-switch" aria-label="2YIP view">
-                  <button class="timeline-view-button" type="button" data-timeline-view="planning">Planning</button>
-                  <button class="timeline-view-button active" type="button" data-timeline-view="overview">Overview</button>
+              <div class="timeline-heading-actions board-header-actions">
+                <button id="save-2yip" class="primary-button" type="button">Save 2YIP</button>
+                <div class="board-view-controls">
+                  <div class="timeline-view-switch board-view-switch" aria-label="2YIP view">
+                    <button class="timeline-view-button" type="button" data-timeline-view="planning">Plan</button>
+                    <button class="timeline-view-button active" type="button" data-timeline-view="overview">Overview</button>
+                  </div>
+                  <button id="arrange-timeline" class="ghost-button board-arrange-action hidden" type="button">Arrange</button>
                 </div>
                 <p class="timeline-note">Drag units from the left into Sec 1 or Sec 2. Unit length follows lesson count: 1 lesson = 1 week.</p>
               </div>
@@ -228,11 +232,16 @@
                   </div>
                 </div>
               </div>
-              <div class="board-actions">
+              <div class="board-actions board-header-actions">
                 <button id="save-unit" class="primary-button" type="button">Save Unit</button>
-                <button id="arrange-board" class="ghost-button" type="button">Arrange</button>
-                <button id="overview-unit" class="ghost-button" type="button">Overview</button>
-                <button id="clear-board" class="ghost-button" type="button">Clear Board</button>
+                <div class="board-view-controls">
+                  <div class="timeline-view-switch board-view-switch" aria-label="Unit Board view">
+                    <button id="unit-plan-view" class="timeline-view-button active" type="button">Plan</button>
+                    <button id="overview-unit" class="timeline-view-button" type="button">Overview</button>
+                  </div>
+                  <button id="arrange-board" class="ghost-button board-arrange-action" type="button">Arrange</button>
+                </div>
+                <button id="clear-board" class="ghost-button hidden" type="button">Clear Board</button>
                 <span id="save-status" class="save-status" aria-live="polite"></span>
               </div>
             </div>
@@ -291,11 +300,16 @@
                       <p class="eyebrow">Lesson Board</p>
                       <h2 id="lesson-editor-title">Lesson Activity Plan</h2>
                     </div>
-                    <div class="lesson-editor-actions">
+                    <div class="lesson-editor-actions board-header-actions">
                       <button id="confirm-lesson-board" class="primary-button" type="button">Save Lesson</button>
+                      <div class="board-view-controls">
+                        <div class="timeline-view-switch board-view-switch" aria-label="Lesson Board view">
+                          <button id="lesson-plan-view" class="timeline-view-button active" type="button">Plan</button>
+                          <button id="edit-lesson-board" class="timeline-view-button" type="button">Overview</button>
+                        </div>
+                        <button id="arrange-lesson-board" class="ghost-button board-arrange-action" type="button">Arrange</button>
+                      </div>
                       <span id="lesson-top-save-status" class="save-status" aria-live="polite"></span>
-                      <button id="arrange-lesson-board" class="ghost-button" type="button">Arrange</button>
-                      <button id="edit-lesson-board" class="ghost-button" type="button">Overview</button>
                     </div>
                   </div>
 
