@@ -1503,6 +1503,7 @@ let cloudSaveBlocked = false;
 let cardDetailInsertAction = null;
 let lastPersistedContentHash = "";
 let activePlanRevision = 0;
+let loadedPlanKey = planIdentityKey(state.plan?.id, state.plan?.workspaceId);
 let editLock = {
   mode: "none",
   info: null,
@@ -2162,53 +2163,85 @@ async function switchPlan(planId, options = {}) {
   if (!planId || (planId === activePlanId() && !options.force)) return;
   const currentScreen = options.targetScreen || state.currentScreen;
   if (!options.skipPersist) await persistCurrentPlanBeforeSwitch();
+  window.clearTimeout(cloudSaveTimer);
+  const previousSaveWritesPaused = saveWritesPaused;
+  saveWritesPaused = true;
   await releaseEditingLock();
-  localStorage.setItem(ACTIVE_PLAN_STORAGE_KEY, planId);
-  const catalogPlan = planMetaById(planId);
-  let nextState = loadLocalPlanState(planId) || loadLastGoodPlanState(planId);
-  if (!nextState && catalogPlan) {
-    nextState = createPlanState({
-      title: catalogPlan.title,
-      subject: catalogPlan.subject,
-      teamName: catalogPlan.teamName,
-    });
-    nextState.plan.id = catalogPlan.id;
-  }
-  if (!nextState) nextState = structuredClone(defaultState);
+  try {
+    const catalogPlan = planMetaById(planId);
+    let nextState = loadLocalPlanState(planId) || loadLastGoodPlanState(planId);
+    let cloudLoadFailed = false;
+    let cloudSnapshotWasReadable = false;
 
-  if (cloud.loaded) {
-    try {
-      const snapshot = await cloudPlanRefFor(planId).get();
-      const remoteState = snapshot.exists ? snapshot.data()?.state : null;
-      if (snapshot.exists) mergeCloudPlanIntoCatalog(snapshot.id, snapshot.data());
-      if (remoteState && Array.isArray(remoteState.units)) {
-        activePlanRevision = Number(snapshot.data()?.revision || 0);
-        nextState = normalizeState(remoteState);
-        nextState.plan = normalizePlanMetadata({
-          ...nextState.plan,
-          id: planId,
-          title: snapshot.data()?.title || nextState.plan.title,
-          subject: snapshot.data()?.subject || nextState.plan.subject,
-          teamId: snapshot.data()?.teamId || nextState.plan.teamId,
-          teamName: snapshot.data()?.teamName || nextState.plan.teamName,
-          role: planMetaById(planId)?.role || nextState.plan.role,
-        });
+    if (cloud.loaded) {
+      try {
+        const snapshot = await cloudPlanRefFor(planId).get();
+        cloudSnapshotWasReadable = true;
+        const snapshotData = snapshot.exists ? snapshot.data() || {} : {};
+        const remoteState = snapshotData.state || null;
+        if (snapshot.exists) mergeCloudPlanIntoCatalog(snapshot.id, snapshotData);
+        if (remoteState && Array.isArray(remoteState.units)) {
+          activePlanRevision = Number(snapshotData.revision || 0);
+          nextState = normalizeState(remoteState);
+          nextState.plan = normalizePlanMetadata({
+            ...nextState.plan,
+            id: planId,
+            title: snapshotData.title || nextState.plan.title,
+            subject: snapshotData.subject || nextState.plan.subject,
+            teamId: snapshotData.teamId || nextState.plan.teamId,
+            teamName: snapshotData.teamName || nextState.plan.teamName,
+            workspaceId: catalogPlan?.workspaceId || activeWorkspaceId(),
+            role: planMetaById(planId)?.role || nextState.plan.role,
+          });
+        }
+      } catch (error) {
+        cloudLoadFailed = true;
+        console.warn("Plan switch cloud load failed", error);
       }
-    } catch (error) {
-      console.warn("Plan switch cloud load failed", error);
     }
-  }
 
-  state = normalizeState(nextState);
-  state.currentScreen = currentScreen || "timeline";
-  localStorage.setItem(planStateStorageKey(planId), JSON.stringify(state));
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  localStorage.setItem(lastGoodPlanStateStorageKey(planId), JSON.stringify(cleanCloudState(state)));
-  lastPersistedContentHash = planStateContentHash(state);
-  if (cloud.loaded && state.currentScreen !== "workspace") {
-    await acquireEditingLock({ allowSameUserTakeover: true });
+    if (!nextState && catalogPlan && (!cloud.loaded || cloudSnapshotWasReadable)) {
+      nextState = createPlanState({
+        title: catalogPlan.title,
+        subject: catalogPlan.subject,
+        teamName: catalogPlan.teamName,
+      });
+      nextState.plan = normalizePlanMetadata({
+        ...nextState.plan,
+        id: catalogPlan.id,
+        workspaceId: catalogPlan.workspaceId || activeWorkspaceId(),
+        role: catalogPlan.role,
+      });
+    }
+
+    if (!nextState || cloudLoadFailed && planContentScore(nextState) === 0) {
+      renderCloudStatus("Could not load that 2YIP. Switch cancelled to prevent overwrite.", cloud.user ? "Sign out" : "Sign in");
+      return;
+    }
+
+    state = normalizeState(nextState);
+    state.plan = normalizePlanMetadata({
+      ...state.plan,
+      id: planId,
+      workspaceId: catalogPlan?.workspaceId || state.plan.workspaceId || activeWorkspaceId(),
+      role: catalogPlan?.role || state.plan.role,
+    });
+    state.currentScreen = currentScreen || "timeline";
+    localStorage.setItem(ACTIVE_PLAN_STORAGE_KEY, planId);
+    markLoadedPlanState(planId, state.plan.workspaceId);
+    localStorage.setItem(planStateStorageKey(planId), JSON.stringify(state));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    if (planContentScore(state) > 0) {
+      localStorage.setItem(lastGoodPlanStateStorageKey(planId), JSON.stringify(cleanCloudState(state)));
+    }
+    lastPersistedContentHash = planStateContentHash(state);
+    if (cloud.loaded && state.currentScreen !== "workspace") {
+      await acquireEditingLock({ allowSameUserTakeover: true });
+    }
+    render();
+  } finally {
+    saveWritesPaused = previousSaveWritesPaused;
   }
-  render();
 }
 
 function plansForActiveWorkspace() {
@@ -3042,7 +3075,8 @@ function applyLoadedPlanState(planState, snapshotId, snapshotData = {}) {
     role: planMetaById(snapshotId)?.role || state.plan.role,
   });
   savePlanToCatalog(state.plan);
-  localStorage.setItem(ACTIVE_PLAN_STORAGE_KEY, activePlanId());
+  localStorage.setItem(ACTIVE_PLAN_STORAGE_KEY, snapshotId);
+  markLoadedPlanState(snapshotId, state.plan.workspaceId);
   localStorage.setItem(planStateStorageKey(), JSON.stringify(state));
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   localStorage.setItem(lastGoodPlanStateStorageKey(), JSON.stringify(cleanCloudState(state)));
@@ -3057,8 +3091,7 @@ function saveState(options = {}) {
     return;
   }
   if (cloud.available && !cloud.user && els.loginGate && !els.loginGate.classList.contains("hidden")) return;
-  const storedPlanId = localStorage.getItem(ACTIVE_PLAN_STORAGE_KEY);
-  if (storedPlanId && state.plan?.id && state.plan.id !== storedPlanId) {
+  if (state.currentScreen !== "workspace" && !statePlanMatchesSelectedPlan()) {
     renderCloudStatus("Plan loading. Saving paused to prevent overwrite.", cloud.user ? "Sign out" : "Sign in");
     return;
   }
@@ -3566,14 +3599,8 @@ async function loadCloudPlanCatalog() {
   const requestedPlanId = localStorage.getItem(ACTIVE_PLAN_STORAGE_KEY) || state.plan?.id || "";
   const availablePlans = plansForActiveWorkspace();
   const nextPlan = availablePlans.find((plan) => plan.id === requestedPlanId) || availablePlans[0] || null;
-  if (nextPlan && !availablePlans.some((plan) => plan.id === state.plan?.id)) {
+  if (nextPlan && !availablePlans.some((plan) => plan.id === requestedPlanId)) {
     localStorage.setItem(ACTIVE_PLAN_STORAGE_KEY, nextPlan.id);
-    state.plan = normalizePlanMetadata({
-      ...(state.plan || {}),
-      ...nextPlan,
-      id: nextPlan.id,
-      workspaceId,
-    });
   }
   return true;
 }
@@ -3633,7 +3660,7 @@ async function saveCloudStateNow(options = {}) {
     return false;
   }
   const planMeta = planMetaById(activePlanId());
-  if (!planCatalogVerified || !planMeta || planMeta.deletedAt || planMeta.stale || state.plan?.id !== activePlanId() || state.plan?.workspaceId !== activeWorkspaceId()) {
+  if (!planCatalogVerified || !planMeta || planMeta.deletedAt || planMeta.stale || !statePlanMatchesSelectedPlan()) {
     cloudSaveBlocked = true;
     renderCloudStatus("Plan not verified. Saving paused to prevent overwrite.", "Sign out");
     return false;
@@ -3835,7 +3862,7 @@ function verifyCloudImageUploadReady() {
   if (!canEditActivePlan()) {
     throw new Error("Read-only. Take over editing before uploading an image.");
   }
-  if (!planCatalogVerified || !planMeta || planMeta.deletedAt || planMeta.stale || state.plan?.id !== activePlanId() || state.plan?.workspaceId !== activeWorkspaceId()) {
+  if (!planCatalogVerified || !planMeta || planMeta.deletedAt || planMeta.stale || !statePlanMatchesSelectedPlan()) {
     throw new Error("Plan is not verified yet. Reopen this 2YIP before uploading an image.");
   }
 }
@@ -4112,8 +4139,29 @@ function activeWorkspaceId() {
   return localStorage.getItem(ACTIVE_WORKSPACE_STORAGE_KEY) || personalWorkspaceId();
 }
 
+function planIdentityKey(planId = state.plan?.id, workspaceId = state.plan?.workspaceId) {
+  return `${workspaceId || activeWorkspaceId()}::${planId || ""}`;
+}
+
+function markLoadedPlanState(planId = state.plan?.id, workspaceId = state.plan?.workspaceId) {
+  loadedPlanKey = planIdentityKey(planId, workspaceId);
+}
+
+function storedActivePlanId() {
+  return localStorage.getItem(ACTIVE_PLAN_STORAGE_KEY) || "";
+}
+
+function statePlanMatchesSelectedPlan({ requireLoaded = true } = {}) {
+  const selectedPlanId = storedActivePlanId() || state.plan?.id || "";
+  if (!selectedPlanId || !state.plan?.id || state.plan.id !== selectedPlanId) return false;
+  if ((state.plan.workspaceId || activeWorkspaceId()) !== activeWorkspaceId()) return false;
+  if (requireLoaded && loadedPlanKey !== planIdentityKey(state.plan.id, state.plan.workspaceId)) return false;
+  return true;
+}
+
 function activePlanId() {
   const storedPlanId = localStorage.getItem(ACTIVE_PLAN_STORAGE_KEY);
+  if (storedPlanId && planMetaById(storedPlanId)) return storedPlanId;
   if (storedPlanId && (!state.plan?.id || state.plan.id === CLOUD_PLAN_ID)) return storedPlanId;
   if (storedPlanId && state.plan?.id !== storedPlanId && !planMetaById(state.plan?.id)) return storedPlanId;
   return state.plan?.id || storedPlanId || CLOUD_PLAN_ID;
@@ -10405,7 +10453,8 @@ els.createPlan?.addEventListener("click", async () => {
   await persistCurrentPlanBeforeSwitch();
   state = createPlanState({ title, subject, teamName });
   state.currentScreen = "timeline";
-  localStorage.setItem(ACTIVE_PLAN_STORAGE_KEY, activePlanId());
+  localStorage.setItem(ACTIVE_PLAN_STORAGE_KEY, state.plan.id);
+  markLoadedPlanState(state.plan.id, state.plan.workspaceId);
   planSetupOpen = false;
   planCatalogVerified = true;
   activePlanRevision = 0;
