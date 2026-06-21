@@ -1699,7 +1699,8 @@ button:disabled {
   margin: 0;
 }
 
-.unit-block-delete {
+.unit-block-delete,
+.unit-block-nudge {
   display: inline-grid;
   place-items: center;
   width: 24px;
@@ -1716,6 +1717,16 @@ button:disabled {
 .unit-block-delete:hover {
   border-color: var(--accent-2);
   background: #f5d4cf;
+}
+
+.unit-block-nudge {
+  border-color: rgba(47, 124, 128, 0.2);
+  color: var(--accent);
+}
+
+.unit-block-nudge:hover {
+  border-color: var(--accent);
+  background: #dff1ef;
 }
 
 .timeline-heading {
@@ -2002,18 +2013,20 @@ button:disabled {
   box-shadow: 0 18px 30px rgba(39, 44, 38, 0.28);
 }
 
-.unit-block-delete {
+.unit-block-controls {
   position: absolute;
   top: 6px;
   right: 6px;
   z-index: 2;
+  display: flex;
+  gap: 4px;
   opacity: 0;
   transition: opacity 0.15s ease;
 }
 
-.unit-block:hover .unit-block-delete,
-.unit-block:focus-within .unit-block-delete,
-.unit-block.selected .unit-block-delete {
+.unit-block:hover .unit-block-controls,
+.unit-block:focus-within .unit-block-controls,
+.unit-block.selected .unit-block-controls {
   opacity: 1;
 }
 

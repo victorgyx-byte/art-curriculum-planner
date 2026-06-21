@@ -2734,11 +2734,32 @@ function normalizePlanningValues(values, type) {
 
 function normalizePlanningLabel(value, type) {
   if (type === "assessment") return assessmentLabelMap[value] || value;
-  if (type === "learningOutcomes") return learningOutcomeLabelMap[value] || value;
+  if (type === "learningOutcomes") return officialLearningOutcomeLabel(value) || value;
   if (type === "pedagogy" && /^(d\.?\s*i\.?|differentiated instruction)$/i.test(String(value || "").trim())) {
     return "Differentiated Instruction (DI)";
   }
   return value;
+}
+
+function officialLearningOutcomeLabel(value) {
+  const text = String(value || "").replace(/\s+/g, " ").trim();
+  if (!text) return "";
+  const mapped = learningOutcomeLabelMap[text] || text;
+  const officialLabels = defaultCardLibrary
+    .find((category) => category.type === "learningOutcomes")
+    ?.items || [];
+  const exact = officialLabels.find((label) => label.toLowerCase() === mapped.toLowerCase());
+  if (exact) return exact;
+  const code = learningOutcomeCode(mapped);
+  if (!code) return "";
+  return officialLabels.find((label) => label.startsWith(`${code}:`)) || "";
+}
+
+function learningOutcomeCode(value) {
+  const text = String(value || "").replace(/\s+/g, " ").trim();
+  const match = text.match(/\bL\.?\s*O\.?\s*0?([1-6])\b/i)
+    || text.match(/\blearning\s+outcomes?\s*(?:\(?\s*L\.?\s*O\.?\s*\)?\s*)?0?([1-6])\b/i);
+  return match ? `LO${match[1]}` : "";
 }
 
 function allLearningOutcomeLabels() {
@@ -2884,7 +2905,7 @@ function sortLearningOutcomes(values) {
 }
 
 function learningOutcomeNumber(value) {
-  return Number(value?.match(/^LO(\d+)/)?.[1] || 99);
+  return Number(learningOutcomeCode(value)?.match(/\d/)?.[0] || 99);
 }
 
 function lessonCardsFromUnit(unit, removedKeys = []) {
@@ -4469,6 +4490,16 @@ function packAllTimelineYears() {
   for (let year = 1; year <= YEAR_COUNT; year += 1) packTimelineYear(year);
 }
 
+function moveTimelineUnitByWeeks(unitId, deltaWeeks) {
+  const unit = state.units.find((candidate) => candidate.id === unitId);
+  if (!unit || unit.inTimeline === false || !canEditActivePlan()) return;
+  const year = timelineYearForStart(unit.start);
+  unit.start = clampUnitStartInYear(unit, year, timelineLocalWeek(unit.start) + deltaWeeks);
+  state.selectedUnitId = unit.id;
+  saveState();
+  render();
+}
+
 function render() {
   syncHistoryToScreen();
   renderScreens();
@@ -5444,9 +5475,7 @@ function importKnownLabel(type, value) {
     if (/influences.*way.*live/i.test(normalized)) return "Art influences the way we live.";
   }
   if (type === "learningOutcomes") {
-    const match = normalized.match(/L\s*O?\s*0?([1-6])/i);
-    const code = match ? `LO${match[1]}` : "";
-    return libraryItemsByType("learningOutcomes").find((label) => label.startsWith(`${code}:`)) || normalizePlanningLabel(normalized, type);
+    return officialLearningOutcomeLabel(normalized) || normalizePlanningLabel(normalized, type);
   }
   if (type === "artisticProcesses") {
     const match = normalized.match(/AP\s*([1-4])|Artistic Process\s*([1-4])/i);
@@ -5938,7 +5967,7 @@ function renderTimelinePlanningControls() {
   els.timelinePlanningTools?.classList.toggle("hidden", !planning);
   els.timeline?.classList.toggle("planning-view", planning);
   els.timeline?.classList.toggle("overview-view", !planning);
-  els.arrangeTimeline?.classList.toggle("hidden", !planning);
+  els.arrangeTimeline?.classList.add("hidden");
   els.export2YipExcel?.classList.toggle("hidden", planning || state.currentScreen !== "timeline");
   els.timelineViewButtons?.forEach((button) => {
     button.classList.toggle("active", button.dataset.timelineView === state.timelineView);
@@ -6171,7 +6200,11 @@ function renderUnits() {
       block.style.top = `${TIMELINE_HEADER_HEIGHT + (year - 1) * laneHeight + 10}px`;
       block.style.height = `${Math.max(84, laneHeight - 20)}px`;
       block.innerHTML = `
-        <button class="unit-block-delete" data-unit-id="${escapeAttr(unit.id)}" type="button" title="Remove from 2YIP" aria-label="Remove ${escapeAttr(unit.title || "unit")} from 2YIP">×</button>
+        <div class="unit-block-controls" aria-label="Timeline unit controls">
+          <button class="unit-block-nudge" data-direction="-1" data-unit-id="${escapeAttr(unit.id)}" type="button" title="Move one week earlier" aria-label="Move ${escapeAttr(unit.title || "unit")} one week earlier">‹</button>
+          <button class="unit-block-nudge" data-direction="1" data-unit-id="${escapeAttr(unit.id)}" type="button" title="Move one week later" aria-label="Move ${escapeAttr(unit.title || "unit")} one week later">›</button>
+          <button class="unit-block-delete" data-unit-id="${escapeAttr(unit.id)}" type="button" title="Remove from 2YIP" aria-label="Remove ${escapeAttr(unit.title || "unit")} from 2YIP">×</button>
+        </div>
         <span class="unit-short-code">${escapeHtml(unitTimelineDuration(unit))}L</span>
         <div class="unit-title">
           <span>${escapeHtml(unit.title || "Untitled Unit")}</span>
@@ -6182,18 +6215,26 @@ function renderUnits() {
         ${renderTimelineUnitChips(unit)}
       `;
 
-      const removeButton = block.querySelector(".unit-block-delete");
-      removeButton.addEventListener("pointerdown", (event) => {
-        event.stopPropagation();
+      block.querySelectorAll(".unit-block-controls button").forEach((button) => {
+        button.addEventListener("pointerdown", (event) => {
+          event.stopPropagation();
+        });
+        button.addEventListener("dragstart", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+        });
       });
-      removeButton.addEventListener("dragstart", (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-      });
-      removeButton.addEventListener("click", (event) => {
+      block.querySelector(".unit-block-delete")?.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
         removeUnitFromTimeline(unit.id);
+      });
+      block.querySelectorAll(".unit-block-nudge").forEach((button) => {
+        button.addEventListener("click", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          moveTimelineUnitByWeeks(unit.id, Number(button.dataset.direction) || 0);
+        });
       });
       block.querySelectorAll(".timeline-chip-preview").forEach((button) => {
         button.addEventListener("click", (event) => {
@@ -6214,12 +6255,12 @@ function renderUnits() {
         });
       });
       block.addEventListener("click", (event) => {
-        if (event.target.closest(".unit-block-delete, .timeline-unit-chip")) return;
+        if (event.target.closest(".unit-block-controls, .timeline-unit-chip")) return;
         state.selectedUnitId = unit.id;
         render();
       });
       block.addEventListener("dblclick", (event) => {
-        if (event.target.closest(".unit-block-delete, .timeline-unit-chip")) return;
+        if (event.target.closest(".unit-block-controls, .timeline-unit-chip")) return;
         event.preventDefault();
         state.selectedUnitId = unit.id;
         state.unitOverviewOpen = false;
@@ -6258,7 +6299,7 @@ function renderUnits() {
         render();
       });
       block.addEventListener("pointerdown", (event) => {
-        if (event.target.closest(".unit-block-delete, .timeline-unit-chip")) return;
+        if (event.target.closest(".unit-block-controls, .timeline-unit-chip")) return;
         startTimelinePointer(event, unit, block);
       });
       els.unitLayer.append(block);
@@ -11400,9 +11441,7 @@ els.save2Yip?.addEventListener("click", async () => {
 
 els.arrangeTimeline?.addEventListener("click", () => {
   if (!canEditActivePlan()) return;
-  packAllTimelineYears();
-  saveState();
-  render();
+  renderCloudStatus("Use drag or the week arrows to place units. Gaps are preserved.", "Sign out");
 });
 
 els.export2YipExcel?.addEventListener("click", export2YipOverviewExcel);
@@ -11437,6 +11476,13 @@ els.timeline.addEventListener("drop", (event) => {
 });
 
 els.unitLayer.addEventListener("click", (event) => {
+  const nudgeButton = event.target.closest(".unit-block-nudge");
+  if (nudgeButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    moveTimelineUnitByWeeks(nudgeButton.dataset.unitId, Number(nudgeButton.dataset.direction) || 0);
+    return;
+  }
   const removeButton = event.target.closest(".unit-block-delete");
   if (!removeButton) return;
   event.preventDefault();

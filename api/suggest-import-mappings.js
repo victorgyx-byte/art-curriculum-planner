@@ -277,6 +277,26 @@ function bigIdeaTrigger(label) {
   return null;
 }
 
+function learningOutcomeTrigger(label) {
+  const normalised = normaliseSearchText(label);
+  const codeMatch = normalised.match(/\blo\s*0?([1-6])\b/);
+  const code = codeMatch ? Number(codeMatch[1]) : 0;
+  const officialPhrases = {
+    1: [/gather,\s*record\s*and\s*present/i, /observations\s*and\s*personal\s*experiences/i],
+    2: [/make\s*connections\s*to\s*generate/i, /generate\s*ideas\s*and\s*visuals/i],
+    3: [/explore\s*and\s*experiment/i, /materials\s*and\s*techniques/i],
+    4: [/develop\s*personally\s*relevant\s*works/i, /aesthetic\s*qualities\s*and\s*social\s*and\s*cultural\s*awareness/i],
+    5: [/reflect,\s*connect\s*and\s*share/i, /own\s*and\s*others'? works\s*of\s*art/i],
+    6: [/value\s*art\s*as\s*an\s*avenue/i, /self-discovery\s*and\s*(?:for\s*)?understanding\s*the\s*world/i],
+  };
+  if (!code) return null;
+  return {
+    code,
+    codePattern: new RegExp(`\\b(?:lo|l\\.?\\s*o\\.?|learning\\s+outcomes?)\\s*0?${code}\\b`, "i"),
+    phrasePatterns: officialPhrases[code] || [],
+  };
+}
+
 function nearbyCellText(cells, target) {
   return cells
     .filter((cell) => Math.abs((Number(cell.row) || 0) - target.row) <= 3 && Math.abs((Number(cell.col) || 0) - target.col) <= 4)
@@ -363,6 +383,14 @@ function workbookHasBigIdeaTrigger(workbook, unit, label) {
   return trigger.test(unitRelevantText(workbook, unit));
 }
 
+function workbookHasLearningOutcomeTrigger(workbook, unit, label) {
+  const trigger = learningOutcomeTrigger(label);
+  if (!trigger) return false;
+  const text = unitRelevantText(workbook, unit);
+  if (trigger.codePattern.test(text)) return true;
+  return trigger.phrasePatterns.some((pattern) => pattern.test(text));
+}
+
 function workbookHasCoreExperienceTrigger(workbook, unit, label) {
   const trigger = coreExperienceTrigger(label);
   if (!trigger) return false;
@@ -393,6 +421,11 @@ function removeUnsupportedPlanningCards(result, workbook) {
       if (card?.type === "bigIdeas") {
         const keep = workbookHasBigIdeaTrigger(workbook, unit, card.label);
         if (!keep) unit.warnings = [...(unit.warnings || []), "Big Idea needs review: explicit phrase was not found."];
+        return keep;
+      }
+      if (card?.type === "learningOutcomes") {
+        const keep = workbookHasLearningOutcomeTrigger(workbook, unit, card.label);
+        if (!keep) unit.warnings = [...(unit.warnings || []), "Learning Outcome needs review: explicit LO evidence was not found."];
         return keep;
       }
       return true;
@@ -463,7 +496,10 @@ async function callOpenAI(context) {
             "If Big Idea evidence is weak, do not add the Big Idea card. Add a warning instead.",
             "False Big Idea mappings are worse than missing Big Idea mappings.",
             "For Learning Outcomes and Artistic Processes: prefer explicit LO/AP codes or close official wording.",
-            "Do not infer LOs or APs from general activity descriptions unless strongly supported.",
+            "When mapping Learning Outcomes, return the exact full Learning Outcome label from allowedCards, not a shortened LO code.",
+            "Map a Learning Outcome only when that unit explicitly contains an LO code, Learning Outcome number, or close official LO wording.",
+            "Do not infer Learning Outcomes from lesson outlines, themes, unit titles, activity descriptions, or performance tasks.",
+            "Do not infer APs from general activity descriptions unless strongly supported.",
             "For core learning experiences, only map Drawing cards when the spreadsheet explicitly contains Observe, Think, or Imagine in a drawing/core-experience context.",
             "For core learning experiences, only map Portfolio cards when the spreadsheet explicitly contains Document, Curate, Reflect, or (Re)present/Re-present/Represent in a portfolio/core-experience context.",
             "Never infer core learning experiences from themes, activities, assessment evidence, or general lesson descriptions.",
