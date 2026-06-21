@@ -1489,7 +1489,7 @@ let unitSetupOpen = false;
 let planSetupOpen = false;
 let import2YipOpen = false;
 let pending2YipImport = null;
-let import2YipMode = "standard";
+let import2YipMode = "";
 let workspaceSetupOpen = false;
 let cloudSaveTimer = null;
 let authStateTimer = null;
@@ -1694,6 +1694,7 @@ const els = {
   import2YipStatus: document.querySelector("#import-2yip-status"),
   import2YipBody: document.querySelector("#import-2yip-body"),
   cancelImport2Yip: document.querySelector("#cancel-import-2yip"),
+  importMethodPanel: document.querySelector("#import-method-panel"),
   import2YipModes: document.querySelectorAll('input[name="import-2yip-mode"]'),
   suggestImportMappings: document.querySelector("#suggest-import-mappings"),
   confirmImport2Yip: document.querySelector("#confirm-import-2yip"),
@@ -4986,6 +4987,7 @@ function open2YipImport() {
     return;
   }
   import2YipOpen = true;
+  import2YipMode = "";
   pending2YipImport = null;
   render();
 }
@@ -4993,6 +4995,7 @@ function open2YipImport() {
 function close2YipImport() {
   import2YipOpen = false;
   pending2YipImport = null;
+  import2YipMode = "";
   if (els.import2YipFile) els.import2YipFile.value = "";
   render();
 }
@@ -5004,14 +5007,24 @@ function render2YipImport() {
   els.import2YipModes?.forEach((input) => {
     input.checked = input.value === import2YipMode;
   });
-  if (els.confirmImport2Yip) els.confirmImport2Yip.disabled = !pending2YipImport?.units?.length;
+  els.importMethodPanel?.classList.toggle("hidden", !pending2YipImport?.workbookSnapshot);
+  if (els.confirmImport2Yip) els.confirmImport2Yip.disabled = !pending2YipImport?.units?.length || Boolean(pending2YipImport?.awaitingMethod);
   if (els.suggestImportMappings) {
     els.suggestImportMappings.disabled = !pending2YipImport?.workbookSnapshot || Boolean(pending2YipImport?.aiBusy);
-    els.suggestImportMappings.textContent = pending2YipImport?.aiBusy ? "Mapping..." : "Run AI-Assisted Mapping";
+    els.suggestImportMappings.classList.toggle("hidden", !pending2YipImport?.units?.length || pending2YipImport?.importMethod !== "ai");
+    els.suggestImportMappings.textContent = pending2YipImport?.aiBusy ? "Mapping..." : "Run AI-Assisted Mapping Again";
   }
   if (!pending2YipImport) {
     if (els.import2YipStatus) {
       els.import2YipStatus.textContent = "Choose the official 2YIP Excel template to preview the import.";
+      els.import2YipStatus.classList.remove("warning");
+    }
+    if (els.import2YipBody) els.import2YipBody.innerHTML = "";
+    return;
+  }
+  if (pending2YipImport.awaitingMethod) {
+    if (els.import2YipStatus) {
+      els.import2YipStatus.textContent = "File uploaded. Choose Standard 2YIP template import or AI-assisted import to preview the mapping.";
       els.import2YipStatus.classList.remove("warning");
     }
     if (els.import2YipBody) els.import2YipBody.innerHTML = "";
@@ -5206,6 +5219,8 @@ async function runAiAssistedImportMapping() {
   pending2YipImport.aiStatus = "AI is reading the workbook and suggesting a mapping...";
   render2YipImport();
   try {
+    const sourceWorkbook = pending2YipImport.workbook;
+    const sourceSnapshot = pending2YipImport.workbookSnapshot;
     const token = await cloud.user.getIdToken();
     const response = await fetch("/api/suggest-import-mappings", {
       method: "POST",
@@ -5221,10 +5236,12 @@ async function runAiAssistedImportMapping() {
       .map(importEntryFromAiUnit)
       .filter(Boolean);
     pending2YipImport = {
-      planTitle: payload.planTitle || `AI Mapped 2YIP - ${pending2YipImport.workbookSnapshot.fileName.replace(/\.(xlsx|xls)$/i, "").replace(/[_-]+/g, " ")}`,
-      sheetName: pending2YipImport.workbookSnapshot.sheetName,
-      workbookSnapshot: pending2YipImport.workbookSnapshot,
+      planTitle: payload.planTitle || `AI Mapped 2YIP - ${sourceSnapshot.fileName.replace(/\.(xlsx|xls)$/i, "").replace(/[_-]+/g, " ")}`,
+      sheetName: sourceSnapshot.sheetName,
+      workbook: sourceWorkbook,
+      workbookSnapshot: sourceSnapshot,
       importMethod: "ai",
+      awaitingMethod: false,
       aiStatus: units.length
         ? "AI-assisted mapping ready. Please review before creating the draft."
         : "AI could not detect real units. Try the standard importer or review the spreadsheet.",
@@ -5485,6 +5502,27 @@ function parse2YipWorkbook(workbook, fileName = "Imported 2YIP", snapshot = null
   };
 }
 
+function pendingImportFileName() {
+  return pending2YipImport?.workbookSnapshot?.fileName || "Imported 2YIP";
+}
+
+function runStandard2YipImportMapping() {
+  if (!pending2YipImport?.workbook) return;
+  const workbook = pending2YipImport.workbook;
+  const snapshot = pending2YipImport.workbookSnapshot;
+  const parsed = parse2YipWorkbook(workbook, pendingImportFileName(), snapshot);
+  pending2YipImport = {
+    ...parsed,
+    workbook,
+    awaitingMethod: false,
+  };
+  import2YipMode = "standard";
+  if (!parsed.units.length) {
+    pending2YipImport.aiStatus = "No real units were detected. This looks like a blank template.";
+  }
+  render2YipImport();
+}
+
 function parse2YipTemplateUnit(sheet, slot) {
   const warnings = [];
   const rawTitle = importRowValue(sheet, importTemplateRows.title, slot.col);
@@ -5629,9 +5667,10 @@ function importAssessmentFromTemplate(unit, assessmentType, assessmentPercent, a
 async function read2YipImportFile(file) {
   if (!file) return;
   pending2YipImport = null;
+  import2YipMode = "";
   render2YipImport();
   if (els.import2YipStatus) {
-    els.import2YipStatus.textContent = "Reading Excel template...";
+    els.import2YipStatus.textContent = "Reading Excel file...";
     els.import2YipStatus.classList.remove("warning");
   }
   try {
@@ -5639,16 +5678,15 @@ async function read2YipImportFile(file) {
     const buffer = await file.arrayBuffer();
     const workbook = window.XLSX.read(buffer, { type: "array", cellDates: false });
     const snapshot = workbookImportSnapshot(workbook, file.name);
-    const parsed = parse2YipWorkbook(workbook, file.name, snapshot);
-    pending2YipImport = parsed;
-    if (import2YipMode === "ai") {
-      await runAiAssistedImportMapping();
-      return;
-    }
-    if (!parsed.units.length && els.import2YipStatus) {
-      els.import2YipStatus.textContent = "No real units were detected. This looks like a blank template.";
-      els.import2YipStatus.classList.add("warning");
-    }
+    pending2YipImport = {
+      planTitle: file.name.replace(/\.(xlsx|xls)$/i, "").replace(/[_-]+/g, " "),
+      sheetName: snapshot.sheetName,
+      workbook,
+      workbookSnapshot: snapshot,
+      importMethod: "",
+      awaitingMethod: true,
+      units: [],
+    };
     render2YipImport();
   } catch (error) {
     console.warn("2YIP import failed", error);
@@ -11240,7 +11278,9 @@ els.import2YipFile?.addEventListener("change", (event) => {
 els.import2YipModes?.forEach((input) => {
   input.addEventListener("change", async (event) => {
     import2YipMode = event.target.value === "ai" ? "ai" : "standard";
-    if (import2YipMode === "ai" && pending2YipImport?.workbookSnapshot) {
+    if (import2YipMode === "standard") {
+      runStandard2YipImportMapping();
+    } else if (pending2YipImport?.workbookSnapshot) {
       await runAiAssistedImportMapping();
     } else {
       render2YipImport();

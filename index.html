@@ -718,11 +718,13 @@
         </div>
 
         <label class="field-label" for="import-2yip-file">Excel Template</label>
-        <div class="import-mode-toggle" role="radiogroup" aria-label="Import method">
+        <input id="import-2yip-file" class="text-input" type="file" accept=".xlsx,.xls" />
+
+        <div id="import-method-panel" class="import-mode-toggle hidden" role="radiogroup" aria-label="Import method">
           <label>
-            <input type="radio" name="import-2yip-mode" value="standard" checked />
+            <input type="radio" name="import-2yip-mode" value="standard" />
             <span>
-              <strong>Standard template import</strong>
+              <strong>Standard 2YIP template import</strong>
               <small>Use this when the official template structure has not been changed.</small>
             </span>
           </label>
@@ -734,7 +736,6 @@
             </span>
           </label>
         </div>
-        <input id="import-2yip-file" class="text-input" type="file" accept=".xlsx,.xls" />
 
         <div id="import-2yip-status" class="import-status" aria-live="polite"></div>
         <div id="import-2yip-body" class="import-preview-body"></div>
