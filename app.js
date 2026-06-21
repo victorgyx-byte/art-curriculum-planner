@@ -1718,7 +1718,7 @@ const els = {
 
 function loadState() {
   try {
-    const storedPlanId = localStorage.getItem(ACTIVE_PLAN_STORAGE_KEY);
+    const storedPlanId = storedActivePlanId(activeWorkspaceId(), { includeLegacy: true });
     const catalogPlanId = planCatalog.find(planBelongsToActiveWorkspace)?.id || "";
     const activePlanId = storedPlanId || catalogPlanId;
     const savedRaw = activePlanId ? localStorage.getItem(planStateStorageKey(activePlanId)) : localStorage.getItem(STORAGE_KEY);
@@ -1730,15 +1730,15 @@ function loadState() {
     }
     if ((activePlanId && loaded.plan?.id === activePlanId) || saved) {
       savePlanToCatalog(loaded.plan);
-      localStorage.setItem(ACTIVE_PLAN_STORAGE_KEY, loaded.plan.id);
+      setStoredActivePlanId(loaded.plan.id, loaded.plan.workspaceId || activeWorkspaceId());
     } else {
-      localStorage.removeItem(ACTIVE_PLAN_STORAGE_KEY);
+      clearStoredActivePlanId(activeWorkspaceId());
     }
     return loaded;
   } catch {
     const fallback = structuredClone(defaultState);
     fallback.currentScreen = screenFromLocation();
-    localStorage.removeItem(ACTIVE_PLAN_STORAGE_KEY);
+    clearStoredActivePlanId(activeWorkspaceId());
     return fallback;
   }
 }
@@ -1967,6 +1967,21 @@ function planStateStorageKey(planId = activePlanId(), workspaceId = activeWorksp
   return `${STORAGE_KEY}:${workspaceId || "local-workspace"}:${planId || CLOUD_PLAN_ID}`;
 }
 
+function activePlanStorageKey(workspaceId = activeWorkspaceId()) {
+  return `${ACTIVE_PLAN_STORAGE_KEY}:${workspaceId || "local-workspace"}`;
+}
+
+function setStoredActivePlanId(planId, workspaceId = activeWorkspaceId()) {
+  if (!planId) return;
+  localStorage.setItem(activePlanStorageKey(workspaceId), planId);
+  localStorage.setItem(ACTIVE_PLAN_STORAGE_KEY, planId);
+}
+
+function clearStoredActivePlanId(workspaceId = activeWorkspaceId()) {
+  localStorage.removeItem(activePlanStorageKey(workspaceId));
+  localStorage.removeItem(ACTIVE_PLAN_STORAGE_KEY);
+}
+
 function workspaceSharedLibraryStorageKey(workspaceId = activeWorkspaceId()) {
   return `${WORKSPACE_SHARED_LIBRARY_STORAGE_KEY}:${workspaceId || "local-workspace"}`;
 }
@@ -2153,14 +2168,14 @@ function planMetaById(planId) {
 }
 
 async function persistCurrentPlanBeforeSwitch() {
-  if (state.currentScreen !== "workspace" || planMetaById(activePlanId())) {
+  if (state.currentScreen !== "workspace" && statePlanMatchesSelectedPlan()) {
     saveState();
   }
-  if (cloud.loaded) await saveCloudStateNow();
+  if (cloud.loaded && state.currentScreen !== "workspace" && statePlanMatchesSelectedPlan()) await saveCloudStateNow();
 }
 
 async function switchPlan(planId, options = {}) {
-  if (!planId || (planId === activePlanId() && !options.force)) return;
+  if (!planId || (planId === activePlanId() && statePlanMatchesSelectedPlan() && !options.force)) return;
   const currentScreen = options.targetScreen || state.currentScreen;
   if (!options.skipPersist) await persistCurrentPlanBeforeSwitch();
   window.clearTimeout(cloudSaveTimer);
@@ -2227,7 +2242,7 @@ async function switchPlan(planId, options = {}) {
       role: catalogPlan?.role || state.plan.role,
     });
     state.currentScreen = currentScreen || "timeline";
-    localStorage.setItem(ACTIVE_PLAN_STORAGE_KEY, planId);
+    setStoredActivePlanId(planId, state.plan.workspaceId);
     markLoadedPlanState(planId, state.plan.workspaceId);
     localStorage.setItem(planStateStorageKey(planId), JSON.stringify(state));
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -2288,7 +2303,7 @@ async function switchWorkspace(workspaceId) {
     return;
   }
   state.currentScreen = "workspace";
-  localStorage.removeItem(ACTIVE_PLAN_STORAGE_KEY);
+  clearStoredActivePlanId(workspaceId);
   render();
 }
 
@@ -2331,7 +2346,7 @@ async function createTeamWorkspace(name) {
   saveWorkspaceToCatalog(workspace);
   localStorage.setItem(ACTIVE_WORKSPACE_STORAGE_KEY, workspaceId);
   setWorkspaceSharedLibrary(cloneDefaultWorkspaceCardLibrary());
-  localStorage.removeItem(ACTIVE_PLAN_STORAGE_KEY);
+  clearStoredActivePlanId(workspaceId);
   state.currentScreen = "workspace";
   planCatalogVerified = true;
   render();
@@ -2466,7 +2481,7 @@ async function deleteWorkspace(workspaceId) {
   removeLocalPlansForWorkspace(workspaceId);
   localStorage.setItem(ACTIVE_WORKSPACE_STORAGE_KEY, fallbackWorkspaceId);
   if (wasActiveWorkspace) {
-    localStorage.removeItem(ACTIVE_PLAN_STORAGE_KEY);
+    clearStoredActivePlanId(workspaceId);
     localStorage.removeItem(STORAGE_KEY);
   }
   workspaceDirectoryWorkspaceId = "";
@@ -2543,7 +2558,7 @@ async function deletePlan(planId) {
     state.currentScreen = "workspace";
   } else if (activePlanId() === planId) {
     state.currentScreen = "workspace";
-    localStorage.removeItem(ACTIVE_PLAN_STORAGE_KEY);
+    clearStoredActivePlanId(activeWorkspaceId());
   }
   workspaceDirectoryWorkspaceId = "";
   renderCloudStatus("2YIP deleted", "Sign out");
@@ -3075,7 +3090,7 @@ function applyLoadedPlanState(planState, snapshotId, snapshotData = {}) {
     role: planMetaById(snapshotId)?.role || state.plan.role,
   });
   savePlanToCatalog(state.plan);
-  localStorage.setItem(ACTIVE_PLAN_STORAGE_KEY, snapshotId);
+  setStoredActivePlanId(snapshotId, state.plan.workspaceId);
   markLoadedPlanState(snapshotId, state.plan.workspaceId);
   localStorage.setItem(planStateStorageKey(), JSON.stringify(state));
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -3086,6 +3101,7 @@ function applyLoadedPlanState(planState, snapshotId, snapshotData = {}) {
 
 function saveState(options = {}) {
   if (saveWritesPaused) return;
+  if (state.currentScreen === "workspace") return;
   if (state.currentScreen !== "workspace" && firstPlanForActiveWorkspace() && !canEditActivePlan()) {
     if (!options.localOnly) renderCloudStatus("Read-only. Saving paused until you take over editing.", cloud.user ? "Sign out" : "Sign in");
     return;
@@ -3095,7 +3111,6 @@ function saveState(options = {}) {
     renderCloudStatus("Plan loading. Saving paused to prevent overwrite.", cloud.user ? "Sign out" : "Sign in");
     return;
   }
-  if (state.currentScreen === "workspace" && !planMetaById(activePlanId())) return;
   state.plan = normalizePlanMetadata(state.plan);
   state.cardLibrary = normalizeCardLibrary(state.cardLibrary);
   const currentContentHash = planStateContentHash(state);
@@ -3116,7 +3131,7 @@ function saveState(options = {}) {
   });
   saveWorkspaceSharedLibrary();
   localStorage.setItem(ACTIVE_WORKSPACE_STORAGE_KEY, activeWorkspaceId());
-  localStorage.setItem(ACTIVE_PLAN_STORAGE_KEY, activePlanId());
+  setStoredActivePlanId(activePlanId(), activeWorkspaceId());
   localStorage.setItem(planStateStorageKey(), JSON.stringify(state));
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   if (hasContentChange && planContentScore(state) > 0) {
@@ -3596,11 +3611,11 @@ async function loadCloudPlanCatalog() {
   saveDeletedPlanCatalog();
   saveLastGoodPlanCatalog(workspaceId, loadedPlans);
   planCatalogVerified = true;
-  const requestedPlanId = localStorage.getItem(ACTIVE_PLAN_STORAGE_KEY) || state.plan?.id || "";
+  const requestedPlanId = storedActivePlanId(workspaceId, { includeLegacy: true }) || (state.plan?.workspaceId === workspaceId ? state.plan?.id : "") || "";
   const availablePlans = plansForActiveWorkspace();
   const nextPlan = availablePlans.find((plan) => plan.id === requestedPlanId) || availablePlans[0] || null;
   if (nextPlan && !availablePlans.some((plan) => plan.id === requestedPlanId)) {
-    localStorage.setItem(ACTIVE_PLAN_STORAGE_KEY, nextPlan.id);
+    setStoredActivePlanId(nextPlan.id, workspaceId);
   }
   return true;
 }
@@ -4147,12 +4162,18 @@ function markLoadedPlanState(planId = state.plan?.id, workspaceId = state.plan?.
   loadedPlanKey = planIdentityKey(planId, workspaceId);
 }
 
-function storedActivePlanId() {
-  return localStorage.getItem(ACTIVE_PLAN_STORAGE_KEY) || "";
+function storedActivePlanId(workspaceId = activeWorkspaceId(), options = {}) {
+  const workspacePlanId = localStorage.getItem(activePlanStorageKey(workspaceId));
+  if (workspacePlanId) return workspacePlanId;
+  if (!options.includeLegacy) return "";
+  const legacyPlanId = localStorage.getItem(ACTIVE_PLAN_STORAGE_KEY) || "";
+  if (!legacyPlanId) return "";
+  const legacyPlan = planCatalog.find((plan) => plan.id === legacyPlanId && (!plan.workspaceId || plan.workspaceId === workspaceId));
+  return legacyPlan ? legacyPlanId : "";
 }
 
 function statePlanMatchesSelectedPlan({ requireLoaded = true } = {}) {
-  const selectedPlanId = storedActivePlanId() || state.plan?.id || "";
+  const selectedPlanId = storedActivePlanId(state.plan?.workspaceId || activeWorkspaceId()) || state.plan?.id || "";
   if (!selectedPlanId || !state.plan?.id || state.plan.id !== selectedPlanId) return false;
   if ((state.plan.workspaceId || activeWorkspaceId()) !== activeWorkspaceId()) return false;
   if (requireLoaded && loadedPlanKey !== planIdentityKey(state.plan.id, state.plan.workspaceId)) return false;
@@ -4160,7 +4181,7 @@ function statePlanMatchesSelectedPlan({ requireLoaded = true } = {}) {
 }
 
 function activePlanId() {
-  const storedPlanId = localStorage.getItem(ACTIVE_PLAN_STORAGE_KEY);
+  const storedPlanId = storedActivePlanId(activeWorkspaceId(), { includeLegacy: true });
   if (storedPlanId && planMetaById(storedPlanId)) return storedPlanId;
   if (storedPlanId && (!state.plan?.id || state.plan.id === CLOUD_PLAN_ID)) return storedPlanId;
   if (storedPlanId && state.plan?.id !== storedPlanId && !planMetaById(state.plan?.id)) return storedPlanId;
@@ -4890,7 +4911,7 @@ async function restoreSnapshot(planId, snapshotId) {
     deletedReason: window.firebase.firestore.FieldValue.delete(),
     updatedAt: window.firebase.firestore.FieldValue.serverTimestamp(),
   }, { merge: true });
-  localStorage.setItem(ACTIVE_PLAN_STORAGE_KEY, planId);
+  setStoredActivePlanId(planId, activeWorkspaceId());
   await loadCloudPlanCatalog();
   await switchPlan(planId, { targetScreen: "timeline", skipPersist: true, force: true });
   closeRecoveryModal();
@@ -4924,7 +4945,7 @@ function openWorkspaceSetup() {
 
 async function openWorkspacePlan(planId) {
   if (!planId) return;
-  if (planId === activePlanId()) {
+  if (planId === activePlanId() && statePlanMatchesSelectedPlan()) {
     state.currentScreen = "timeline";
     state.unitOverviewOpen = false;
     state.lessonOverviewOpen = false;
@@ -10453,7 +10474,7 @@ els.createPlan?.addEventListener("click", async () => {
   await persistCurrentPlanBeforeSwitch();
   state = createPlanState({ title, subject, teamName });
   state.currentScreen = "timeline";
-  localStorage.setItem(ACTIVE_PLAN_STORAGE_KEY, state.plan.id);
+  setStoredActivePlanId(state.plan.id, state.plan.workspaceId);
   markLoadedPlanState(state.plan.id, state.plan.workspaceId);
   planSetupOpen = false;
   planCatalogVerified = true;
