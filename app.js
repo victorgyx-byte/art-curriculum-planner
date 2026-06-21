@@ -5039,13 +5039,13 @@ function valid2YipImportMode(value) {
 
 function importMethodLabel(method) {
   if (method === "ai") return "AI-assisted mapping";
-  if (method === "detect") return "AI template detection + standard mapping";
+  if (method === "detect") return "AI row-bound mapping";
   return "Standard mapping";
 }
 
 function importAiActionLabel(method, busy = false) {
-  if (busy) return method === "detect" ? "Detecting..." : "Mapping...";
-  if (method === "detect") return "Run Template Detection Again";
+  if (busy) return "Mapping...";
+  if (method === "detect") return "Run Row-Bound Mapping Again";
   return "Run AI-Assisted Mapping Again";
 }
 
@@ -5083,8 +5083,8 @@ function render2YipImport() {
         <div class="import-loading-card" role="status" aria-live="polite">
           <span class="import-loading-spinner" aria-hidden="true"></span>
           <div>
-            <strong>${isDetection ? "AI is detecting your template structure" : "AI is reading your 2YIP file"}</strong>
-            <p>${isDetection ? "Looking for which rows correspond to unit titles, Learning Outcomes, learning content, core experiences, pedagogy, and assessment. Weave will then apply the standard mapping." : "Checking units, placement, Learning Outcomes, core learning experiences, and possible lesson outlines. This may take a moment."}</p>
+            <strong>${isDetection ? "AI is running a row-bound import" : "AI is reading your 2YIP file"}</strong>
+            <p>${isDetection ? "Detecting row roles first, then mapping cards only from the relevant rows for each unit. This keeps lesson outlines, themes, and performance tasks from leaking into LO or Big Idea mapping." : "Checking units, placement, Learning Outcomes, core learning experiences, and possible lesson outlines. This may take a moment."}</p>
           </div>
         </div>
       `;
@@ -5298,6 +5298,7 @@ function buildAiImportRequest(snapshot) {
 function buildAiTemplateDetectionRequest(snapshot) {
   return {
     workbook: snapshot,
+    allowedCards: importAllowedCardLabels(),
   };
 }
 
@@ -5357,24 +5358,24 @@ async function runAiAssistedImportMapping() {
 async function runAiTemplateDetectionImport() {
   if (!pending2YipImport?.workbookSnapshot) return;
   if (window.location.protocol === "file:") {
-    pending2YipImport.aiStatus = "Open the online or local server version to use AI-assisted template detection.";
+    pending2YipImport.aiStatus = "Open the online or local server version to use AI-assisted row-bound import.";
     render2YipImport();
     return;
   }
   if (!cloud.user) {
-    pending2YipImport.aiStatus = "Sign in online before using AI-assisted template detection.";
+    pending2YipImport.aiStatus = "Sign in online before using AI-assisted row-bound import.";
     render2YipImport();
     return;
   }
   pending2YipImport.importMethod = "detect";
   pending2YipImport.aiBusy = true;
-  pending2YipImport.aiStatus = "AI is detecting which rows match the 2YIP template fields...";
+  pending2YipImport.aiStatus = "AI is detecting rows, then mapping only from bounded unit evidence...";
   render2YipImport();
   try {
     const sourceWorkbook = pending2YipImport.workbook;
     const sourceSnapshot = pending2YipImport.workbookSnapshot;
     const token = await cloud.user.getIdToken();
-    const response = await fetch("/api/detect-import-template", {
+    const response = await fetch("/api/import-2yip-row-bound", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -5383,28 +5384,30 @@ async function runAiTemplateDetectionImport() {
       body: JSON.stringify(buildAiTemplateDetectionRequest(sourceSnapshot)),
     });
     const payload = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(payload.error || "AI-assisted template detection failed.");
-    const detectedRows = normalizeImportTemplateRows(payload.rows || {});
-    const parsed = parse2YipWorkbook(sourceWorkbook, pendingImportFileName(), sourceSnapshot, detectedRows);
+    if (!response.ok) throw new Error(payload.error || "AI-assisted row-bound import failed.");
+    const units = (Array.isArray(payload.units) ? payload.units : [])
+      .map(importEntryFromAiUnit)
+      .filter(Boolean);
     const detectionWarnings = Array.isArray(payload.warnings) ? payload.warnings.filter(Boolean) : [];
     pending2YipImport = {
-      ...parsed,
+      planTitle: payload.planTitle || `Row-Bound 2YIP - ${sourceSnapshot.fileName.replace(/\.(xlsx|xls)$/i, "").replace(/[_-]+/g, " ")}`,
+      sheetName: sourceSnapshot.sheetName,
       workbook: sourceWorkbook,
       workbookSnapshot: sourceSnapshot,
       importMethod: "detect",
       awaitingMethod: false,
-      detectedRows,
       detectionWarnings,
-      aiStatus: parsed.units.length
-        ? `Template detection ready. Standard mapping applied.${detectionWarnings.length ? ` ${detectionWarnings.length} detection ${detectionWarnings.length === 1 ? "note" : "notes"} to review.` : ""}`
-        : "AI detected a template structure, but no real units were found. Please review the spreadsheet.",
+      aiStatus: units.length
+        ? `AI row-bound mapping ready. Please review before creating the draft.${detectionWarnings.length ? ` ${detectionWarnings.length} import ${detectionWarnings.length === 1 ? "note" : "notes"} to review.` : ""}`
+        : "AI could not detect real units from the bounded row evidence. Try the standard importer or review the spreadsheet.",
+      units,
     };
     if (detectionWarnings.length && pending2YipImport.units.length) {
       pending2YipImport.units[0].warnings = [...detectionWarnings, ...pending2YipImport.units[0].warnings];
     }
   } catch (error) {
-    console.warn("AI-assisted template detection failed", error);
-    pending2YipImport.aiStatus = error.message || "AI-assisted template detection failed.";
+    console.warn("AI-assisted row-bound import failed", error);
+    pending2YipImport.aiStatus = error.message || "AI-assisted row-bound import failed.";
   } finally {
     if (pending2YipImport) pending2YipImport.aiBusy = false;
     render2YipImport();
