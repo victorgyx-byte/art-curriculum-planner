@@ -4430,9 +4430,7 @@ function syncUnitDurationToLessons(unit) {
 function removeUnitFromTimeline(unitId) {
   const unit = state.units.find((candidate) => candidate.id === unitId);
   if (!unit) return;
-  const year = timelineYearForStart(unit.start);
   unit.inTimeline = false;
-  packTimelineYear(year);
   saveState();
   render();
 }
@@ -4461,8 +4459,9 @@ function packTimelineYear(year) {
     .sort((a, b) => timelineLocalWeek(a.start) - timelineLocalWeek(b.start));
   let cursor = 1;
   units.forEach((unit) => {
-    unit.start = clampUnitStartInYear(unit, year, cursor);
-    cursor += unitTimelineDuration(unit);
+    const desiredLocalWeek = Math.max(timelineLocalWeek(unit.start), cursor);
+    unit.start = clampUnitStartInYear(unit, year, desiredLocalWeek);
+    cursor = timelineLocalWeek(unit.start) + unitTimelineDuration(unit);
   });
 }
 
@@ -5068,6 +5067,7 @@ function importPreviewUnitHtml(unit) {
         <div class="import-preview-meta">
           <span>${escapeHtml(unit.inTimeline ? unit.placementLabel : "Not in 2YIP")}</span>
           <span>${unit.lessonCount} ${unit.lessonCount === 1 ? "lesson" : "lessons"}</span>
+          ${unit.lessonOutlineCount ? `<span>${unit.lessonOutlineCount} lesson ${unit.lessonOutlineCount === 1 ? "description" : "descriptions"} seeded</span>` : ""}
           <span>${unit.artTask ? "Performance task detected" : "No performance task"}</span>
         </div>
       </div>
@@ -5139,6 +5139,21 @@ function placementFromAiUnit(aiUnit, warnings) {
   };
 }
 
+function aiLessonOutlines(aiUnit, lessonCount, warnings) {
+  const outlines = Array.isArray(aiUnit?.lessonOutlines) ? aiUnit.lessonOutlines : [];
+  const byLessonNumber = new Map();
+  outlines.forEach((outline) => {
+    const lessonNumber = Math.trunc(Number(outline?.lessonNumber));
+    const description = cleanTemplateText(outline?.description);
+    if (!lessonNumber || lessonNumber < 1 || lessonNumber > lessonCount || !description) return;
+    if (!byLessonNumber.has(lessonNumber)) byLessonNumber.set(lessonNumber, description);
+  });
+  if (outlines.length && !byLessonNumber.size) {
+    warnings.push("Lesson outline needs review: no lesson-numbered descriptions were usable.");
+  }
+  return byLessonNumber;
+}
+
 function importEntryFromAiUnit(aiUnit, index) {
   const warnings = Array.isArray(aiUnit?.warnings) ? aiUnit.warnings.filter(Boolean) : [];
   const placement = placementFromAiUnit(aiUnit, warnings);
@@ -5183,7 +5198,13 @@ function importEntryFromAiUnit(aiUnit, index) {
     const assessmentCard = addImportedCard(unit, { type: "assessment", label: assessmentTask.type });
     if (assessmentCard) importedCards.push(assessmentCard);
   }
-  unit.lessons = Array.from({ length: placement.lessonCount }, () => createLesson(unit));
+  const lessonOutlines = aiLessonOutlines(aiUnit, placement.lessonCount, warnings);
+  unit.lessons = Array.from({ length: placement.lessonCount }, (_, lessonIndex) => {
+    const lesson = createLesson(unit);
+    const description = lessonOutlines.get(lessonIndex + 1) || "";
+    if (description) syncLessonDescription(lesson, description);
+    return lesson;
+  });
   return {
     slotIndex: Number(aiUnit?.slotIndex) || index + 1,
     title: unit.title,
@@ -5193,6 +5214,7 @@ function importEntryFromAiUnit(aiUnit, index) {
     lessonCount: placement.lessonCount,
     placementLabel: placement.placementLabel,
     cards: importedCards,
+    lessonOutlineCount: lessonOutlines.size,
     warnings,
     unit,
     assessmentTask,
@@ -6121,7 +6143,6 @@ function termWeekColumn(term) {
 
 function renderUnits() {
   els.unitLayer.innerHTML = "";
-  packAllTimelineYears();
   const overlaps = findOverlaps();
   const width = weekWidth();
   const laneHeight = timelineLaneHeight();
@@ -9628,10 +9649,6 @@ function endTimelinePointer(event) {
   const unit = state.units.find((candidate) => candidate.id === timelineDrag.unitId);
   if (unit) {
     state.selectedUnitId = unit.id;
-    if (drag.moved) {
-      packTimelineYear(drag.originalYear);
-      packTimelineYear(timelineYearForStart(unit.start));
-    }
     if (!drag.moved) {
       const now = Date.now();
       const isDoubleClick = timelineClick.unitId === unit.id && now - timelineClick.at < 420;
@@ -9723,13 +9740,13 @@ function renderHealth() {
     `${los.size}/6 LOs touched`,
     `${timelineUnits.length} units in 2YIP`,
   ];
-  if (gapCount) pills.push(`${gapCount} timeline gaps`);
+  if (gapCount) pills.push(`${gapCount} buffer gaps`);
   if (overlaps.size) pills.push(`${overlaps.size} overlapping units`);
 
   els.timelineHealth.innerHTML = `
     <div class="timeline-summary-pills">
       ${pills
-        .map((pill) => `<span class="health-pill ${pill.includes("overlap") || pill.includes("gap") ? "warn" : ""}">${escapeHtml(pill)}</span>`)
+        .map((pill) => `<span class="health-pill ${pill.includes("overlap") ? "warn" : ""}">${escapeHtml(pill)}</span>`)
         .join("")}
     </div>
     <section class="timeline-analysis" aria-label="2YIP planning analysis">
@@ -11414,7 +11431,6 @@ els.timeline.addEventListener("drop", (event) => {
   if (!placement) return;
   unit.start = placement.start;
   unit.inTimeline = true;
-  packTimelineYear(placement.year);
   state.selectedUnitId = unit.id;
   dragPayload = null;
   render();
