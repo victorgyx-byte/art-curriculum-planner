@@ -108,7 +108,11 @@ function importMappingSchema() {
           ],
           properties: {
             slotIndex: { type: "number" },
-            title: { type: "string", maxLength: 140 },
+            title: {
+              type: "string",
+              maxLength: 140,
+              description: "Exact unit title copied from the spreadsheet, with whitespace cleaned only.",
+            },
             artTask: { type: "string", maxLength: 700 },
             year: { type: "number" },
             startTerm: { type: "number" },
@@ -183,6 +187,58 @@ function compactAllowedCards(body) {
   );
 }
 
+function normaliseSearchText(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[’‘]/g, "'")
+    .replace(/[\u2010-\u2015]/g, "-")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function coreExperienceTrigger(label) {
+  const normalised = normaliseSearchText(label);
+  if (normalised === "drawing: observe") return { area: "drawing", pattern: /\bobserve\b/i };
+  if (normalised === "drawing: think") return { area: "drawing", pattern: /\bthink\b/i };
+  if (normalised === "drawing: imagine") return { area: "drawing", pattern: /\bimagine\b/i };
+  if (normalised === "portfolio: document") return { area: "portfolio", pattern: /\bdocument\b/i };
+  if (normalised === "portfolio: curate") return { area: "portfolio", pattern: /\bcurate\b/i };
+  if (normalised === "portfolio: reflect") return { area: "portfolio", pattern: /\breflect\b/i };
+  if (normalised === "portfolio: (re)present") return { area: "portfolio", pattern: /\b(represent|re-present|\(re\)\s*present|re\s*\(?represent\)?)\b/i };
+  return null;
+}
+
+function nearbyCellText(cells, target) {
+  return cells
+    .filter((cell) => Math.abs((Number(cell.row) || 0) - target.row) <= 3 && Math.abs((Number(cell.col) || 0) - target.col) <= 4)
+    .map((cell) => cell.value)
+    .join(" ");
+}
+
+function workbookHasCoreExperienceTrigger(workbook, label) {
+  const trigger = coreExperienceTrigger(label);
+  if (!trigger) return false;
+  const cells = Array.isArray(workbook?.cells) ? workbook.cells : [];
+  return cells.some((cell) => {
+    const value = String(cell.value || "");
+    if (!trigger.pattern.test(value)) return false;
+    const context = normaliseSearchText(nearbyCellText(cells, cell));
+    return trigger.area === "drawing" ? /\bdrawing\b/.test(context) : /\bportfolio\b/.test(context);
+  });
+}
+
+function removeUnsupportedCoreExperiences(result, workbook) {
+  if (!Array.isArray(result?.units)) return result;
+  result.units.forEach((unit) => {
+    if (!Array.isArray(unit.cards)) return;
+    unit.cards = unit.cards.filter((card) => {
+      if (card?.type !== "coreExperiences") return true;
+      return workbookHasCoreExperienceTrigger(workbook, card.label);
+    });
+  });
+  return result;
+}
+
 function extractJsonText(data) {
   return data?.choices?.[0]?.message?.content || "";
 }
@@ -224,11 +280,25 @@ async function callOpenAI(context) {
           role: "system",
           content: [
             "You map uploaded 2YIP spreadsheet text into Weave curriculum planning data.",
+            "Your priority is reliability, not completeness. A missing mapping is better than a wrong mapping.",
             "Detect real lower secondary art units, their Sec/Term/Week placement, lesson duration, performance task, and planning cards.",
+            "For unit titles, copy the exact unit title from the spreadsheet. Do not paraphrase, summarise, translate, title-case, rename, or improve it. Only trim extra whitespace.",
             "Use only labels from allowedCards. Do not invent card labels.",
-            "If a field is ambiguous, leave it empty and add a concise warning.",
-            "For context or elective learning experience free text, use the matching card label and put the teacher text in value.",
-            "Keep every string concise. Reasons and warnings must be one short phrase.",
+            "For Big Ideas: there are only three official Big Ideas.",
+            "Map a Big Idea only when there is explicit evidence from the spreadsheet, such as an exact phrase, checkbox, or very close paraphrase.",
+            "Do not infer a Big Idea only from a theme, unit title, or performance task.",
+            "If Big Idea evidence is weak, do not add the Big Idea card. Add a warning instead.",
+            "False Big Idea mappings are worse than missing Big Idea mappings.",
+            "For Learning Outcomes and Artistic Processes: prefer explicit LO/AP codes or close official wording.",
+            "Do not infer LOs or APs from general activity descriptions unless strongly supported.",
+            "For core learning experiences, only map Drawing cards when the spreadsheet explicitly contains Observe, Think, or Imagine in a drawing/core-experience context.",
+            "For core learning experiences, only map Portfolio cards when the spreadsheet explicitly contains Document, Curate, Reflect, or (Re)present/Re-present/Represent in a portfolio/core-experience context.",
+            "Never infer core learning experiences from themes, activities, assessment evidence, or general lesson descriptions.",
+            "For free-text areas: preserve teacher-entered text as value.",
+            "Use the closest existing Weave card label only when the category is clear.",
+            "If unclear, leave unmapped and add a warning.",
+            "If any field is ambiguous, leave it empty and add a concise warning.",
+            "Do not add source evidence fields. Keep every string concise. Reasons and warnings must be one short phrase.",
             "Do not create detailed lesson activities.",
             "Return structured JSON only.",
           ].join(" "),
@@ -269,7 +339,7 @@ module.exports = async function handler(req, res) {
       json(res, 400, { error: "No readable spreadsheet text was found." });
       return;
     }
-    const result = await callOpenAI(context);
+    const result = removeUnsupportedCoreExperiences(await callOpenAI(context), context.workbook);
     json(res, 200, {
       planTitle: result.planTitle || "",
       units: Array.isArray(result.units) ? result.units : [],
