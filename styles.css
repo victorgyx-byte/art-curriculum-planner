@@ -869,6 +869,49 @@ button:disabled {
   color: #9b3d2e;
 }
 
+.import-mode-toggle {
+  display: grid;
+  gap: 8px;
+}
+
+.import-mode-toggle label {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 10px;
+  align-items: start;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px;
+  background: rgba(255, 253, 250, 0.9);
+  cursor: pointer;
+}
+
+.import-mode-toggle label:has(input:checked) {
+  border-color: rgba(47, 111, 115, 0.45);
+  background: rgba(219, 238, 237, 0.55);
+}
+
+.import-mode-toggle input {
+  margin-top: 4px;
+}
+
+.import-mode-toggle span {
+  display: grid;
+  gap: 2px;
+}
+
+.import-mode-toggle strong {
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.import-mode-toggle small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 750;
+  line-height: 1.35;
+}
+
 .import-preview-body {
   display: grid;
   gap: 12px;

@@ -1489,6 +1489,7 @@ let unitSetupOpen = false;
 let planSetupOpen = false;
 let import2YipOpen = false;
 let pending2YipImport = null;
+let import2YipMode = "standard";
 let workspaceSetupOpen = false;
 let cloudSaveTimer = null;
 let authStateTimer = null;
@@ -1693,6 +1694,8 @@ const els = {
   import2YipStatus: document.querySelector("#import-2yip-status"),
   import2YipBody: document.querySelector("#import-2yip-body"),
   cancelImport2Yip: document.querySelector("#cancel-import-2yip"),
+  import2YipModes: document.querySelectorAll('input[name="import-2yip-mode"]'),
+  suggestImportMappings: document.querySelector("#suggest-import-mappings"),
   confirmImport2Yip: document.querySelector("#confirm-import-2yip"),
   workspaceSetupModal: document.querySelector("#workspace-setup-modal"),
   newWorkspaceName: document.querySelector("#new-workspace-name"),
@@ -4998,7 +5001,14 @@ function render2YipImport() {
   if (!els.import2YipModal) return;
   els.import2YipModal.classList.toggle("hidden", !import2YipOpen);
   if (!import2YipOpen) return;
+  els.import2YipModes?.forEach((input) => {
+    input.checked = input.value === import2YipMode;
+  });
   if (els.confirmImport2Yip) els.confirmImport2Yip.disabled = !pending2YipImport?.units?.length;
+  if (els.suggestImportMappings) {
+    els.suggestImportMappings.disabled = !pending2YipImport?.workbookSnapshot || Boolean(pending2YipImport?.aiBusy);
+    els.suggestImportMappings.textContent = pending2YipImport?.aiBusy ? "Mapping..." : "Run AI-Assisted Mapping";
+  }
   if (!pending2YipImport) {
     if (els.import2YipStatus) {
       els.import2YipStatus.textContent = "Choose the official 2YIP Excel template to preview the import.";
@@ -5009,15 +5019,17 @@ function render2YipImport() {
   }
   const warningCount = pending2YipImport.units.reduce((total, unit) => total + unit.warnings.length, 0);
   if (els.import2YipStatus) {
-    els.import2YipStatus.textContent = warningCount
-      ? `${pending2YipImport.units.length} units detected. ${warningCount} items need review.`
-      : `${pending2YipImport.units.length} units detected. Ready to create a draft plan.`;
+    els.import2YipStatus.textContent = pending2YipImport.aiStatus
+      || (warningCount
+        ? `${pending2YipImport.units.length} units detected. ${warningCount} items need review.`
+        : `${pending2YipImport.units.length} units detected. Ready to create a draft plan.`);
     els.import2YipStatus.classList.toggle("warning", Boolean(warningCount));
   }
   if (!els.import2YipBody) return;
   els.import2YipBody.innerHTML = `
     <div class="import-summary">
       <span>${escapeHtml(pending2YipImport.planTitle)}</span>
+      <span>${pending2YipImport.importMethod === "ai" ? "AI-assisted mapping" : "Standard mapping"}</span>
       <span>${pending2YipImport.units.length} units</span>
       <span>${pending2YipImport.units.reduce((total, unit) => total + unit.lessonCount, 0)} lesson placeholders</span>
       <span>${pending2YipImport.units.filter((unit) => unit.inTimeline).length} placed on 2YIP</span>
@@ -5049,6 +5061,184 @@ function importPreviewUnitHtml(unit) {
   `;
 }
 
+function validImportSuggestion(suggestion) {
+  if (!suggestion?.type || !suggestion?.label) return false;
+  const label = normalizeImportCardLabel(suggestion.type, suggestion.label);
+  if (suggestion.type === "learningExperienceText") return label === "Elective Learning Experience";
+  return libraryItemsByType(suggestion.type).includes(label);
+}
+
+function normalizeImportCardLabel(type, label) {
+  if (["bigIdeas", "learningOutcomes", "artisticProcesses", "coreExperiences", "assessment"].includes(type)) {
+    return importKnownLabel(type, label) || normalizePlanningLabel(label || "", type);
+  }
+  return normalizePlanningLabel(label || "", type);
+}
+
+function importAllowedCardLabels() {
+  const types = [
+    "bigIdeas",
+    "learningOutcomes",
+    "media",
+    "context",
+    "artisticProcesses",
+    "visualQualities",
+    "coreExperiences",
+    "learningExperienceText",
+    "pedagogy",
+    "assessment",
+  ];
+  return Object.fromEntries(types.map((type) => [type, libraryItemsByType(type)]));
+}
+
+function validImportCardType(type) {
+  return Object.prototype.hasOwnProperty.call(importAllowedCardLabels(), type);
+}
+
+function placementFromAiUnit(aiUnit, warnings) {
+  const year = Number(aiUnit?.year);
+  const startTerm = Number(aiUnit?.startTerm);
+  const startWeek = Number(aiUnit?.startWeek);
+  const endTerm = Number(aiUnit?.endTerm || startTerm);
+  const endWeek = Number(aiUnit?.endWeek || startWeek);
+  const lessonCountGuess = Math.max(1, Number(aiUnit?.lessonCount) || 1);
+  const valid = year >= 1 && year <= 2
+    && startTerm >= 1 && startTerm <= 4
+    && startWeek >= 1 && startWeek <= 10
+    && endTerm >= 1 && endTerm <= 4
+    && endWeek >= 1 && endWeek <= 10;
+  if (!valid) {
+    warnings.push("AI placement needs review: Sec/Term/Week could not be mapped confidently.");
+    return { inTimeline: false, start: 1, lessonCount: lessonCountGuess, placementLabel: "Needs review" };
+  }
+  const startLocal = (startTerm - 1) * TERM_WEEK_COUNT + startWeek;
+  const endLocal = (endTerm - 1) * TERM_WEEK_COUNT + endWeek;
+  const lessonCount = Math.max(1, endLocal >= startLocal ? endLocal - startLocal + 1 : lessonCountGuess);
+  if (endLocal < startLocal) warnings.push("AI placement needs review: end week appears before start week.");
+  return {
+    inTimeline: true,
+    start: timelineYearStart(year) + startLocal - 1,
+    lessonCount,
+    placementLabel: `Sec ${year} · T${startTerm}W${startWeek}${endTerm && endWeek ? `-T${endTerm}W${endWeek}` : ""}`,
+  };
+}
+
+function importEntryFromAiUnit(aiUnit, index) {
+  const warnings = Array.isArray(aiUnit?.warnings) ? aiUnit.warnings.filter(Boolean) : [];
+  const placement = placementFromAiUnit(aiUnit, warnings);
+  const title = cleanTemplateText(aiUnit?.title) || `AI Mapped Unit ${index + 1}`;
+  const unit = blankUnit({
+    title,
+    artTask: cleanTemplateText(aiUnit?.artTask),
+    start: placement.start,
+    duration: placement.lessonCount,
+    inTimeline: placement.inTimeline,
+    lessons: [],
+  });
+  const importedCards = [];
+  (Array.isArray(aiUnit?.cards) ? aiUnit.cards : []).forEach((card) => {
+    const type = card?.type;
+    if (!validImportCardType(type)) return;
+    const label = normalizeImportCardLabel(type, cleanTemplateText(card.label));
+    const value = cleanTemplateText(card.value);
+    const candidate = type === "learningExperienceText"
+      ? { type, label: "Elective Learning Experience", value }
+      : { type, label, value };
+    if (!validImportSuggestion(candidate)) return;
+    const importedCard = addImportedCard(unit, candidate);
+    if (importedCard) importedCards.push(importedCard);
+  });
+  const assessment = aiUnit?.assessment || {};
+  const assessmentType = normalizePlanningLabel(cleanTemplateText(assessment.type), "assessment");
+  const assessmentTask = assessmentType && libraryItemsByType("assessment").includes(assessmentType)
+    ? blankAssessmentTask({
+      id: uid("assessment-task"),
+      title: cleanTemplateText(assessment.title) || `${title} Assessment`,
+      unitId: unit.id,
+      type: assessmentType,
+      learningOutcomes: assessmentUnitLearningOutcomes(unit),
+      evidence: cleanTemplateText(assessment.evidence) || unit.artTask || "",
+      strength: assessment.weighted ? "Major" : "Moderate",
+      weighted: Boolean(assessment.weighted),
+      weightedNote: cleanTemplateText(assessment.weightedNote),
+    })
+    : null;
+  if (assessmentTask) {
+    const assessmentCard = addImportedCard(unit, { type: "assessment", label: assessmentTask.type });
+    if (assessmentCard) importedCards.push(assessmentCard);
+  }
+  unit.lessons = Array.from({ length: placement.lessonCount }, () => createLesson(unit));
+  return {
+    slotIndex: Number(aiUnit?.slotIndex) || index + 1,
+    title: unit.title,
+    artTask: unit.artTask,
+    inTimeline: unit.inTimeline,
+    start: unit.start,
+    lessonCount: placement.lessonCount,
+    placementLabel: placement.placementLabel,
+    cards: importedCards,
+    warnings,
+    unit,
+    assessmentTask,
+  };
+}
+
+function buildAiImportRequest(snapshot) {
+  return {
+    workbook: snapshot,
+    allowedCards: importAllowedCardLabels(),
+  };
+}
+
+async function runAiAssistedImportMapping() {
+  if (!pending2YipImport?.workbookSnapshot) return;
+  if (window.location.protocol === "file:") {
+    pending2YipImport.aiStatus = "Open the online or local server version to use AI-assisted import.";
+    render2YipImport();
+    return;
+  }
+  if (!cloud.user) {
+    pending2YipImport.aiStatus = "Sign in online before using AI-assisted import.";
+    render2YipImport();
+    return;
+  }
+  pending2YipImport.aiBusy = true;
+  pending2YipImport.aiStatus = "AI is reading the workbook and suggesting a mapping...";
+  render2YipImport();
+  try {
+    const token = await cloud.user.getIdToken();
+    const response = await fetch("/api/suggest-import-mappings", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(buildAiImportRequest(pending2YipImport.workbookSnapshot)),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || "AI-assisted mapping failed.");
+    const units = (Array.isArray(payload.units) ? payload.units : [])
+      .map(importEntryFromAiUnit)
+      .filter(Boolean);
+    pending2YipImport = {
+      planTitle: payload.planTitle || `AI Mapped 2YIP - ${pending2YipImport.workbookSnapshot.fileName.replace(/\.(xlsx|xls)$/i, "").replace(/[_-]+/g, " ")}`,
+      sheetName: pending2YipImport.workbookSnapshot.sheetName,
+      workbookSnapshot: pending2YipImport.workbookSnapshot,
+      importMethod: "ai",
+      aiStatus: units.length
+        ? "AI-assisted mapping ready. Please review before creating the draft."
+        : "AI could not detect real units. Try the standard importer or review the spreadsheet.",
+      units,
+    };
+  } catch (error) {
+    console.warn("AI-assisted import failed", error);
+    pending2YipImport.aiStatus = error.message || "AI-assisted mapping failed.";
+  } finally {
+    if (pending2YipImport) pending2YipImport.aiBusy = false;
+    render2YipImport();
+  }
+}
+
 function spreadsheetParserReady() {
   return Boolean(window.XLSX?.read && window.XLSX?.utils);
 }
@@ -5070,6 +5260,38 @@ function loadSpreadsheetParser() {
     script.onerror = () => reject(new Error("Spreadsheet parser not loaded. Run npm install, rebuild, and deploy the latest app."));
     document.head.append(script);
   });
+}
+
+function workbookImportSnapshot(workbook, fileName = "Imported 2YIP") {
+  const sheetName = workbook.SheetNames[0];
+  const sheet = workbook.Sheets[sheetName];
+  const range = sheet?.["!ref"] ? window.XLSX.utils.decode_range(sheet["!ref"]) : null;
+  const cells = [];
+  if (range) {
+    for (let row = range.s.r; row <= range.e.r; row += 1) {
+      for (let col = range.s.c; col <= range.e.c; col += 1) {
+        const address = window.XLSX.utils.encode_cell({ r: row, c: col });
+        const cell = sheet[address];
+        const value = cleanTemplateText(cell?.w ?? cell?.v);
+        if (!value) continue;
+        cells.push({
+          address,
+          row: row + 1,
+          col: col + 1,
+          value,
+        });
+      }
+    }
+  }
+  return {
+    fileName,
+    sheetName,
+    cells: cells.slice(0, 900),
+    merges: (sheet?.["!merges"] || []).slice(0, 120).map((rangeEntry) => ({
+      start: window.XLSX.utils.encode_cell(rangeEntry.s),
+      end: window.XLSX.utils.encode_cell(rangeEntry.e),
+    })),
+  };
 }
 
 const importTemplateUnitSlots = Array.from({ length: 10 }, (_, index) => ({
@@ -5247,7 +5469,7 @@ function addImportedCard(unit, payload) {
   return card;
 }
 
-function parse2YipWorkbook(workbook, fileName = "Imported 2YIP") {
+function parse2YipWorkbook(workbook, fileName = "Imported 2YIP", snapshot = null) {
   const sheetName = workbook.SheetNames[0];
   const sheet = workbook.Sheets[sheetName];
   const planTitle = `Imported 2YIP - ${fileName.replace(/\.(xlsx|xls)$/i, "").replace(/[_-]+/g, " ")}`;
@@ -5257,6 +5479,8 @@ function parse2YipWorkbook(workbook, fileName = "Imported 2YIP") {
   return {
     planTitle,
     sheetName,
+    workbookSnapshot: snapshot,
+    importMethod: "standard",
     units,
   };
 }
@@ -5414,8 +5638,13 @@ async function read2YipImportFile(file) {
     await loadSpreadsheetParser();
     const buffer = await file.arrayBuffer();
     const workbook = window.XLSX.read(buffer, { type: "array", cellDates: false });
-    const parsed = parse2YipWorkbook(workbook, file.name);
+    const snapshot = workbookImportSnapshot(workbook, file.name);
+    const parsed = parse2YipWorkbook(workbook, file.name, snapshot);
     pending2YipImport = parsed;
+    if (import2YipMode === "ai") {
+      await runAiAssistedImportMapping();
+      return;
+    }
     if (!parsed.units.length && els.import2YipStatus) {
       els.import2YipStatus.textContent = "No real units were detected. This looks like a blank template.";
       els.import2YipStatus.classList.add("warning");
@@ -11008,7 +11237,20 @@ els.import2YipFile?.addEventListener("change", (event) => {
   read2YipImportFile(event.target.files?.[0]);
 });
 
+els.import2YipModes?.forEach((input) => {
+  input.addEventListener("change", async (event) => {
+    import2YipMode = event.target.value === "ai" ? "ai" : "standard";
+    if (import2YipMode === "ai" && pending2YipImport?.workbookSnapshot) {
+      await runAiAssistedImportMapping();
+    } else {
+      render2YipImport();
+    }
+  });
+});
+
 els.cancelImport2Yip?.addEventListener("click", close2YipImport);
+
+els.suggestImportMappings?.addEventListener("click", runAiAssistedImportMapping);
 
 els.confirmImport2Yip?.addEventListener("click", confirm2YipImport);
 

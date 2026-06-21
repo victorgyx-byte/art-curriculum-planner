@@ -714,10 +714,26 @@
         <div>
           <p class="eyebrow">Import</p>
           <h2 id="import-2yip-title">Import 2YIP Template</h2>
-          <p class="modal-helper">Upload the official 2YIP Excel template. Weave will create a new draft plan and keep your current plans untouched.</p>
+          <p class="modal-helper">Upload a 2YIP Excel file. Standard import uses the official template structure; AI-assisted import helps with edited templates. Both create a new draft plan and keep current plans untouched.</p>
         </div>
 
         <label class="field-label" for="import-2yip-file">Excel Template</label>
+        <div class="import-mode-toggle" role="radiogroup" aria-label="Import method">
+          <label>
+            <input type="radio" name="import-2yip-mode" value="standard" checked />
+            <span>
+              <strong>Standard template import</strong>
+              <small>Use this when the official template structure has not been changed.</small>
+            </span>
+          </label>
+          <label>
+            <input type="radio" name="import-2yip-mode" value="ai" />
+            <span>
+              <strong>AI-assisted import</strong>
+              <small>Use this when teachers edited the template layout or entered information in unexpected places.</small>
+            </span>
+          </label>
+        </div>
         <input id="import-2yip-file" class="text-input" type="file" accept=".xlsx,.xls" />
 
         <div id="import-2yip-status" class="import-status" aria-live="polite"></div>
@@ -725,6 +741,7 @@
 
         <div class="unit-setup-actions">
           <button id="cancel-import-2yip" class="ghost-button" type="button">Cancel</button>
+          <button id="suggest-import-mappings" class="ghost-button" type="button" disabled>Run AI-Assisted Mapping</button>
           <button id="confirm-import-2yip" class="primary-button" type="button" disabled>Create Draft 2YIP</button>
         </div>
       </section>
