@@ -88,7 +88,7 @@ function importMappingSchema() {
       units: {
         type: "array",
         minItems: 0,
-        maxItems: 12,
+        maxItems: 10,
         items: {
           type: "object",
           additionalProperties: false,
@@ -108,8 +108,8 @@ function importMappingSchema() {
           ],
           properties: {
             slotIndex: { type: "number" },
-            title: { type: "string" },
-            artTask: { type: "string" },
+            title: { type: "string", maxLength: 140 },
+            artTask: { type: "string", maxLength: 700 },
             year: { type: "number" },
             startTerm: { type: "number" },
             startWeek: { type: "number" },
@@ -119,16 +119,16 @@ function importMappingSchema() {
             cards: {
               type: "array",
               minItems: 0,
-              maxItems: 32,
+              maxItems: 24,
               items: {
                 type: "object",
                 additionalProperties: false,
                 required: ["type", "label", "value", "reason"],
                 properties: {
                   type: { type: "string", enum: cardTypes },
-                  label: { type: "string" },
-                  value: { type: "string" },
-                  reason: { type: "string" },
+                  label: { type: "string", maxLength: 180 },
+                  value: { type: "string", maxLength: 900 },
+                  reason: { type: "string", maxLength: 120 },
                 },
               },
             },
@@ -137,18 +137,18 @@ function importMappingSchema() {
               additionalProperties: false,
               required: ["title", "type", "evidence", "weighted", "weightedNote"],
               properties: {
-                title: { type: "string" },
-                type: { type: "string" },
-                evidence: { type: "string" },
+                title: { type: "string", maxLength: 140 },
+                type: { type: "string", maxLength: 80 },
+                evidence: { type: "string", maxLength: 800 },
                 weighted: { type: "boolean" },
-                weightedNote: { type: "string" },
+                weightedNote: { type: "string", maxLength: 120 },
               },
             },
             warnings: {
               type: "array",
               minItems: 0,
               maxItems: 8,
-              items: { type: "string" },
+              items: { type: "string", maxLength: 180 },
             },
           },
         },
@@ -163,11 +163,11 @@ function compactWorkbook(body) {
   return {
     fileName: String(workbook.fileName || "Imported 2YIP").slice(0, 160),
     sheetName: String(workbook.sheetName || "Sheet1").slice(0, 120),
-    cells: cells.slice(0, 900).map((cell) => ({
+    cells: cells.slice(0, 700).map((cell) => ({
       address: String(cell.address || ""),
       row: Number(cell.row) || 0,
       col: Number(cell.col) || 0,
-      value: String(cell.value || "").slice(0, 1200),
+      value: String(cell.value || "").slice(0, 700),
     })),
     merges: Array.isArray(workbook.merges) ? workbook.merges.slice(0, 120) : [],
   };
@@ -187,6 +187,17 @@ function extractJsonText(data) {
   return data?.choices?.[0]?.message?.content || "";
 }
 
+function parseOpenAiJson(text) {
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    if (/unterminated string|unexpected end/i.test(error.message || "")) {
+      throw Object.assign(new Error("AI mapping response was cut off. Try again, or use Standard template import for this file."), { status: 502 });
+    }
+    throw Object.assign(new Error(`AI returned unreadable mapping JSON: ${error.message}`), { status: 502 });
+  }
+}
+
 async function callOpenAI(context) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw Object.assign(new Error("Server is missing OPENAI_API_KEY."), { status: 500 });
@@ -199,7 +210,7 @@ async function callOpenAI(context) {
     body: JSON.stringify({
       model: DEFAULT_MODEL,
       temperature: 0.1,
-      max_completion_tokens: 4200,
+      max_completion_tokens: 9000,
       response_format: {
         type: "json_schema",
         json_schema: {
@@ -217,6 +228,7 @@ async function callOpenAI(context) {
             "Use only labels from allowedCards. Do not invent card labels.",
             "If a field is ambiguous, leave it empty and add a concise warning.",
             "For context or elective learning experience free text, use the matching card label and put the teacher text in value.",
+            "Keep every string concise. Reasons and warnings must be one short phrase.",
             "Do not create detailed lesson activities.",
             "Return structured JSON only.",
           ].join(" "),
@@ -234,7 +246,7 @@ async function callOpenAI(context) {
   }
   const text = extractJsonText(data);
   if (!text) throw new Error("AI returned an empty mapping.");
-  return JSON.parse(text);
+  return parseOpenAiJson(text);
 }
 
 module.exports = async function handler(req, res) {
