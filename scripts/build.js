@@ -32,6 +32,13 @@ files.forEach((file) => {
   if (fs.existsSync(source)) fs.copyFileSync(source, path.join(outDir, file));
 });
 
+const vendorDir = path.join(outDir, "vendor");
+fs.mkdirSync(vendorDir, { recursive: true });
+const xlsxSource = path.join(root, "node_modules", "xlsx", "dist", "xlsx.full.min.js");
+if (fs.existsSync(xlsxSource)) {
+  fs.copyFileSync(xlsxSource, path.join(vendorDir, "xlsx.full.min.js"));
+}
+
 fs.writeFileSync(path.join(outDir, "firebase-config.js"), firebaseConfig);
 fs.writeFileSync(path.join(root, "firebase-config.js"), firebaseConfig);
 

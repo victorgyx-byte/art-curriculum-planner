@@ -1487,6 +1487,8 @@ let timelineClick = { unitId: "", at: 0 };
 let boardHeaderEditing = { title: false, performanceTask: false };
 let unitSetupOpen = false;
 let planSetupOpen = false;
+let import2YipOpen = false;
+let pending2YipImport = null;
 let workspaceSetupOpen = false;
 let cloudSaveTimer = null;
 let authStateTimer = null;
@@ -1686,6 +1688,12 @@ const els = {
   newPlanTeam: document.querySelector("#new-plan-team"),
   cancelPlanSetup: document.querySelector("#cancel-plan-setup"),
   createPlan: document.querySelector("#create-plan"),
+  import2YipModal: document.querySelector("#import-2yip-modal"),
+  import2YipFile: document.querySelector("#import-2yip-file"),
+  import2YipStatus: document.querySelector("#import-2yip-status"),
+  import2YipBody: document.querySelector("#import-2yip-body"),
+  cancelImport2Yip: document.querySelector("#cancel-import-2yip"),
+  confirmImport2Yip: document.querySelector("#confirm-import-2yip"),
   workspaceSetupModal: document.querySelector("#workspace-setup-modal"),
   newWorkspaceName: document.querySelector("#new-workspace-name"),
   cancelWorkspaceSetup: document.querySelector("#cancel-workspace-setup"),
@@ -4463,6 +4471,7 @@ function render() {
   renderUnitList();
   renderUnitSetup();
   renderPlanSetup();
+  render2YipImport();
   renderWorkspaceSetup();
   renderLibrary();
   renderTimelinePlanningControls();
@@ -4705,6 +4714,13 @@ function renderWorkspaceHome() {
     newPlanCard.innerHTML = `<span class="workspace-card-eyebrow">New 2YIP</span><strong>Create 2YIP Plan</strong><small>Title and subject</small>`;
     newPlanCard.addEventListener("click", openPlanSetup);
     els.planCardGrid.append(newPlanCard);
+
+    const importPlanCard = document.createElement("button");
+    importPlanCard.className = "plan-card create-card";
+    importPlanCard.type = "button";
+    importPlanCard.innerHTML = `<span class="workspace-card-eyebrow">Import</span><strong>Import 2YIP Template</strong><small>Create a draft from Excel</small>`;
+    importPlanCard.addEventListener("click", open2YipImport);
+    els.planCardGrid.append(importPlanCard);
   }
   els.planCardGrid.querySelectorAll(".open-plan-button").forEach((button) => {
     button.addEventListener("click", () => openWorkspacePlan(button.dataset.planId));
@@ -4959,6 +4975,499 @@ async function openWorkspacePlan(planId) {
 function renderPlanSetup() {
   if (!els.planSetupModal) return;
   els.planSetupModal.classList.toggle("hidden", !planSetupOpen);
+}
+
+function open2YipImport() {
+  if (!canManageActiveWorkspace()) {
+    renderCloudStatus("Only the workspace owner can import plans", "Sign out");
+    return;
+  }
+  import2YipOpen = true;
+  pending2YipImport = null;
+  render();
+}
+
+function close2YipImport() {
+  import2YipOpen = false;
+  pending2YipImport = null;
+  if (els.import2YipFile) els.import2YipFile.value = "";
+  render();
+}
+
+function render2YipImport() {
+  if (!els.import2YipModal) return;
+  els.import2YipModal.classList.toggle("hidden", !import2YipOpen);
+  if (!import2YipOpen) return;
+  if (els.confirmImport2Yip) els.confirmImport2Yip.disabled = !pending2YipImport?.units?.length;
+  if (!pending2YipImport) {
+    if (els.import2YipStatus) {
+      els.import2YipStatus.textContent = "Choose the official 2YIP Excel template to preview the import.";
+      els.import2YipStatus.classList.remove("warning");
+    }
+    if (els.import2YipBody) els.import2YipBody.innerHTML = "";
+    return;
+  }
+  const warningCount = pending2YipImport.units.reduce((total, unit) => total + unit.warnings.length, 0);
+  if (els.import2YipStatus) {
+    els.import2YipStatus.textContent = warningCount
+      ? `${pending2YipImport.units.length} units detected. ${warningCount} items need review.`
+      : `${pending2YipImport.units.length} units detected. Ready to create a draft plan.`;
+    els.import2YipStatus.classList.toggle("warning", Boolean(warningCount));
+  }
+  if (!els.import2YipBody) return;
+  els.import2YipBody.innerHTML = `
+    <div class="import-summary">
+      <span>${escapeHtml(pending2YipImport.planTitle)}</span>
+      <span>${pending2YipImport.units.length} units</span>
+      <span>${pending2YipImport.units.reduce((total, unit) => total + unit.lessonCount, 0)} lesson placeholders</span>
+      <span>${pending2YipImport.units.filter((unit) => unit.inTimeline).length} placed on 2YIP</span>
+    </div>
+    <div class="import-preview-list">
+      ${pending2YipImport.units.map(importPreviewUnitHtml).join("")}
+    </div>
+  `;
+}
+
+function importPreviewUnitHtml(unit) {
+  const chips = [
+    ...unit.cards.slice(0, 10).map((card) => card.label),
+    unit.cards.length > 10 ? `+${unit.cards.length - 10} more cards` : "",
+  ].filter(Boolean);
+  return `
+    <article class="import-preview-unit ${unit.warnings.length ? "needs-review" : ""}">
+      <div>
+        <h3>${escapeHtml(unit.title)}</h3>
+        <div class="import-preview-meta">
+          <span>${escapeHtml(unit.inTimeline ? unit.placementLabel : "Not in 2YIP")}</span>
+          <span>${unit.lessonCount} ${unit.lessonCount === 1 ? "lesson" : "lessons"}</span>
+          <span>${unit.artTask ? "Performance task detected" : "No performance task"}</span>
+        </div>
+      </div>
+      ${chips.length ? `<div class="import-preview-chips">${chips.map((chip) => `<span class="import-chip">${escapeHtml(chip)}</span>`).join("")}</div>` : ""}
+      ${unit.warnings.length ? `<ul class="import-warning-list">${unit.warnings.map((warning) => `<li>${escapeHtml(warning)}</li>`).join("")}</ul>` : ""}
+    </article>
+  `;
+}
+
+function spreadsheetParserReady() {
+  return Boolean(window.XLSX?.read && window.XLSX?.utils);
+}
+
+function loadSpreadsheetParser() {
+  if (spreadsheetParserReady()) return Promise.resolve(true);
+  return new Promise((resolve, reject) => {
+    const existing = document.querySelector('script[data-weave-xlsx="true"]');
+    if (existing) {
+      existing.addEventListener("load", () => resolve(true), { once: true });
+      existing.addEventListener("error", () => reject(new Error("Spreadsheet parser not loaded.")), { once: true });
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = "vendor/xlsx.full.min.js";
+    script.async = true;
+    script.dataset.weaveXlsx = "true";
+    script.onload = () => resolve(true);
+    script.onerror = () => reject(new Error("Spreadsheet parser not loaded. Run npm install, rebuild, and deploy the latest app."));
+    document.head.append(script);
+  });
+}
+
+const importTemplateUnitSlots = Array.from({ length: 10 }, (_, index) => ({
+  index: index + 1,
+  col: 4 + index * 2,
+}));
+
+const importTemplateRows = {
+  sec: 1,
+  duration: 2,
+  title: 7,
+  artTask: 8,
+  bigIdeas: [9, 10, 11],
+  learningOutcomes: [12, 13, 14, 15, 16, 17],
+  media: 18,
+  artisticProcesses: 19,
+  visualQualities: 20,
+  context: 21,
+  drawingCore: [23, 24, 25, 26],
+  portfolioCore: [28, 29, 30, 31],
+  electiveLearning: 32,
+  pedagogy: [33, 34, 35, 36],
+  pedagogyOther: 37,
+  assessmentType: 38,
+  assessmentPercent: 39,
+  assessmentCriteria: 40,
+};
+
+function sheetCellText(sheet, row, col) {
+  const direct = sheet[window.XLSX.utils.encode_cell({ r: row - 1, c: col - 1 })];
+  if (direct?.v !== undefined && direct.v !== null) return direct.v;
+  const merge = (sheet["!merges"] || []).find((range) =>
+    row - 1 >= range.s.r && row - 1 <= range.e.r && col - 1 >= range.s.c && col - 1 <= range.e.c,
+  );
+  if (!merge) return "";
+  const merged = sheet[window.XLSX.utils.encode_cell({ r: merge.s.r, c: merge.s.c })];
+  return merged?.v ?? "";
+}
+
+function cleanTemplateText(value) {
+  const text = String(value ?? "")
+    .replace(/\r/g, "\n")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join("\n")
+    .trim();
+  if (!text) return "";
+  const compact = text.replace(/\s+/g, " ").trim();
+  if (/^false$/i.test(compact)) return "";
+  if (/^true$/i.test(compact)) return "";
+  if (/^unit plan\s*\d+$/i.test(compact)) return "";
+  if (/^if others:\s*\(please state\)$/i.test(compact)) return "";
+  if (/^x%$/i.test(compact)) return "";
+  if (/^t\s*x\s*w\s*x\s*-\s*t\s*x\s*w\s*x$/i.test(compact)) return "";
+  if (/^t\d+w\s*x\s*-\s*t\s*x\s*w\s*x$/i.test(compact)) return "";
+  return text;
+}
+
+function templateChecked(value) {
+  if (value === true) return true;
+  if (value === false || value === undefined || value === null) return false;
+  const text = String(value).trim().toLowerCase();
+  return ["true", "yes", "y", "x", "✓", "1", "checked"].includes(text);
+}
+
+function parseImportPlacement(secRaw, durationRaw, warnings) {
+  const secText = cleanTemplateText(secRaw);
+  const durationText = cleanTemplateText(durationRaw);
+  const combined = `${secText} ${durationText}`;
+  const secMatch = combined.match(/sec(?:ondary)?\s*([12])/i);
+  const year = Number(secMatch?.[1] || 0);
+  const weekMatches = [...combined.matchAll(/T\s*(\d+)\s*W\s*(\d+)/gi)]
+    .map((match) => ({ term: Number(match[1]), week: Number(match[2]) }))
+    .filter((match) => match.term >= 1 && match.term <= 4 && match.week >= 1 && match.week <= 10);
+  if (!year || !weekMatches.length) {
+    warnings.push("Placement needs review: duration or Sec level could not be read.");
+    return { inTimeline: false, start: 1, lessonCount: 1, placementLabel: "Needs review" };
+  }
+  const startMatch = weekMatches[0];
+  const endMatch = weekMatches[1] || startMatch;
+  const startLocal = (startMatch.term - 1) * TERM_WEEK_COUNT + startMatch.week;
+  const endLocal = (endMatch.term - 1) * TERM_WEEK_COUNT + endMatch.week;
+  const lessonCount = endLocal >= startLocal ? endLocal - startLocal + 1 : 1;
+  if (endLocal < startLocal) warnings.push("Placement needs review: end week appears before start week.");
+  const start = timelineYearStart(year) + startLocal - 1;
+  const placementLabel = `Sec ${year} · T${startMatch.term}W${startMatch.week}${weekMatches[1] ? `-T${endMatch.term}W${endMatch.week}` : ""}`;
+  return { inTimeline: true, start, lessonCount, placementLabel };
+}
+
+function importRowValue(sheet, row, col) {
+  return cleanTemplateText(sheetCellText(sheet, row, col)) || cleanTemplateText(sheetCellText(sheet, row, col + 1));
+}
+
+function importCheckboxLabel(sheet, row, col) {
+  const checked = templateChecked(sheetCellText(sheet, row, col));
+  const label = importRowValue(sheet, row, col + 1);
+  return checked && label ? label : "";
+}
+
+function importKnownLabel(type, value) {
+  const text = cleanTemplateText(value);
+  if (!text) return "";
+  const normalized = text.replace(/\s+/g, " ").trim();
+  if (type === "bigIdeas") {
+    if (/helps.*see.*new ways/i.test(normalized)) return "Art helps us to see in new ways.";
+    if (/tells.*stories/i.test(normalized)) return "Art tells stories about our world.";
+    if (/influences.*way.*live/i.test(normalized)) return "Art influences the way we live.";
+  }
+  if (type === "learningOutcomes") {
+    const match = normalized.match(/L\s*O?\s*0?([1-6])/i);
+    const code = match ? `LO${match[1]}` : "";
+    return libraryItemsByType("learningOutcomes").find((label) => label.startsWith(`${code}:`)) || normalizePlanningLabel(normalized, type);
+  }
+  if (type === "artisticProcesses") {
+    const match = normalized.match(/AP\s*([1-4])|Artistic Process\s*([1-4])/i);
+    if (match) {
+      const code = `AP${match[1] || match[2]}:`;
+      return libraryItemsByType("artisticProcesses").find((label) => label.startsWith(code)) || "";
+    }
+    if (/observe|record|reflect/i.test(normalized)) return libraryItemsByType("artisticProcesses")[0] || "";
+    if (/gather|research/i.test(normalized)) return libraryItemsByType("artisticProcesses")[1] || "";
+    if (/generate|experiment/i.test(normalized)) return libraryItemsByType("artisticProcesses")[2] || "";
+    if (/create.*communicate/i.test(normalized)) return libraryItemsByType("artisticProcesses")[3] || "";
+  }
+  if (type === "coreExperiences") {
+    if (/observe/i.test(normalized)) return "Drawing: Observe";
+    if (/think/i.test(normalized)) return "Drawing: Think";
+    if (/imagine/i.test(normalized)) return "Drawing: Imagine";
+    if (/document/i.test(normalized)) return "Portfolio: Document";
+    if (/curate/i.test(normalized)) return "Portfolio: Curate";
+    if (/reflect/i.test(normalized)) return "Portfolio: Reflect";
+    if (/present/i.test(normalized)) return "Portfolio: (Re)present";
+  }
+  if (type === "assessment") return normalizePlanningLabel(normalized, "assessment");
+  const libraryMatch = libraryItemsByType(type).find((label) => label.toLowerCase() === normalized.toLowerCase());
+  return libraryMatch || normalized;
+}
+
+function importMatchesFromText(type, text) {
+  const normalized = cleanTemplateText(text);
+  if (!normalized) return [];
+  const lower = normalized.toLowerCase();
+  return libraryItemsByType(type).filter((label) => {
+    const labelLower = label.toLowerCase();
+    const shortCode = label.match(/^(AP\d|LO\d)/i)?.[1]?.toLowerCase();
+    return lower.includes(labelLower) || (shortCode && lower.includes(shortCode));
+  });
+}
+
+function addImportedCard(unit, payload) {
+  const normalizedPayload = {
+    ...payload,
+    label: normalizePlanningLabel(payload.label || "", payload.type),
+  };
+  if (!normalizedPayload.label) return null;
+  const incomingKey = cardKey(normalizedPayload);
+  const existing = unit.boardCards.find((card) => cardKey(card) === incomingKey);
+  if (existing && !allowsDuplicateBoardCard(normalizedPayload.type, normalizedPayload.label)) return existing;
+  const zone = zoneForType(normalizedPayload.type);
+  const textValue = normalizedPayload.value || "";
+  const card = {
+    id: uid("card"),
+    type: normalizedPayload.type,
+    label: normalizedPayload.label,
+    zone,
+    order: nextBoardOrder(unit, zone),
+    value: textValue,
+    confirmed: Boolean(textValue),
+    purpose: defaultPurpose(normalizedPayload),
+  };
+  unit.boardCards.push(card);
+  addLibraryItemToUnit(unit, normalizedPayload, { silent: true });
+  if (card.type === "meaningText") syncMeaningTextCardsToUnit(unit);
+  return card;
+}
+
+function parse2YipWorkbook(workbook, fileName = "Imported 2YIP") {
+  const sheetName = workbook.SheetNames[0];
+  const sheet = workbook.Sheets[sheetName];
+  const planTitle = `Imported 2YIP - ${fileName.replace(/\.(xlsx|xls)$/i, "").replace(/[_-]+/g, " ")}`;
+  const units = importTemplateUnitSlots
+    .map((slot) => parse2YipTemplateUnit(sheet, slot))
+    .filter(Boolean);
+  return {
+    planTitle,
+    sheetName,
+    units,
+  };
+}
+
+function parse2YipTemplateUnit(sheet, slot) {
+  const warnings = [];
+  const rawTitle = importRowValue(sheet, importTemplateRows.title, slot.col);
+  const artTask = importRowValue(sheet, importTemplateRows.artTask, slot.col);
+  const checkboxRowsHaveContent = [
+    ...importTemplateRows.bigIdeas,
+    ...importTemplateRows.learningOutcomes,
+    ...importTemplateRows.drawingCore,
+    ...importTemplateRows.portfolioCore,
+    ...importTemplateRows.pedagogy,
+  ].some((row) => importCheckboxLabel(sheet, row, slot.col));
+  const freeTextRowsHaveContent = [
+    importTemplateRows.media,
+    importTemplateRows.artisticProcesses,
+    importTemplateRows.visualQualities,
+    importTemplateRows.context,
+    importTemplateRows.electiveLearning,
+    importTemplateRows.pedagogyOther,
+    importTemplateRows.assessmentCriteria,
+  ].some((row) => importRowValue(sheet, row, slot.col));
+  if (!rawTitle && !artTask && !checkboxRowsHaveContent && !freeTextRowsHaveContent) return null;
+  const title = rawTitle || `Imported Unit ${slot.index}`;
+  if (!rawTitle) warnings.push("Unit title needs review.");
+  const placement = parseImportPlacement(
+    sheetCellText(sheet, importTemplateRows.sec, slot.col),
+    sheetCellText(sheet, importTemplateRows.duration, slot.col),
+    warnings,
+  );
+  const unit = blankUnit({
+    title,
+    artTask,
+    start: placement.start,
+    duration: placement.lessonCount,
+    inTimeline: placement.inTimeline,
+    lessons: [],
+  });
+  const importedCards = [];
+  const addCard = (type, label, value = "") => {
+    const card = addImportedCard(unit, { type, label, value });
+    if (card) importedCards.push(card);
+  };
+
+  importTemplateRows.bigIdeas.forEach((row) => {
+    const label = importKnownLabel("bigIdeas", importCheckboxLabel(sheet, row, slot.col));
+    if (label) addCard("bigIdeas", label);
+  });
+  importTemplateRows.learningOutcomes.forEach((row) => {
+    const label = importKnownLabel("learningOutcomes", importCheckboxLabel(sheet, row, slot.col));
+    if (label) addCard("learningOutcomes", label);
+  });
+
+  const mediaText = importRowValue(sheet, importTemplateRows.media, slot.col);
+  const mediaMatches = importMatchesFromText("media", mediaText);
+  mediaMatches.forEach((label) => addCard("media", label));
+  if (mediaText && !mediaMatches.length) warnings.push(`Media / Art Forms needs review: ${mediaText}`);
+
+  const processText = importRowValue(sheet, importTemplateRows.artisticProcesses, slot.col);
+  const processMatches = importMatchesFromText("artisticProcesses", processText);
+  processMatches.forEach((label) => addCard("artisticProcesses", label));
+  if (processText && !processMatches.length) warnings.push(`Artistic Processes needs review: ${processText}`);
+
+  const visualText = importRowValue(sheet, importTemplateRows.visualQualities, slot.col);
+  const visualMatches = importMatchesFromText("visualQualities", visualText);
+  visualMatches.forEach((label) => addCard("visualQualities", label));
+  if (visualText && !visualMatches.length) addCard("visualQualityText", "Others", visualText);
+
+  const contextText = importRowValue(sheet, importTemplateRows.context, slot.col);
+  if (contextText) addCard("context", "Topic / Subject Matter", contextText);
+
+  [...importTemplateRows.drawingCore, ...importTemplateRows.portfolioCore].forEach((row) => {
+    const label = importKnownLabel("coreExperiences", importCheckboxLabel(sheet, row, slot.col));
+    if (label) addCard("coreExperiences", label);
+  });
+
+  const electiveText = importRowValue(sheet, importTemplateRows.electiveLearning, slot.col);
+  if (electiveText) addCard("learningExperienceText", "Elective Learning Experience", electiveText);
+
+  importTemplateRows.pedagogy.forEach((row) => {
+    const rawLabel = importCheckboxLabel(sheet, row, slot.col);
+    const label = importKnownLabel("pedagogy", rawLabel);
+    if (label && libraryItemsByType("pedagogy").includes(label)) addCard("pedagogy", label);
+    else if (rawLabel) warnings.push(`Pedagogy needs review: ${rawLabel}`);
+  });
+  const pedagogyOther = importRowValue(sheet, importTemplateRows.pedagogyOther, slot.col);
+  if (pedagogyOther) {
+    unit.notes = [unit.notes, `Imported pedagogy note: ${pedagogyOther}`].filter(Boolean).join("\n\n");
+    warnings.push("Pedagogy free-text imported into unit notes.");
+  }
+
+  const assessmentType = importRowValue(sheet, importTemplateRows.assessmentType, slot.col);
+  const assessmentPercent = importRowValue(sheet, importTemplateRows.assessmentPercent, slot.col);
+  const assessmentCriteria = importRowValue(sheet, importTemplateRows.assessmentCriteria, slot.col);
+  const assessmentTask = importAssessmentFromTemplate(unit, assessmentType, assessmentPercent, assessmentCriteria);
+  if (assessmentTask) addCard("assessment", assessmentTask.type);
+
+  unit.lessons = Array.from({ length: placement.lessonCount }, () => createLesson(unit));
+  return {
+    slotIndex: slot.index,
+    title: unit.title,
+    artTask: unit.artTask,
+    inTimeline: unit.inTimeline,
+    start: unit.start,
+    lessonCount: placement.lessonCount,
+    placementLabel: placement.placementLabel,
+    cards: importedCards,
+    warnings,
+    unit,
+    assessmentTask,
+  };
+}
+
+function importAssessmentFromTemplate(unit, assessmentType, assessmentPercent, assessmentCriteria) {
+  const typeText = cleanTemplateText(assessmentType);
+  const percentText = cleanTemplateText(assessmentPercent);
+  const criteriaText = cleanTemplateText(assessmentCriteria);
+  if (!typeText && !percentText && !criteriaText) return null;
+  if (/^ungraded$/i.test(typeText) && !criteriaText) return null;
+  const isWeighted = /weighted|examination|exam/i.test(typeText) || Boolean(percentText);
+  const type = /self/i.test(typeText)
+    ? "Self Assessment"
+    : /peer/i.test(typeText)
+      ? "Peer Assessment"
+      : /diagnostic/i.test(typeText)
+        ? "Diagnostic Check"
+        : /formative|ungraded/i.test(typeText)
+          ? "Formative Assessment"
+          : "Summative Assessment";
+  const unitLos = assessmentUnitLearningOutcomes(unit);
+  return blankAssessmentTask({
+    id: uid("assessment-task"),
+    title: typeText && !/^weighted assessment$/i.test(typeText) ? typeText : `${unit.title} Assessment`,
+    unitId: unit.id,
+    type,
+    learningOutcomes: unitLos,
+    evidence: criteriaText || unit.artTask || "",
+    strength: isWeighted ? "Major" : "Moderate",
+    weighted: isWeighted,
+    weightedNote: percentText,
+  });
+}
+
+async function read2YipImportFile(file) {
+  if (!file) return;
+  pending2YipImport = null;
+  render2YipImport();
+  if (els.import2YipStatus) {
+    els.import2YipStatus.textContent = "Reading Excel template...";
+    els.import2YipStatus.classList.remove("warning");
+  }
+  try {
+    await loadSpreadsheetParser();
+    const buffer = await file.arrayBuffer();
+    const workbook = window.XLSX.read(buffer, { type: "array", cellDates: false });
+    const parsed = parse2YipWorkbook(workbook, file.name);
+    pending2YipImport = parsed;
+    if (!parsed.units.length && els.import2YipStatus) {
+      els.import2YipStatus.textContent = "No real units were detected. This looks like a blank template.";
+      els.import2YipStatus.classList.add("warning");
+    }
+    render2YipImport();
+  } catch (error) {
+    console.warn("2YIP import failed", error);
+    pending2YipImport = null;
+    if (els.import2YipStatus) {
+      els.import2YipStatus.textContent = error.message || "Could not read this Excel file.";
+      els.import2YipStatus.classList.add("warning");
+    }
+    if (els.import2YipBody) els.import2YipBody.innerHTML = "";
+    if (els.confirmImport2Yip) els.confirmImport2Yip.disabled = true;
+  }
+}
+
+async function confirm2YipImport() {
+  if (!pending2YipImport?.units?.length || !canManageActiveWorkspace()) return;
+  const imported = pending2YipImport;
+  await persistCurrentPlanBeforeSwitch();
+  const nextState = createPlanState({
+    title: imported.planTitle,
+    subject: "Art",
+    teamName: workspaceLabel(),
+  });
+  nextState.timelineView = "overview";
+  nextState.units = imported.units.map((entry) => entry.unit);
+  nextState.selectedUnitId = nextState.units[0]?.id || "";
+  nextState.selectedLessonId = nextState.units[0]?.lessons?.[0]?.id || "";
+  nextState.assessmentTasks = normalizeAssessmentTasks(
+    imported.units
+      .map((entry) => entry.assessmentTask)
+      .filter(Boolean),
+  );
+  state = normalizeState(nextState);
+  syncAssessmentTaskPlacements();
+  state.currentScreen = "timeline";
+  import2YipOpen = false;
+  pending2YipImport = null;
+  setStoredActivePlanId(state.plan.id, state.plan.workspaceId);
+  markLoadedPlanState(state.plan.id, state.plan.workspaceId);
+  planCatalogVerified = true;
+  activePlanRevision = 0;
+  savePlanToCatalog(state.plan);
+  localStorage.setItem(planStateStorageKey(), JSON.stringify(state));
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  localStorage.setItem(lastGoodPlanStateStorageKey(), JSON.stringify(cleanCloudState(state)));
+  lastPersistedContentHash = planStateContentHash(state);
+  if (cloud.loaded) await acquireEditingLock({ force: true });
+  render();
+  if (cloud.loaded) await saveCloudStateNow({ ignoreRevision: true });
 }
 
 function renderWorkspaceSetup() {
@@ -10493,6 +11002,19 @@ els.planSetupModal?.addEventListener("click", (event) => {
   if (event.target !== els.planSetupModal) return;
   planSetupOpen = false;
   render();
+});
+
+els.import2YipFile?.addEventListener("change", (event) => {
+  read2YipImportFile(event.target.files?.[0]);
+});
+
+els.cancelImport2Yip?.addEventListener("click", close2YipImport);
+
+els.confirmImport2Yip?.addEventListener("click", confirm2YipImport);
+
+els.import2YipModal?.addEventListener("click", (event) => {
+  if (event.target !== els.import2YipModal) return;
+  close2YipImport();
 });
 
 els.planSelect?.addEventListener("change", (event) => {
