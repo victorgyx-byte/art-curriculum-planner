@@ -2735,6 +2735,9 @@ function normalizePlanningValues(values, type) {
 function normalizePlanningLabel(value, type) {
   if (type === "assessment") return assessmentLabelMap[value] || value;
   if (type === "learningOutcomes") return learningOutcomeLabelMap[value] || value;
+  if (type === "pedagogy" && /^(d\.?\s*i\.?|differentiated instruction)$/i.test(String(value || "").trim())) {
+    return "Differentiated Instruction (DI)";
+  }
   return value;
 }
 
@@ -5444,6 +5447,7 @@ function importKnownLabel(type, value) {
     if (/present/i.test(normalized)) return "Portfolio: (Re)present";
   }
   if (type === "assessment") return normalizePlanningLabel(normalized, "assessment");
+  if (type === "pedagogy") return normalizePlanningLabel(normalized, "pedagogy");
   const libraryMatch = libraryItemsByType(type).find((label) => label.toLowerCase() === normalized.toLowerCase());
   return libraryMatch || normalized;
 }

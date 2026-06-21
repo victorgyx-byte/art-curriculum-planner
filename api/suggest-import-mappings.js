@@ -2,6 +2,10 @@ const crypto = require("crypto");
 
 const TOKEN_CERTS_URL = "https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com";
 const DEFAULT_MODEL = process.env.OPENAI_IMPORT_MODEL || process.env.OPENAI_MODEL || "gpt-4o-mini";
+const CORE_EXPERIENCE_TEMPLATE_ROWS = {
+  drawing: [23, 24, 25, 26],
+  portfolio: [28, 29, 30, 31],
+};
 
 function json(res, status, payload) {
   res.status(status).setHeader("Content-Type", "application/json");
@@ -196,6 +200,36 @@ function normaliseSearchText(value) {
     .trim();
 }
 
+function templateChecked(value) {
+  if (value === true) return true;
+  if (value === false || value === undefined || value === null) return false;
+  const text = String(value).trim().toLowerCase();
+  return ["true", "yes", "y", "x", "✓", "1", "checked"].includes(text);
+}
+
+function cellText(cells, row, col) {
+  const cell = cells.find((candidate) => Number(candidate.row) === row && Number(candidate.col) === col);
+  return String(cell?.value || "").trim();
+}
+
+function coreExperienceLabelFromText(area, value) {
+  const text = normaliseSearchText(value);
+  if (area === "drawing") {
+    if (/\bobserve\b/.test(text)) return "Drawing: Observe";
+    if (/\bthink\b/.test(text)) return "Drawing: Think";
+    if (/\bimagine\b/.test(text)) return "Drawing: Imagine";
+  }
+  if (area === "portfolio") {
+    if (/\bdocument\b/.test(text)) return "Portfolio: Document";
+    if (/\bcurate\b/.test(text)) return "Portfolio: Curate";
+    if (/\breflect\b/.test(text)) return "Portfolio: Reflect";
+    if (/(^|[\s:;,\-\/])(represent|re\s*-?\s*present|\(?\s*re\s*\)?\s*present|re\s*\(?\s*represent\s*\)?)(?=$|[\s:;,\-\/.])/.test(text)) {
+      return "Portfolio: (Re)present";
+    }
+  }
+  return "";
+}
+
 function coreExperienceTrigger(label) {
   const normalised = normaliseSearchText(label);
   if (normalised === "drawing: observe") return { area: "drawing", pattern: /\bobserve\b/i };
@@ -204,7 +238,26 @@ function coreExperienceTrigger(label) {
   if (normalised === "portfolio: document") return { area: "portfolio", pattern: /\bdocument\b/i };
   if (normalised === "portfolio: curate") return { area: "portfolio", pattern: /\bcurate\b/i };
   if (normalised === "portfolio: reflect") return { area: "portfolio", pattern: /\breflect\b/i };
-  if (normalised === "portfolio: (re)present") return { area: "portfolio", pattern: /\b(represent|re-present|\(re\)\s*present|re\s*\(?represent\)?)\b/i };
+  if (normalised === "portfolio: (re)present") {
+    return {
+      area: "portfolio",
+      pattern: /(^|[\s:;,\-\/])(represent|re\s*-?\s*present|\(?\s*re\s*\)?\s*present|re\s*\(?\s*represent\s*\)?)(?=$|[\s:;,\-\/.])/i,
+    };
+  }
+  return null;
+}
+
+function bigIdeaTrigger(label) {
+  const normalised = normaliseSearchText(label);
+  if (normalised === "art helps us to see in new ways.") {
+    return /\b(art helps us to see in new ways|see in new ways)\b/i;
+  }
+  if (normalised === "art tells stories about our world.") {
+    return /\b(art tells stories about our world|tells stories about our world|stories about our world)\b/i;
+  }
+  if (normalised === "art influences the way we live.") {
+    return /\b(art influences (the way|how) we live|influences (the way|how) we live)\b/i;
+  }
   return null;
 }
 
@@ -215,11 +268,95 @@ function nearbyCellText(cells, target) {
     .join(" ");
 }
 
-function workbookHasCoreExperienceTrigger(workbook, label) {
+function unitSlotColumns(unit) {
+  const slotIndex = Number(unit?.slotIndex) || 0;
+  if (slotIndex < 1 || slotIndex > 10) return [];
+  const firstColumn = 4 + (slotIndex - 1) * 2;
+  return [firstColumn, firstColumn + 1];
+}
+
+function unitRelevantText(workbook, unit) {
+  const cells = Array.isArray(workbook?.cells) ? workbook.cells : [];
+  const columns = unitSlotColumns(unit);
+  const slotText = columns.length
+    ? cells
+      .filter((cell) => columns.includes(Number(cell.col) || 0) && (Number(cell.row) || 0) <= 45)
+      .map((cell) => cell.value)
+      .join(" ")
+    : "";
+  const title = normaliseSearchText(unit?.title);
+  const titleText = title
+    ? cells
+      .filter((cell) => normaliseSearchText(cell.value).includes(title))
+      .map((cell) => nearbyCellText(cells, cell))
+      .join(" ")
+    : "";
+  return `${slotText} ${titleText}`;
+}
+
+function coreExperienceRowText(cells, row, columns) {
+  return columns
+    .flatMap((col) => [cellText(cells, row, col), cellText(cells, row, col + 1)])
+    .filter(Boolean)
+    .join(" ");
+}
+
+function coreExperienceAnchorRows(cells, area) {
+  const rows = cells
+    .filter((cell) => {
+      const text = normaliseSearchText(cell.value);
+      if (!text.includes("core learning experience")) return false;
+      if (area === "drawing") return text.includes("drawing") || text.includes("making thinking visible");
+      if (area === "portfolio") return text.includes("portfolio");
+      return false;
+    })
+    .map((cell) => Number(cell.row) || 0)
+    .filter(Boolean);
+  if (!rows.length) return [];
+  const rowSet = new Set();
+  rows.forEach((row) => {
+    for (let offset = 0; offset <= 6; offset += 1) rowSet.add(row + offset);
+  });
+  return [...rowSet].sort((a, b) => a - b);
+}
+
+function coreExperienceRows(cells, area) {
+  const anchoredRows = coreExperienceAnchorRows(cells, area);
+  return anchoredRows.length ? anchoredRows : CORE_EXPERIENCE_TEMPLATE_ROWS[area] || [];
+}
+
+function templateCoreExperienceLabelsForUnit(workbook, unit) {
+  const cells = Array.isArray(workbook?.cells) ? workbook.cells : [];
+  const columns = unitSlotColumns(unit);
+  if (!columns.length) return [];
+  const labels = [];
+  ["drawing", "portfolio"].forEach((area) => {
+    coreExperienceRows(cells, area).forEach((row) => {
+      const checked = columns.some((col) => templateChecked(cellText(cells, row, col)));
+      const rowText = coreExperienceRowText(cells, row, columns);
+      const label = coreExperienceLabelFromText(area, rowText);
+      if (checked && label && !labels.includes(label)) labels.push(label);
+    });
+  });
+  return labels;
+}
+
+function workbookHasBigIdeaTrigger(workbook, unit, label) {
+  const trigger = bigIdeaTrigger(label);
+  if (!trigger) return false;
+  return trigger.test(unitRelevantText(workbook, unit));
+}
+
+function workbookHasCoreExperienceTrigger(workbook, unit, label) {
   const trigger = coreExperienceTrigger(label);
   if (!trigger) return false;
+  if (templateCoreExperienceLabelsForUnit(workbook, unit).includes(label)) return true;
   const cells = Array.isArray(workbook?.cells) ? workbook.cells : [];
-  return cells.some((cell) => {
+  const columns = unitSlotColumns(unit);
+  const relevantCells = columns.length
+    ? cells.filter((cell) => columns.includes(Number(cell.col) || 0) || columns.includes((Number(cell.col) || 0) - 1))
+    : cells;
+  return relevantCells.some((cell) => {
     const value = String(cell.value || "");
     if (!trigger.pattern.test(value)) return false;
     const context = normaliseSearchText(nearbyCellText(cells, cell));
@@ -227,13 +364,33 @@ function workbookHasCoreExperienceTrigger(workbook, label) {
   });
 }
 
-function removeUnsupportedCoreExperiences(result, workbook) {
+function removeUnsupportedPlanningCards(result, workbook) {
   if (!Array.isArray(result?.units)) return result;
   result.units.forEach((unit) => {
     if (!Array.isArray(unit.cards)) return;
     unit.cards = unit.cards.filter((card) => {
-      if (card?.type !== "coreExperiences") return true;
-      return workbookHasCoreExperienceTrigger(workbook, card.label);
+      if (card?.type === "coreExperiences") {
+        const keep = workbookHasCoreExperienceTrigger(workbook, unit, card.label);
+        if (!keep) unit.warnings = [...(unit.warnings || []), "Core experience needs review: explicit trigger was not found."];
+        return keep;
+      }
+      if (card?.type === "bigIdeas") {
+        const keep = workbookHasBigIdeaTrigger(workbook, unit, card.label);
+        if (!keep) unit.warnings = [...(unit.warnings || []), "Big Idea needs review: explicit phrase was not found."];
+        return keep;
+      }
+      return true;
+    });
+    templateCoreExperienceLabelsForUnit(workbook, unit).forEach((label) => {
+      const exists = unit.cards.some((card) => card?.type === "coreExperiences" && card.label === label);
+      if (!exists) {
+        unit.cards.push({
+          type: "coreExperiences",
+          label,
+          value: "",
+          reason: "Read from core learning experience checkbox row",
+        });
+      }
     });
   });
   return result;
@@ -297,6 +454,7 @@ async function callOpenAI(context) {
             "For free-text areas: preserve teacher-entered text as value.",
             "Use the closest existing Weave card label only when the category is clear.",
             "If unclear, leave unmapped and add a warning.",
+            "For Pedagogy, DI, D.I., and Differentiated Instruction all mean Differentiated Instruction (DI).",
             "If any field is ambiguous, leave it empty and add a concise warning.",
             "Do not add source evidence fields. Keep every string concise. Reasons and warnings must be one short phrase.",
             "Do not create detailed lesson activities.",
@@ -339,7 +497,7 @@ module.exports = async function handler(req, res) {
       json(res, 400, { error: "No readable spreadsheet text was found." });
       return;
     }
-    const result = removeUnsupportedCoreExperiences(await callOpenAI(context), context.workbook);
+    const result = removeUnsupportedPlanningCards(await callOpenAI(context), context.workbook);
     json(res, 200, {
       planTitle: result.planTitle || "",
       units: Array.isArray(result.units) ? result.units : [],
