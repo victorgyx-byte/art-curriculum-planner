@@ -5603,6 +5603,7 @@ function render2YipImport() {
       <span>${pending2YipImport.units.length} units</span>
       <span>${pending2YipImport.units.reduce((total, unit) => total + unit.lessonCount, 0)} lesson placeholders</span>
       <span>${pending2YipImport.units.filter((unit) => unit.inTimeline).length} placed on 2YIP</span>
+      ${(pending2YipImport.importDiagnostics || []).map((item) => `<span>${escapeHtml(item)}</span>`).join("")}
     </div>
     <div class="import-preview-list">
       ${pending2YipImport.units.map(importPreviewUnitHtml).join("")}
@@ -5916,6 +5917,10 @@ async function runAiTemplateDetectionImport() {
       detectionPayload.rows || {},
     );
     const units = parsed.units || [];
+    const detectedUnitCount = Number(parsed.detectedUnitCount || units.length);
+    if (detectedUnitCount && units.length !== detectedUnitCount) {
+      throw new Error(`Import stopped: detected ${detectedUnitCount} units, but only ${units.length} could be prepared.`);
+    }
     const gapRequest = buildAiGapSuggestionRequest(units);
     let suggestionCount = 0;
     if (gapRequest.units.length) {
@@ -5932,21 +5937,24 @@ async function runAiTemplateDetectionImport() {
       suggestionCount = applyAiGapSuggestions(units, suggestionPayload);
     }
     const detectionWarnings = Array.isArray(detectionPayload.warnings) ? detectionPayload.warnings.filter(Boolean) : [];
+    const spineWarnings = Array.isArray(parsed.unitSpine?.warnings) ? parsed.unitSpine.warnings.filter(Boolean) : [];
+    const diagnostics = Array.isArray(parsed.diagnostics) ? parsed.diagnostics.filter(Boolean) : [];
     pending2YipImport = {
       planTitle: `Imported 2YIP - ${sourceSnapshot.fileName.replace(/\.(xlsx|xls)$/i, "").replace(/[_-]+/g, " ")}`,
       sheetName: sourceSnapshot.sheetName,
       workbook: sourceWorkbook,
       workbookSnapshot: sourceSnapshot,
       importMethod: "detect",
+      importDiagnostics: diagnostics,
       awaitingMethod: false,
-      detectionWarnings,
+      detectionWarnings: [...diagnostics, ...detectionWarnings, ...spineWarnings],
       aiStatus: units.length
-        ? `Standard import + AI suggestions ready. ${suggestionCount} AI ${suggestionCount === 1 ? "suggestion" : "suggestions"} added for unresolved fields.${detectionWarnings.length ? ` ${detectionWarnings.length} import ${detectionWarnings.length === 1 ? "note" : "notes"} to review.` : ""}`
+        ? `Standard import + AI suggestions ready. ${diagnostics.join(" · ")}. ${suggestionCount} AI ${suggestionCount === 1 ? "suggestion" : "suggestions"} added for unresolved fields.${detectionWarnings.length + spineWarnings.length ? ` ${detectionWarnings.length + spineWarnings.length} import ${(detectionWarnings.length + spineWarnings.length) === 1 ? "note" : "notes"} to review.` : ""}`
         : "No real units were detected. Try the standard importer or review the spreadsheet.",
       units,
     };
-    if (detectionWarnings.length && pending2YipImport.units.length) {
-      pending2YipImport.units[0].warnings = [...detectionWarnings, ...pending2YipImport.units[0].warnings];
+    if ((detectionWarnings.length || spineWarnings.length) && pending2YipImport.units.length) {
+      pending2YipImport.units[0].warnings = [...detectionWarnings, ...spineWarnings, ...pending2YipImport.units[0].warnings];
     }
   } catch (error) {
     console.warn("Standard import + AI suggestions failed", error);
@@ -6308,18 +6316,211 @@ function parse2YipWorkbook(workbook, fileName = "Imported 2YIP", snapshot = null
 }
 
 function parse2YipWorkbookWithDeterministicUnitSpine(workbook, fileName = "Imported 2YIP", snapshot = null, rowOverrides = null) {
-  const standardParsed = parse2YipWorkbook(workbook, fileName, snapshot);
-  const aiRowParsed = parse2YipWorkbook(workbook, fileName, snapshot, rowOverrides, {
-    unitSlotMode: "template",
+  const sheetName = workbook.SheetNames[0];
+  const sheet = workbook.Sheets[sheetName];
+  const rows = normalizeImportTemplateRows(rowOverrides || importTemplateRows);
+  const spine = detectImportUnitSpine(sheet, rows);
+  const rowsForSpine = normalizeImportTemplateRows({
+    ...rows,
+    sec: spine.secRow || rows.sec,
+    duration: spine.durationRow || rows.duration,
+    title: spine.titleRow || rows.title,
+    artTask: spine.artTaskRow || rows.artTask,
   });
-  if (!standardParsed.units.length) return aiRowParsed;
-
-  const aiRowsBySlot = new Map(aiRowParsed.units.map((entry) => [Number(entry.slotIndex), entry]));
+  const planTitle = `Imported 2YIP - ${fileName.replace(/\.(xlsx|xls)$/i, "").replace(/[_-]+/g, " ")}`;
+  const units = spine.slots
+    .map((slot) => parse2YipTemplateUnit(sheet, { ...slot, forceUnit: true }, rowsForSpine))
+    .filter(Boolean);
   return {
-    ...aiRowParsed,
-    units: standardParsed.units.map((standardEntry) =>
-      aiRowsBySlot.get(Number(standardEntry.slotIndex)) || standardEntry,
-    ),
+    planTitle,
+    sheetName,
+    workbookSnapshot: snapshot,
+    importMethod: "detect",
+    diagnostics: spine.diagnostics,
+    detectedUnitCount: spine.slots.length,
+    unitSpine: spine,
+    units,
+  };
+}
+
+function importMergeForCell(sheet, row, col) {
+  return (sheet?.["!merges"] || []).find((range) =>
+    row - 1 >= range.s.r && row - 1 <= range.e.r && col - 1 >= range.s.c && col - 1 <= range.e.c,
+  ) || null;
+}
+
+function importUnitPlanNumber(value) {
+  const match = String(value ?? "").replace(/\s+/g, " ").trim().match(/^unit\s*plan\s*(\d+)$/i);
+  return match ? Number(match[1]) : 0;
+}
+
+function normalizeDetectedUnitSlots(cells) {
+  if (!cells.length) return [];
+  const sorted = cells
+    .slice()
+    .sort((a, b) => a.col - b.col)
+    .map((cell, index) => ({ ...cell, originalIndex: index + 1 }));
+  const hasExplicitWideSlots = sorted.some((cell) => cell.width > 1);
+  return sorted.map((cell, index) => {
+    let width = cell.width || 1;
+    if (!hasExplicitWideSlots) {
+      const next = sorted[index + 1];
+      const previous = sorted[index - 1];
+      const gap = next ? next.col - cell.col : previous ? cell.col - previous.col : 1;
+      width = gap > 1 && gap <= 2 ? gap : 1;
+    }
+    return {
+      index: index + 1,
+      col: cell.col,
+      width,
+      forceUnit: true,
+    };
+  });
+}
+
+function detectUnitPlanRow(sheet, range) {
+  if (!range) return null;
+  const maxRow = Math.min(range.e.r + 1, 24);
+  for (let row = range.s.r + 1; row <= maxRow; row += 1) {
+    const cells = [];
+    const seenOrigins = new Set();
+    for (let col = Math.max(1, range.s.c + 1); col <= range.e.c + 1; col += 1) {
+      const merge = importMergeForCell(sheet, row, col);
+      const originCol = merge ? merge.s.c + 1 : col;
+      if (seenOrigins.has(originCol)) continue;
+      const number = importUnitPlanNumber(sheetCellText(sheet, row, col));
+      if (!number) continue;
+      seenOrigins.add(originCol);
+      cells.push({
+        col: originCol,
+        width: merge ? merge.e.c - merge.s.c + 1 : 1,
+        number,
+      });
+    }
+    if (cells.length >= 2) {
+      return {
+        row,
+        cells: cells.sort((a, b) => a.col - b.col || a.number - b.number),
+      };
+    }
+  }
+  return null;
+}
+
+function detectedTitleCellsForRow(sheet, row, range) {
+  if (!range || !row) return [];
+  const cells = [];
+  const seenOrigins = new Set();
+  for (let col = Math.max(4, range.s.c + 1); col <= range.e.c + 1; col += 1) {
+    const merge = importMergeForCell(sheet, row, col);
+    const originCol = merge ? merge.s.c + 1 : col;
+    if (seenOrigins.has(originCol)) continue;
+    const text = cleanTemplateText(sheetCellText(sheet, row, col));
+    if (!text || /^unit plan\s*\d+$/i.test(text)) continue;
+    seenOrigins.add(originCol);
+    cells.push({
+      col: originCol,
+      width: merge ? merge.e.c - merge.s.c + 1 : 1,
+      text,
+    });
+  }
+  return cells;
+}
+
+function rowValueCountForSlots(sheet, row, slots) {
+  if (!row || !slots?.length) return 0;
+  return slots.reduce((count, slot) => count + (importRowValue(sheet, row, slot) ? 1 : 0), 0);
+}
+
+function rowRegexCountForSlots(sheet, row, slots, regex) {
+  if (!row || !slots?.length) return 0;
+  return slots.reduce((count, slot) => count + (regex.test(importRowValue(sheet, row, slot)) ? 1 : 0), 0);
+}
+
+function bestImportRowBefore(sheet, slots, maxRow, regex) {
+  let best = { row: 0, count: 0 };
+  for (let row = 1; row <= Math.max(1, maxRow); row += 1) {
+    const count = rowRegexCountForSlots(sheet, row, slots, regex);
+    if (count > best.count) best = { row, count };
+  }
+  return best.row;
+}
+
+function betterImportRow(sheet, currentRow, inferredRow, slots, regex = null) {
+  if (!inferredRow || inferredRow === currentRow) return currentRow;
+  const countFor = (row) => regex
+    ? rowRegexCountForSlots(sheet, row, slots, regex)
+    : rowValueCountForSlots(sheet, row, slots);
+  return countFor(inferredRow) > countFor(currentRow) ? inferredRow : currentRow;
+}
+
+function detectImportUnitSpine(sheet, rows = importTemplateRows) {
+  const range = sheet?.["!ref"] ? window.XLSX.utils.decode_range(sheet["!ref"]) : null;
+  const warnings = [];
+  if (!range) {
+    warnings.push("Workbook range could not be read.");
+    return {
+      slots: importTemplateUnitSlots.map((slot) => ({ ...slot, forceUnit: true })),
+      layout: "paired-column",
+      titleRow: rows.title,
+      diagnostics: ["Detected 10 unit plans", "Using paired-column layout"],
+      warnings,
+    };
+  }
+
+  const unitPlanRow = detectUnitPlanRow(sheet, range);
+  let slots = [];
+  let titleRow = rows.title || importTemplateRows.title;
+  if (unitPlanRow) {
+    slots = normalizeDetectedUnitSlots(unitPlanRow.cells).slice(0, 10);
+    const nextRow = unitPlanRow.row + 1;
+    const nextRowCount = rowValueCountForSlots(sheet, nextRow, slots);
+    const detectedRowCount = rowValueCountForSlots(sheet, titleRow, slots);
+    if (nextRowCount >= Math.max(1, Math.ceil(slots.length / 2)) || nextRowCount > detectedRowCount) {
+      titleRow = nextRow;
+    }
+  } else {
+    const preferredTitleCells = detectedTitleCellsForRow(sheet, titleRow, range);
+    const fallbackTitleCells = titleRow === importTemplateRows.title ? [] : detectedTitleCellsForRow(sheet, importTemplateRows.title, range);
+    slots = normalizeDetectedUnitSlots((preferredTitleCells.length >= 2 ? preferredTitleCells : fallbackTitleCells).slice(0, 10));
+    if (!preferredTitleCells.length && fallbackTitleCells.length) titleRow = importTemplateRows.title;
+  }
+
+  if (!slots.length) {
+    slots = importTemplateUnitSlots.map((slot) => ({ ...slot, forceUnit: true }));
+    titleRow = rows.title || importTemplateRows.title;
+    warnings.push("Unit columns need review: falling back to official template slots.");
+  }
+
+  const artTaskRow = betterImportRow(sheet, rows.artTask, titleRow + 1, slots);
+  const secRow = betterImportRow(
+    sheet,
+    rows.sec,
+    bestImportRowBefore(sheet, slots, Math.max(1, titleRow - 1), /sec(?:ondary)?\s*[12]/i),
+    slots,
+    /sec(?:ondary)?\s*[12]/i,
+  );
+  const durationRow = betterImportRow(
+    sheet,
+    rows.duration,
+    bestImportRowBefore(sheet, slots, Math.max(1, titleRow - 1), /T\s*\d+\s*W\s*\d+/i),
+    slots,
+    /T\s*\d+\s*W\s*\d+/i,
+  );
+  const layout = slots.some((slot) => slot.width > 1) ? "paired-column" : "single-column";
+  const diagnostics = [
+    `Detected ${slots.length} unit ${slots.length === 1 ? "plan" : "plans"}`,
+    `Using ${layout === "single-column" ? "single-column" : "paired-column"} layout`,
+  ];
+  return {
+    slots,
+    layout,
+    titleRow,
+    artTaskRow,
+    secRow,
+    durationRow,
+    diagnostics,
+    warnings,
   };
 }
 
@@ -6387,7 +6588,7 @@ function parse2YipTemplateUnit(sheet, slot, rows = importTemplateRows) {
     rows.pedagogyOther,
     rows.assessmentCriteria,
   ].some((row) => importRowValue(sheet, row, slot));
-  if (!rawTitle && !artTask && !checkboxRowsHaveContent && !freeTextRowsHaveContent) return null;
+  if (!rawTitle && !artTask && !checkboxRowsHaveContent && !freeTextRowsHaveContent && !slot.forceUnit) return null;
   const title = rawTitle || `Imported Unit ${slot.index}`;
   if (!rawTitle) warnings.push("Unit title needs review.");
   const placement = parseImportPlacement(
