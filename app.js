@@ -5039,13 +5039,13 @@ function valid2YipImportMode(value) {
 
 function importMethodLabel(method) {
   if (method === "ai") return "AI-assisted mapping";
-  if (method === "detect") return "AI row-bound mapping";
+  if (method === "detect") return "Standard mapping + AI suggestions";
   return "Standard mapping";
 }
 
 function importAiActionLabel(method, busy = false) {
   if (busy) return "Mapping...";
-  if (method === "detect") return "Run Row-Bound Mapping Again";
+  if (method === "detect") return "Run Standard + AI Suggestions Again";
   return "Run AI-Assisted Mapping Again";
 }
 
@@ -5083,8 +5083,8 @@ function render2YipImport() {
         <div class="import-loading-card" role="status" aria-live="polite">
           <span class="import-loading-spinner" aria-hidden="true"></span>
           <div>
-            <strong>${isDetection ? "AI is running a row-bound import" : "AI is reading your 2YIP file"}</strong>
-            <p>${isDetection ? "Detecting row roles first, then mapping cards only from the relevant rows for each unit. This keeps lesson outlines, themes, and performance tasks from leaking into LO or Big Idea mapping." : "Checking units, placement, Learning Outcomes, core learning experiences, and possible lesson outlines. This may take a moment."}</p>
+            <strong>${isDetection ? "Weave is running standard import, then AI suggestions" : "AI is reading your 2YIP file"}</strong>
+            <p>${isDetection ? "First confirming what can be read deterministically, then asking AI only about unresolved fields. Big Ideas and Learning Outcomes stay anchored to deterministic matching." : "Checking units, placement, Learning Outcomes, core learning experiences, and possible lesson outlines. This may take a moment."}</p>
           </div>
         </div>
       `;
@@ -5093,7 +5093,7 @@ function render2YipImport() {
   }
   if (pending2YipImport.awaitingMethod) {
     if (els.import2YipStatus) {
-      els.import2YipStatus.textContent = "File uploaded. Choose Standard import, AI-assisted import, or AI-assisted template detection to preview the mapping.";
+      els.import2YipStatus.textContent = "File uploaded. Choose Standard import, Full AI-assisted import, or Standard import + AI suggestions to preview the mapping.";
       els.import2YipStatus.classList.remove("warning");
     }
     if (els.import2YipBody) els.import2YipBody.innerHTML = "";
@@ -5302,6 +5302,42 @@ function buildAiTemplateDetectionRequest(snapshot) {
   };
 }
 
+function buildAiGapSuggestionRequest(units) {
+  return {
+    units: units
+      .map((entry) => ({
+        slotIndex: entry.slotIndex,
+        title: entry.title,
+        fields: Array.isArray(entry.aiSuggestionFields) ? entry.aiSuggestionFields : [],
+      }))
+      .filter((unit) => unit.fields.length),
+  };
+}
+
+function applyAiGapSuggestions(units, payload) {
+  const bySlot = new Map((Array.isArray(payload?.units) ? payload.units : []).map((unit) => [Number(unit.slotIndex), unit]));
+  let suggestionCount = 0;
+  units.forEach((entry) => {
+    const suggested = bySlot.get(Number(entry.slotIndex));
+    if (!suggested) return;
+    (Array.isArray(suggested.cards) ? suggested.cards : []).forEach((card) => {
+      const type = card?.type;
+      if (!validImportCardType(type) || type === "bigIdeas" || type === "learningOutcomes") return;
+      const label = normalizeImportCardLabel(type, cleanTemplateText(card.label));
+      const candidate = { type, label, value: cleanTemplateText(card.value) };
+      if (!validImportSuggestion(candidate)) return;
+      const before = entry.unit.boardCards.length;
+      const importedCard = addImportedCard(entry.unit, candidate);
+      if (!importedCard || entry.unit.boardCards.length === before) return;
+      entry.cards.push(importedCard);
+      suggestionCount += 1;
+    });
+    const warnings = (Array.isArray(suggested.warnings) ? suggested.warnings : []).map(cleanTemplateText).filter(Boolean);
+    entry.warnings.push(...warnings.map((warning) => `AI suggestion review: ${warning}`));
+  });
+  return suggestionCount;
+}
+
 async function runAiAssistedImportMapping() {
   if (!pending2YipImport?.workbookSnapshot) return;
   if (window.location.protocol === "file:") {
@@ -5358,24 +5394,24 @@ async function runAiAssistedImportMapping() {
 async function runAiTemplateDetectionImport() {
   if (!pending2YipImport?.workbookSnapshot) return;
   if (window.location.protocol === "file:") {
-    pending2YipImport.aiStatus = "Open the online or local server version to use AI-assisted row-bound import.";
+    pending2YipImport.aiStatus = "Open the online or local server version to use Standard import + AI suggestions.";
     render2YipImport();
     return;
   }
   if (!cloud.user) {
-    pending2YipImport.aiStatus = "Sign in online before using AI-assisted row-bound import.";
+    pending2YipImport.aiStatus = "Sign in online before using Standard import + AI suggestions.";
     render2YipImport();
     return;
   }
   pending2YipImport.importMethod = "detect";
   pending2YipImport.aiBusy = true;
-  pending2YipImport.aiStatus = "AI is detecting rows, then mapping only from bounded unit evidence...";
+  pending2YipImport.aiStatus = "Detecting rows, running standard import, then asking AI only about unresolved fields...";
   render2YipImport();
   try {
     const sourceWorkbook = pending2YipImport.workbook;
     const sourceSnapshot = pending2YipImport.workbookSnapshot;
     const token = await cloud.user.getIdToken();
-    const response = await fetch("/api/import-2yip-row-bound", {
+    const detectionResponse = await fetch("/api/detect-import-template", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -5383,14 +5419,28 @@ async function runAiTemplateDetectionImport() {
       },
       body: JSON.stringify(buildAiTemplateDetectionRequest(sourceSnapshot)),
     });
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(payload.error || "AI-assisted row-bound import failed.");
-    const units = (Array.isArray(payload.units) ? payload.units : [])
-      .map(importEntryFromAiUnit)
-      .filter(Boolean);
-    const detectionWarnings = Array.isArray(payload.warnings) ? payload.warnings.filter(Boolean) : [];
+    const detectionPayload = await detectionResponse.json().catch(() => ({}));
+    if (!detectionResponse.ok) throw new Error(detectionPayload.error || "AI-assisted row detection failed.");
+    const parsed = parse2YipWorkbook(sourceWorkbook, pendingImportFileName(), sourceSnapshot, detectionPayload.rows || {});
+    const units = parsed.units || [];
+    const gapRequest = buildAiGapSuggestionRequest(units);
+    let suggestionCount = 0;
+    if (gapRequest.units.length) {
+      const suggestionResponse = await fetch("/api/suggest-import-gaps", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(gapRequest),
+      });
+      const suggestionPayload = await suggestionResponse.json().catch(() => ({}));
+      if (!suggestionResponse.ok) throw new Error(suggestionPayload.error || "AI gap suggestions failed.");
+      suggestionCount = applyAiGapSuggestions(units, suggestionPayload);
+    }
+    const detectionWarnings = Array.isArray(detectionPayload.warnings) ? detectionPayload.warnings.filter(Boolean) : [];
     pending2YipImport = {
-      planTitle: payload.planTitle || `Row-Bound 2YIP - ${sourceSnapshot.fileName.replace(/\.(xlsx|xls)$/i, "").replace(/[_-]+/g, " ")}`,
+      planTitle: `Imported 2YIP - ${sourceSnapshot.fileName.replace(/\.(xlsx|xls)$/i, "").replace(/[_-]+/g, " ")}`,
       sheetName: sourceSnapshot.sheetName,
       workbook: sourceWorkbook,
       workbookSnapshot: sourceSnapshot,
@@ -5398,16 +5448,16 @@ async function runAiTemplateDetectionImport() {
       awaitingMethod: false,
       detectionWarnings,
       aiStatus: units.length
-        ? `AI row-bound mapping ready. Please review before creating the draft.${detectionWarnings.length ? ` ${detectionWarnings.length} import ${detectionWarnings.length === 1 ? "note" : "notes"} to review.` : ""}`
-        : "AI could not detect real units from the bounded row evidence. Try the standard importer or review the spreadsheet.",
+        ? `Standard import + AI suggestions ready. ${suggestionCount} AI ${suggestionCount === 1 ? "suggestion" : "suggestions"} added for unresolved fields.${detectionWarnings.length ? ` ${detectionWarnings.length} import ${detectionWarnings.length === 1 ? "note" : "notes"} to review.` : ""}`
+        : "No real units were detected. Try the standard importer or review the spreadsheet.",
       units,
     };
     if (detectionWarnings.length && pending2YipImport.units.length) {
       pending2YipImport.units[0].warnings = [...detectionWarnings, ...pending2YipImport.units[0].warnings];
     }
   } catch (error) {
-    console.warn("AI-assisted row-bound import failed", error);
-    pending2YipImport.aiStatus = error.message || "AI-assisted row-bound import failed.";
+    console.warn("Standard import + AI suggestions failed", error);
+    pending2YipImport.aiStatus = error.message || "Standard import + AI suggestions failed.";
   } finally {
     if (pending2YipImport) pending2YipImport.aiBusy = false;
     render2YipImport();
@@ -5472,6 +5522,7 @@ function workbookImportSnapshot(workbook, fileName = "Imported 2YIP") {
 const importTemplateUnitSlots = Array.from({ length: 10 }, (_, index) => ({
   index: index + 1,
   col: 4 + index * 2,
+  width: 2,
 }));
 
 const importTemplateRows = {
@@ -5592,13 +5643,27 @@ function parseImportPlacement(secRaw, durationRaw, warnings) {
   return { inTimeline: true, start, lessonCount, placementLabel };
 }
 
-function importRowValue(sheet, row, col) {
-  return cleanTemplateText(sheetCellText(sheet, row, col)) || cleanTemplateText(sheetCellText(sheet, row, col + 1));
+function importSlotColumns(slotOrCol) {
+  if (typeof slotOrCol === "object" && slotOrCol) {
+    const col = Number(slotOrCol.col) || 0;
+    const width = Math.max(1, Number(slotOrCol.width) || 1);
+    return Array.from({ length: width }, (_, index) => col + index).filter(Boolean);
+  }
+  const col = Number(slotOrCol) || 0;
+  return col ? [col, col + 1] : [];
 }
 
-function importCheckboxLabel(sheet, row, col) {
+function importRowValue(sheet, row, slotOrCol) {
+  const columns = importSlotColumns(slotOrCol);
+  const values = uniqueReadableValues(columns.map((col) => cleanTemplateText(sheetCellText(sheet, row, col))).filter(Boolean));
+  return cleanTemplateText(values.join("\n"));
+}
+
+function importCheckboxLabel(sheet, row, slotOrCol) {
+  if (typeof slotOrCol === "object" && slotOrCol?.width === 1) return importRowValue(sheet, row, slotOrCol);
+  const col = typeof slotOrCol === "object" ? Number(slotOrCol.col) || 0 : Number(slotOrCol) || 0;
   const checked = templateChecked(sheetCellText(sheet, row, col));
-  const label = importRowValue(sheet, row, col + 1);
+  const label = cleanTemplateText(sheetCellText(sheet, row, col + 1));
   return checked && label ? label : "";
 }
 
@@ -5638,6 +5703,57 @@ function importKnownLabel(type, value) {
   if (type === "pedagogy") return normalizePlanningLabel(normalized, "pedagogy");
   const libraryMatch = libraryItemsByType(type).find((label) => label.toLowerCase() === normalized.toLowerCase());
   return libraryMatch || normalized;
+}
+
+function normalizeImportSearchText(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[’‘]/g, "'")
+    .replace(/[\u2010-\u2015]/g, "-")
+    .replace(/[.,;:]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function importKnownLabels(type, value) {
+  const text = cleanTemplateText(value);
+  if (!text) return [];
+  if (type === "bigIdeas") {
+    return [
+      /helps.*see.*new ways/i.test(text) ? "Art helps us to see in new ways." : "",
+      /tells.*stories/i.test(text) ? "Art tells stories about our world." : "",
+      /influences.*(?:way|how).*live/i.test(text) ? "Art influences the way we live." : "",
+    ].filter(Boolean);
+  }
+  if (type === "learningOutcomes") {
+    return libraryItemsByType("learningOutcomes").filter((label) => {
+      const code = label.match(/\bLO([1-6])\b/i)?.[1];
+      const core = label.replace(/^LO\d:\s*/i, "").replace(/\.$/, "");
+      return (code && new RegExp(`\\bL\\.?\\s*O\\.?\\s*0?${code}\\b`, "i").test(text))
+        || normalizeImportSearchText(text).includes(normalizeImportSearchText(core));
+    });
+  }
+  if (type === "artisticProcesses") {
+    return libraryItemsByType("artisticProcesses").filter((label) => {
+      const code = label.match(/\bAP([1-4])\b/i)?.[1];
+      const core = label.replace(/^AP\d:\s*/i, "").replace(/\.$/, "");
+      return (code && new RegExp(`\\bAP\\s*${code}\\b|Artistic\\s+Process\\s*${code}`, "i").test(text))
+        || normalizeImportSearchText(text).includes(normalizeImportSearchText(core));
+    });
+  }
+  if (type === "coreExperiences") {
+    return [
+      /\bobserve\b/i.test(text) ? "Drawing: Observe" : "",
+      /\bthink\b/i.test(text) ? "Drawing: Think" : "",
+      /\bimagine\b/i.test(text) ? "Drawing: Imagine" : "",
+      /\bdocument\b/i.test(text) ? "Portfolio: Document" : "",
+      /\bcurate\b/i.test(text) ? "Portfolio: Curate" : "",
+      /\breflect\b/i.test(text) ? "Portfolio: Reflect" : "",
+      /\b(?:\(re\)\s*present|re-?present|represent|presentation)\b/i.test(text) ? "Portfolio: (Re)present" : "",
+    ].filter(Boolean);
+  }
+  const label = importKnownLabel(type, text);
+  return label ? [label] : [];
 }
 
 function importMatchesFromText(type, text) {
@@ -5683,7 +5799,8 @@ function parse2YipWorkbook(workbook, fileName = "Imported 2YIP", snapshot = null
   const sheet = workbook.Sheets[sheetName];
   const rows = normalizeImportTemplateRows(rowOverrides || importTemplateRows);
   const planTitle = `Imported 2YIP - ${fileName.replace(/\.(xlsx|xls)$/i, "").replace(/[_-]+/g, " ")}`;
-  const units = importTemplateUnitSlots
+  const unitSlots = detectImportUnitSlots(sheet, rows);
+  const units = unitSlots
     .map((slot) => parse2YipTemplateUnit(sheet, slot, rows))
     .filter(Boolean);
   return {
@@ -5693,6 +5810,29 @@ function parse2YipWorkbook(workbook, fileName = "Imported 2YIP", snapshot = null
     importMethod: "standard",
     units,
   };
+}
+
+function detectImportUnitSlots(sheet, rows = importTemplateRows) {
+  const range = sheet?.["!ref"] ? window.XLSX.utils.decode_range(sheet["!ref"]) : null;
+  if (!range) return importTemplateUnitSlots;
+  const titleCells = [];
+  for (let col = 4; col <= range.e.c + 1; col += 1) {
+    const direct = sheet[window.XLSX.utils.encode_cell({ r: rows.title - 1, c: col - 1 })];
+    const text = cleanTemplateText(direct?.v);
+    if (!text || /^unit plan\s*\d+$/i.test(text)) continue;
+    titleCells.push({ col, text });
+  }
+  if (!titleCells.length) return importTemplateUnitSlots;
+  return titleCells.slice(0, 10).map((cell, index) => {
+    const nextDirect = sheet[window.XLSX.utils.encode_cell({ r: rows.title - 1, c: cell.col })];
+    const nextText = cleanTemplateText(nextDirect?.v);
+    const nextColumnLooksLikeAnotherUnit = Boolean(nextText && !/^unit plan\s*\d+$/i.test(nextText));
+    return {
+      index: index + 1,
+      col: cell.col,
+      width: nextColumnLooksLikeAnotherUnit ? 1 : 2,
+    };
+  });
 }
 
 function pendingImportFileName() {
@@ -5718,15 +5858,15 @@ function runStandard2YipImportMapping() {
 
 function parse2YipTemplateUnit(sheet, slot, rows = importTemplateRows) {
   const warnings = [];
-  const rawTitle = importRowValue(sheet, rows.title, slot.col);
-  const artTask = importRowValue(sheet, rows.artTask, slot.col);
+  const rawTitle = importRowValue(sheet, rows.title, slot);
+  const artTask = importRowValue(sheet, rows.artTask, slot);
   const checkboxRowsHaveContent = [
     ...rows.bigIdeas,
     ...rows.learningOutcomes,
     ...rows.drawingCore,
     ...rows.portfolioCore,
     ...rows.pedagogy,
-  ].some((row) => importCheckboxLabel(sheet, row, slot.col));
+  ].some((row) => importCheckboxLabel(sheet, row, slot));
   const freeTextRowsHaveContent = [
     rows.media,
     rows.artisticProcesses,
@@ -5735,13 +5875,13 @@ function parse2YipTemplateUnit(sheet, slot, rows = importTemplateRows) {
     rows.electiveLearning,
     rows.pedagogyOther,
     rows.assessmentCriteria,
-  ].some((row) => importRowValue(sheet, row, slot.col));
+  ].some((row) => importRowValue(sheet, row, slot));
   if (!rawTitle && !artTask && !checkboxRowsHaveContent && !freeTextRowsHaveContent) return null;
   const title = rawTitle || `Imported Unit ${slot.index}`;
   if (!rawTitle) warnings.push("Unit title needs review.");
   const placement = parseImportPlacement(
-    sheetCellText(sheet, rows.sec, slot.col),
-    sheetCellText(sheet, rows.duration, slot.col),
+    importRowValue(sheet, rows.sec, slot),
+    importRowValue(sheet, rows.duration, slot),
     warnings,
   );
   const unit = blankUnit({
@@ -5759,59 +5899,70 @@ function parse2YipTemplateUnit(sheet, slot, rows = importTemplateRows) {
   };
 
   rows.bigIdeas.forEach((row) => {
-    const label = importKnownLabel("bigIdeas", importCheckboxLabel(sheet, row, slot.col));
-    if (label) addCard("bigIdeas", label);
+    importKnownLabels("bigIdeas", importCheckboxLabel(sheet, row, slot)).forEach((label) => addCard("bigIdeas", label));
   });
   rows.learningOutcomes.forEach((row) => {
-    const label = importKnownLabel("learningOutcomes", importCheckboxLabel(sheet, row, slot.col));
-    if (label) addCard("learningOutcomes", label);
+    importKnownLabels("learningOutcomes", importCheckboxLabel(sheet, row, slot)).forEach((label) => addCard("learningOutcomes", label));
   });
 
-  const mediaText = importRowValue(sheet, rows.media, slot.col);
+  const mediaText = importRowValue(sheet, rows.media, slot);
   const mediaMatches = importMatchesFromText("media", mediaText);
   mediaMatches.forEach((label) => addCard("media", label));
   if (mediaText && !mediaMatches.length) warnings.push(`Media / Art Forms needs review: ${mediaText}`);
 
-  const processText = importRowValue(sheet, rows.artisticProcesses, slot.col);
-  const processMatches = importMatchesFromText("artisticProcesses", processText);
+  const processText = importRowValue(sheet, rows.artisticProcesses, slot);
+  const processMatches = uniqueReadableValues([
+    ...importMatchesFromText("artisticProcesses", processText),
+    ...importKnownLabels("artisticProcesses", processText),
+  ]);
   processMatches.forEach((label) => addCard("artisticProcesses", label));
   if (processText && !processMatches.length) warnings.push(`Artistic Processes needs review: ${processText}`);
 
-  const visualText = importRowValue(sheet, rows.visualQualities, slot.col);
+  const visualText = importRowValue(sheet, rows.visualQualities, slot);
   const visualMatches = importMatchesFromText("visualQualities", visualText);
   visualMatches.forEach((label) => addCard("visualQualities", label));
   if (visualText && !visualMatches.length) addCard("visualQualityText", "Others", visualText);
 
-  const contextText = importRowValue(sheet, rows.context, slot.col);
+  const contextText = importRowValue(sheet, rows.context, slot);
   if (contextText) addCard("context", "Topic / Subject Matter", contextText);
 
-  [...rows.drawingCore, ...rows.portfolioCore].forEach((row) => {
-    const label = importKnownLabel("coreExperiences", importCheckboxLabel(sheet, row, slot.col));
-    if (label) addCard("coreExperiences", label);
+  rows.drawingCore.forEach((row) => {
+    importKnownLabels("coreExperiences", importCheckboxLabel(sheet, row, slot))
+      .filter((label) => label.startsWith("Drawing:"))
+      .forEach((label) => addCard("coreExperiences", label));
+  });
+  rows.portfolioCore.forEach((row) => {
+    importKnownLabels("coreExperiences", importCheckboxLabel(sheet, row, slot))
+      .filter((label) => label.startsWith("Portfolio:"))
+      .forEach((label) => addCard("coreExperiences", label));
   });
 
-  const electiveText = importRowValue(sheet, rows.electiveLearning, slot.col);
+  const electiveText = importRowValue(sheet, rows.electiveLearning, slot);
   if (electiveText) addCard("learningExperienceText", "Elective Learning Experience", electiveText);
 
   rows.pedagogy.forEach((row) => {
-    const rawLabel = importCheckboxLabel(sheet, row, slot.col);
-    const label = importKnownLabel("pedagogy", rawLabel);
-    if (label && libraryItemsByType("pedagogy").includes(label)) addCard("pedagogy", label);
+    const rawLabel = importCheckboxLabel(sheet, row, slot);
+    const matches = uniqueReadableValues([
+      ...importMatchesFromText("pedagogy", rawLabel),
+      ...importKnownLabels("pedagogy", rawLabel),
+    ]);
+    if (matches.length) matches.forEach((label) => addCard("pedagogy", label));
     else if (rawLabel) warnings.push(`Pedagogy needs review: ${rawLabel}`);
   });
-  const pedagogyOther = importRowValue(sheet, rows.pedagogyOther, slot.col);
+  const pedagogyOther = importRowValue(sheet, rows.pedagogyOther, slot);
   if (pedagogyOther) {
     unit.notes = [unit.notes, `Imported pedagogy note: ${pedagogyOther}`].filter(Boolean).join("\n\n");
     warnings.push("Pedagogy free-text imported into unit notes.");
   }
 
-  const assessmentType = importRowValue(sheet, rows.assessmentType, slot.col);
-  const assessmentPercent = importRowValue(sheet, rows.assessmentPercent, slot.col);
-  const assessmentCriteria = importRowValue(sheet, rows.assessmentCriteria, slot.col);
+  const assessmentType = importRowValue(sheet, rows.assessmentType, slot);
+  const assessmentPercent = importRowValue(sheet, rows.assessmentPercent, slot);
+  const assessmentCriteria = importRowValue(sheet, rows.assessmentCriteria, slot);
   const assessmentTask = importAssessmentFromTemplate(unit, assessmentType, assessmentPercent, assessmentCriteria);
   if (assessmentTask) addCard("assessment", assessmentTask.type);
 
   unit.lessons = Array.from({ length: placement.lessonCount }, () => createLesson(unit));
+  const aiSuggestionFields = importAiSuggestionFields(sheet, slot, rows, unit);
   return {
     slotIndex: slot.index,
     title: unit.title,
@@ -5824,7 +5975,37 @@ function parse2YipTemplateUnit(sheet, slot, rows = importTemplateRows) {
     warnings,
     unit,
     assessmentTask,
+    aiSuggestionFields,
   };
+}
+
+function importAiSuggestionFields(sheet, slot, rows, unit) {
+  const fields = [];
+  const hasType = (type) => unit.boardCards.some((card) => card.type === type);
+  const addField = (field, type, text, allowedLabels = libraryItemsByType(type)) => {
+    const cleanText = cleanTemplateText(text);
+    if (!cleanText || !allowedLabels.length) return;
+    fields.push({ field, type, text: cleanText, allowedLabels });
+  };
+  if (!hasType("media")) addField("Media / Art Forms", "media", importRowValue(sheet, rows.media, slot));
+  if (!hasType("artisticProcesses")) addField("Artistic Processes", "artisticProcesses", importRowValue(sheet, rows.artisticProcesses, slot));
+  if (!hasType("visualQualities")) addField("Visual Qualities", "visualQualities", importRowValue(sheet, rows.visualQualities, slot));
+  if (!hasType("pedagogy")) {
+    const pedagogyText = rows.pedagogy.map((row) => importCheckboxLabel(sheet, row, slot)).filter(Boolean).join("\n")
+      || importRowValue(sheet, rows.pedagogyOther, slot);
+    addField("Pedagogy", "pedagogy", pedagogyText);
+  }
+  const drawingCards = unit.boardCards.filter((card) => card.type === "coreExperiences" && card.label.startsWith("Drawing:"));
+  const drawingText = rows.drawingCore.map((row) => importCheckboxLabel(sheet, row, slot)).filter(Boolean).join("\n");
+  if (drawingText && !drawingCards.length) {
+    addField("Drawing Core Learning Experience", "coreExperiences", drawingText, libraryItemsByType("coreExperiences").filter((label) => label.startsWith("Drawing:")));
+  }
+  const portfolioCards = unit.boardCards.filter((card) => card.type === "coreExperiences" && card.label.startsWith("Portfolio:"));
+  const portfolioText = rows.portfolioCore.map((row) => importCheckboxLabel(sheet, row, slot)).filter(Boolean).join("\n");
+  if (portfolioText && !portfolioCards.length) {
+    addField("Portfolio Core Learning Experience", "coreExperiences", portfolioText, libraryItemsByType("coreExperiences").filter((label) => label.startsWith("Portfolio:")));
+  }
+  return fields;
 }
 
 function importAssessmentFromTemplate(unit, assessmentType, assessmentPercent, assessmentCriteria) {
