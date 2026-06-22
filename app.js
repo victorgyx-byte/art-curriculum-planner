@@ -5322,11 +5322,9 @@ function buildAiGapSuggestionRequest(units) {
       .map((entry) => ({
         slotIndex: entry.slotIndex,
         title: entry.title,
-        lessonCount: entry.lessonCount,
-        lessonOutlineText: entry.aiLessonOutlineText || "",
         fields: Array.isArray(entry.aiSuggestionFields) ? entry.aiSuggestionFields : [],
       }))
-      .filter((unit) => unit.fields.length || unit.lessonOutlineText),
+      .filter((unit) => unit.fields.length),
   };
 }
 
@@ -5350,14 +5348,6 @@ function applyAiGapSuggestions(units, payload) {
     });
     const warnings = (Array.isArray(suggested.warnings) ? suggested.warnings : []).map(cleanTemplateText).filter(Boolean);
     entry.warnings.push(...warnings.map((warning) => `AI suggestion review: ${warning}`));
-    const lessonOutlines = aiLessonOutlines(suggested, entry.lessonCount, entry.warnings);
-    lessonOutlines.forEach((description, lessonNumber) => {
-      const lesson = entry.unit.lessons?.[lessonNumber - 1];
-      if (!lesson || lesson.description || lesson.details) return;
-      syncLessonDescription(lesson, description);
-      entry.lessonOutlineCount = (entry.lessonOutlineCount || 0) + 1;
-      suggestionCount += 1;
-    });
   });
   return suggestionCount;
 }
@@ -5573,7 +5563,6 @@ const importTemplateRows = {
   assessmentType: 38,
   assessmentPercent: 39,
   assessmentCriteria: 40,
-  lessonOutlines: [],
 };
 
 function positiveImportRow(value, fallback) {
@@ -5608,7 +5597,6 @@ function normalizeImportTemplateRows(rows = {}) {
     assessmentType: positiveImportRow(rows.assessmentType, importTemplateRows.assessmentType),
     assessmentPercent: positiveImportRow(rows.assessmentPercent, importTemplateRows.assessmentPercent),
     assessmentCriteria: positiveImportRow(rows.assessmentCriteria, importTemplateRows.assessmentCriteria),
-    lessonOutlines: positiveImportRows(rows.lessonOutlines, importTemplateRows.lessonOutlines),
   };
 }
 
@@ -6012,7 +6000,6 @@ function parse2YipTemplateUnit(sheet, slot, rows = importTemplateRows) {
 
   unit.lessons = Array.from({ length: placement.lessonCount }, () => createLesson(unit));
   const aiSuggestionFields = importAiSuggestionFields(sheet, slot, rows, unit);
-  const aiLessonOutlineText = importLessonOutlineCandidateText(sheet, slot, rows);
   return {
     slotIndex: slot.index,
     title: unit.title,
@@ -6026,7 +6013,6 @@ function parse2YipTemplateUnit(sheet, slot, rows = importTemplateRows) {
     unit,
     assessmentTask,
     aiSuggestionFields,
-    aiLessonOutlineText,
   };
 }
 
@@ -6057,62 +6043,6 @@ function importAiSuggestionFields(sheet, slot, rows, unit) {
     addField("Portfolio Core Learning Experience", "coreExperiences", portfolioText, libraryItemsByType("coreExperiences").filter((label) => label.startsWith("Portfolio:")));
   }
   return fields;
-}
-
-function importStructuredRows(rows) {
-  return new Set([
-    rows.sec,
-    rows.duration,
-    rows.title,
-    rows.artTask,
-    rows.media,
-    rows.artisticProcesses,
-    rows.visualQualities,
-    rows.context,
-    rows.electiveLearning,
-    rows.pedagogyOther,
-    rows.assessmentType,
-    rows.assessmentPercent,
-    rows.assessmentCriteria,
-    ...rows.bigIdeas,
-    ...rows.learningOutcomes,
-    ...rows.drawingCore,
-    ...rows.portfolioCore,
-    ...rows.pedagogy,
-  ].filter(Boolean));
-}
-
-function importLessonOutlineCandidateText(sheet, slot, rows) {
-  const explicitRows = rows.lessonOutlines || [];
-  const explicitText = explicitRows
-    .map((row) => {
-      const text = importRowValue(sheet, row, slot);
-      return text ? `Row ${row}: ${text}` : "";
-    })
-    .filter(Boolean);
-  if (explicitText.length) return explicitText.join("\n");
-
-  const range = sheet?.["!ref"] ? window.XLSX.utils.decode_range(sheet["!ref"]) : null;
-  if (!range) return "";
-  const structuredRows = importStructuredRows(rows);
-  const candidates = [];
-  for (let row = range.s.r + 1; row <= range.e.r + 1; row += 1) {
-    if (structuredRows.has(row)) continue;
-    const text = importRowValue(sheet, row, slot);
-    if (!text) continue;
-    const header = [1, 2, 3]
-      .map((col) => cleanTemplateText(sheetCellText(sheet, row, col)))
-      .filter(Boolean)
-      .join(" ");
-    const headerLooksLikeLessonOutline = /\b(lesson|week|outline|sequence|activity|brief)\b/i.test(header);
-    const textLooksLikeLessonOutline = /\b(?:lesson|lessons?|l)\s*0?\d+\b/i.test(text)
-      || /\bweek\s*0?\d+\b/i.test(text)
-      || /(?:^|\n)\s*\d+[\).\:-]\s+\S/i.test(text);
-    if (!headerLooksLikeLessonOutline && !textLooksLikeLessonOutline) continue;
-    candidates.push(`Row ${row}${header ? ` (${header})` : ""}: ${text}`);
-    if (candidates.length >= 24) break;
-  }
-  return candidates.join("\n");
 }
 
 function importAssessmentFromTemplate(unit, assessmentType, assessmentPercent, assessmentCriteria) {

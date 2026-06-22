@@ -68,8 +68,6 @@ function compactUnitFields(body) {
     .map((unit) => ({
       slotIndex: Number(unit.slotIndex) || 0,
       title: String(unit.title || "").slice(0, 160),
-      lessonCount: Math.max(1, Math.min(40, Math.trunc(Number(unit.lessonCount)) || 1)),
-      lessonOutlineText: String(unit.lessonOutlineText || "").slice(0, 3500),
       fields: (Array.isArray(unit.fields) ? unit.fields : [])
         .slice(0, 16)
         .map((field) => ({
@@ -83,7 +81,7 @@ function compactUnitFields(body) {
         }))
         .filter((field) => field.type && field.text && field.allowedLabels.length),
     }))
-    .filter((unit) => unit.slotIndex && (unit.fields.length || unit.lessonOutlineText));
+    .filter((unit) => unit.slotIndex && unit.fields.length);
 }
 
 function gapSchema() {
@@ -99,7 +97,7 @@ function gapSchema() {
         items: {
           type: "object",
           additionalProperties: false,
-          required: ["slotIndex", "cards", "lessonOutlines", "warnings"],
+          required: ["slotIndex", "cards", "warnings"],
           properties: {
             slotIndex: { type: "number" },
             cards: {
@@ -115,20 +113,6 @@ function gapSchema() {
                   label: { type: "string" },
                   value: { type: "string" },
                   reason: { type: "string" },
-                },
-              },
-            },
-            lessonOutlines: {
-              type: "array",
-              minItems: 0,
-              maxItems: 40,
-              items: {
-                type: "object",
-                additionalProperties: false,
-                required: ["lessonNumber", "description"],
-                properties: {
-                  lessonNumber: { type: "number" },
-                  description: { type: "string" },
                 },
               },
             },
@@ -193,10 +177,6 @@ async function suggestGaps(context) {
             "Do not suggest Big Ideas or Learning Outcomes; those must be deterministic only.",
             "For core learning experiences, use the text in that field only.",
             "For Pedagogy, DI, D.I., and Differentiated Instruction all mean Differentiated Instruction (DI).",
-            "Stretch goal: if lessonOutlineText contains explicit lesson-by-lesson or week-by-week descriptions for the unit, return lessonOutlines with lessonNumber and description.",
-            "Only use clear lesson cues such as Lesson 1/Lesson 2 headings, L1/L2, Week 1/Week 2, or visibly separated numbered lesson entries.",
-            "Do not split a general unit task, theme, teaching focus, assessment note, or performance task into lessonOutlines.",
-            "Do not use lessonOutlineText to suggest cards.",
             "Keep value empty unless the field is a free-text card.",
             "Return structured JSON only.",
           ].join(" "),
