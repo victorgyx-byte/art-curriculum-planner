@@ -1528,6 +1528,15 @@ let editLock = {
 };
 let editLockHeartbeatTimer = null;
 
+function planStatus(plan = {}) {
+  if (plan.status === "deleted" || plan.deletedAt) return "deleted";
+  return "active";
+}
+
+function planIsDeleted(plan = {}) {
+  return planStatus(plan) === "deleted";
+}
+
 const screenHashes = {
   workspace: "#workspace",
   timeline: "#timeline",
@@ -1861,6 +1870,7 @@ function normalizeState(candidate) {
 }
 
 function normalizePlanMetadata(plan = {}) {
+  const status = planStatus(plan);
   return {
     id: plan.id || CLOUD_PLAN_ID,
     title: plan.title || "Main 2YIP",
@@ -1869,6 +1879,7 @@ function normalizePlanMetadata(plan = {}) {
     teamName: plan.teamName || "",
     workspaceId: plan.workspaceId || activeWorkspaceId(),
     role: plan.role || "owner",
+    status,
     deletedAt: plan.deletedAt || "",
     deletedBy: plan.deletedBy || "",
     deletedReason: plan.deletedReason || "",
@@ -2118,7 +2129,7 @@ function lastGoodPlanCatalogStorageKey(workspaceId = activeWorkspaceId()) {
 function saveLastGoodPlanCatalog(workspaceId = activeWorkspaceId(), plans = plansForActiveWorkspace()) {
   const visiblePlans = plans
     .map(normalizePlanMetadata)
-    .filter((plan) => !plan.deletedAt);
+    .filter((plan) => !planIsDeleted(plan));
   localStorage.setItem(lastGoodPlanCatalogStorageKey(workspaceId), JSON.stringify(visiblePlans));
 }
 
@@ -2186,9 +2197,23 @@ function clearReducedLocalPlanCache(planId = activePlanId(), workspaceId = activ
   }
 }
 
+function clearLocalPlanBodyCache(workspaceId = activeWorkspaceId()) {
+  const userId = cloud.user?.uid || "local";
+  const planBodyPrefix = `${STORAGE_KEY}:${workspaceId || "local-workspace"}:`;
+  const lastGoodBodyPrefix = `${LAST_GOOD_PLAN_CATALOG_STORAGE_KEY}:state:${userId}:${workspaceId || "local-workspace"}:`;
+  let cleared = 0;
+  Object.keys(localStorage).forEach((key) => {
+    if (key === STORAGE_KEY || key.startsWith(planBodyPrefix) || key.startsWith(lastGoodBodyPrefix)) {
+      localStorage.removeItem(key);
+      cleared += 1;
+    }
+  });
+  return cleared;
+}
+
 function savePlanToCatalog(plan = state.plan) {
   const normalized = normalizePlanMetadata(plan);
-  if (normalized.deletedAt) {
+  if (planIsDeleted(normalized)) {
     planCatalog = planCatalog.filter((entry) => !(entry.id === normalized.id && entry.workspaceId === normalized.workspaceId));
     const existingDeleted = deletedPlanCatalog.find((entry) => entry.id === normalized.id && entry.workspaceId === normalized.workspaceId);
     if (existingDeleted) Object.assign(existingDeleted, normalized);
@@ -2203,7 +2228,9 @@ function savePlanToCatalog(plan = state.plan) {
   } else {
     planCatalog.push(normalized);
   }
+  deletedPlanCatalog = deletedPlanCatalog.filter((entry) => !(entry.id === normalized.id && entry.workspaceId === normalized.workspaceId));
   savePlanCatalog();
+  saveDeletedPlanCatalog();
 }
 
 function mergeCloudPlanIntoCatalog(planId, data = {}, workspaceId = cloudWorkspaceId()) {
@@ -2215,6 +2242,10 @@ function mergeCloudPlanIntoCatalog(planId, data = {}, workspaceId = cloudWorkspa
     teamName: data.teamName || data.state?.plan?.teamName || data.planShell?.plan?.teamName || "",
     workspaceId,
     role: data.role || (canManageActiveWorkspace() ? "owner" : "editor"),
+    status: data.status || (data.deletedAt ? "deleted" : "active"),
+    deletedAt: data.deletedAt || "",
+    deletedBy: data.deletedBy || "",
+    deletedReason: data.deletedReason || "",
   });
 }
 
@@ -2259,17 +2290,64 @@ async function persistCurrentPlanBeforeSwitch() {
   if (cloud.loaded && state.currentScreen !== "workspace" && statePlanMatchesSelectedPlan()) await saveCloudStateNow();
 }
 
+async function closeActivePlanSession(options = {}) {
+  const identity = activePlanIdentity();
+  const shouldPersist = options.persist !== false;
+  if (shouldPersist && state.currentScreen !== "workspace" && statePlanMatchesSelectedPlan()) {
+    await persistCurrentPlanBeforeSwitch();
+  }
+  window.clearTimeout(cloudSaveTimer);
+  await releaseEditingLock();
+  stopEditLockHeartbeat();
+  cloudSyncPaused = false;
+  cloudSaveBlocked = false;
+  lastCloudError = null;
+  activePlanRevision = 0;
+  lastPersistedContentHash = "";
+  import2YipOpen = false;
+  pending2YipImport = null;
+  import2YipMode = "";
+  cardDetailInsertAction = null;
+  state = normalizeState({
+    ...state,
+    units: [],
+    assessmentTasks: [],
+    selectedUnitId: "",
+    selectedLessonId: "",
+    selectedAssessmentTaskId: "",
+    assessmentTaskEditorOpen: false,
+    currentScreen: "workspace",
+    plan: normalizePlanMetadata({
+      ...(state.plan || {}),
+      id: identity.planId,
+      workspaceId: identity.workspaceId,
+    }),
+  });
+  markLoadedPlanState("", identity.workspaceId);
+  setPlanLoadStatus({
+    verified: false,
+    reason: "plan-closed",
+    detail: "2YIP closed; full plan body unloaded.",
+    workspaceId: identity.workspaceId,
+    planId: identity.planId,
+  });
+  setEditLockMode("none", null);
+  if (els.rubricDraftStatus) els.rubricDraftStatus.textContent = "";
+  if (!options.silent) renderCloudStatus("2YIP closed. Workspace loaded.", cloud.user ? "Sign out" : "Sign in");
+}
+
 async function switchPlan(planId, options = {}) {
   const catalogPlan = planMetaById(planId);
   const targetWorkspaceId = options.workspaceId || catalogPlan?.workspaceId || activeWorkspaceId();
   const identity = planIdentity(planId, targetWorkspaceId);
   if (!planId || (planId === activePlanId() && activePlanBodyVerified(identity) && statePlanMatchesSelectedPlan() && !options.force)) return;
   const currentScreen = options.targetScreen || state.currentScreen;
-  if (!options.skipPersist) await persistCurrentPlanBeforeSwitch();
+  if (state.currentScreen !== "workspace") {
+    await closeActivePlanSession({ persist: !options.skipPersist, silent: true });
+  }
   window.clearTimeout(cloudSaveTimer);
   const previousSaveWritesPaused = saveWritesPaused;
   saveWritesPaused = true;
-  await releaseEditingLock();
   pausePlanBodyLoading("switching-plan", "Loading selected 2YIP.", identity);
   try {
     let nextState = loadLocalPlanState(planId) || loadLastGoodPlanState(planId, targetWorkspaceId);
@@ -2282,6 +2360,11 @@ async function switchPlan(planId, options = {}) {
         cloudSnapshotWasReadable = true;
         const snapshotData = snapshot.exists ? snapshot.data() || {} : {};
         if (snapshot.exists) mergeCloudPlanIntoCatalog(snapshot.id, snapshotData, targetWorkspaceId);
+        if (snapshot.exists && planIsDeleted(snapshotData)) {
+          pausePlanBodyLoading("plan-deleted", "Plan is in Trash.", identity);
+          renderCloudStatus("This 2YIP is in Trash. Restore it before editing.", "Sign out");
+          return;
+        }
         if (snapshot.exists && Number(snapshotData.storageVersion || 1) >= 2) {
           activePlanRevision = Number(snapshotData.revision || 0);
           nextState = await loadSplitCloudState(snapshot, snapshotData, identity);
@@ -2364,11 +2447,11 @@ async function switchPlan(planId, options = {}) {
 }
 
 function plansForActiveWorkspace() {
-  return planCatalog.filter((plan) => planBelongsToActiveWorkspace(plan) && !plan.deletedAt);
+  return planCatalog.filter((plan) => planBelongsToActiveWorkspace(plan) && !planIsDeleted(plan));
 }
 
 function deletedPlansForActiveWorkspace() {
-  return deletedPlanCatalog.filter((plan) => planBelongsToActiveWorkspace(plan) && plan.deletedAt);
+  return deletedPlanCatalog.filter((plan) => planBelongsToActiveWorkspace(plan) && planIsDeleted(plan));
 }
 
 function planBelongsToActiveWorkspace(plan) {
@@ -2382,8 +2465,7 @@ function firstPlanForActiveWorkspace() {
 
 async function switchWorkspace(workspaceId) {
   if (!workspaceId || workspaceId === activeWorkspaceId()) return;
-  await persistCurrentPlanBeforeSwitch();
-  await releaseEditingLock();
+  if (state.currentScreen !== "workspace") await closeActivePlanSession({ persist: true, silent: true });
   localStorage.setItem(ACTIVE_WORKSPACE_STORAGE_KEY, workspaceId);
   markLoadedPlanState("", workspaceId);
   setPlanLoadStatus({
@@ -2548,7 +2630,19 @@ async function deleteWorkspace(workspaceId) {
     const plansSnapshot = await workspaceRef.collection("plans").get();
     for (const planDoc of plansSnapshot.docs) {
       const data = planDoc.data() || {};
-      if (data.state) await createPlanSnapshot("before-delete", data.state, { planId: planDoc.id, workspaceId });
+      if (data.state) {
+        const cleanState = cleanCloudState(normalizeState(data.state));
+        cleanState.plan = normalizePlanMetadata({ ...cleanState.plan, id: planDoc.id, workspaceId });
+        await createPlanSnapshot("before-delete", cleanState, { planId: planDoc.id, workspaceId });
+        await writeSplitPlanContent(planIdentity(planDoc.id, workspaceId), cleanState);
+        await planDoc.ref.set({
+          storageVersion: PLAN_STORAGE_VERSION,
+          planShell: splitPlanShell(cleanState),
+          summary: splitPlanSummary(cleanState),
+          unitIds: (cleanState.units || []).map((unit) => unit.id).filter(Boolean),
+          assessmentTaskIds: (cleanState.assessmentTasks || []).map((task) => task.id).filter(Boolean),
+        }, { merge: true });
+      }
       await markPlanDeleted(workspaceId, planDoc.id, "workspace-delete");
     }
     await workspaceRef.set({
@@ -2646,11 +2740,25 @@ async function deletePlan(planId) {
   renderCloudStatus("Deleting 2YIP...", "Sign out", true);
   window.clearTimeout(cloudSaveTimer);
   const planSnapshot = await cloud.db.collection("workspaces").doc(activeWorkspaceId()).collection("plans").doc(planId).get();
-  const planState = planSnapshot.exists ? planSnapshot.data()?.state : null;
-  await createPlanSnapshot("before-delete", planState || state, { planId, workspaceId: activeWorkspaceId() });
+  const snapshotData = planSnapshot.exists ? planSnapshot.data() || {} : {};
+  const planState = snapshotData.state || (activePlanId() === planId && activePlanBodyVerified() ? state : null);
+  if (planState) {
+    const cleanState = cleanCloudState(normalizeState(planState));
+    cleanState.plan = normalizePlanMetadata({ ...cleanState.plan, id: planId, workspaceId: activeWorkspaceId() });
+    await createPlanSnapshot("before-delete", cleanState, { planId, workspaceId: activeWorkspaceId() });
+    await writeSplitPlanContent(planIdentity(planId, activeWorkspaceId()), cleanState);
+    await cloud.db.collection("workspaces").doc(activeWorkspaceId()).collection("plans").doc(planId).set({
+      storageVersion: PLAN_STORAGE_VERSION,
+      planShell: splitPlanShell(cleanState),
+      summary: splitPlanSummary(cleanState),
+      unitIds: (cleanState.units || []).map((unit) => unit.id).filter(Boolean),
+      assessmentTaskIds: (cleanState.assessmentTasks || []).map((task) => task.id).filter(Boolean),
+    }, { merge: true });
+  }
   await markPlanDeleted(activeWorkspaceId(), planId, "plan-delete");
   const deletedPlan = normalizePlanMetadata({
     ...plan,
+    status: "deleted",
     deletedAt: new Date().toISOString(),
     deletedBy: cloud.user.uid,
     deletedReason: "plan-delete",
@@ -2680,10 +2788,12 @@ async function deletePlan(planId) {
 async function markPlanDeleted(workspaceId, planId, reason = "plan-delete") {
   const planRef = cloud.db.collection("workspaces").doc(workspaceId).collection("plans").doc(planId);
   await planRef.set({
+    status: "deleted",
     deletedAt: window.firebase.firestore.FieldValue.serverTimestamp(),
     deletedAtMs: Date.now(),
     deletedBy: cloud.user.uid,
     deletedReason: reason,
+    state: window.firebase.firestore.FieldValue.delete(),
     updatedAt: window.firebase.firestore.FieldValue.serverTimestamp(),
   }, { merge: true });
 }
@@ -3321,7 +3431,7 @@ function screenFromLocation() {
 function applyLocationToState() {
   const nextScreen = screenFromLocation();
   if (nextScreen === "workspace" && state.currentScreen !== "workspace") {
-    persistCurrentPlanBeforeSwitch().then(releaseEditingLock).catch((error) => console.warn("Back navigation save/release failed", error));
+    closeActivePlanSession({ persist: true }).catch((error) => console.warn("Back navigation close failed", error));
   } else if (nextScreen !== "workspace" && state.currentScreen === "workspace" && cloud.loaded && firstPlanForActiveWorkspace()) {
     acquireEditingLock({ allowSameUserTakeover: true }).then(() => render()).catch((error) => console.warn("Back navigation lock failed", error));
   }
@@ -3406,8 +3516,14 @@ async function handleCloudUser(user) {
     await runLoadStep("Workspace list", () => loadCloudWorkspaceCatalog());
     await runLoadStep("Shared card library", () => loadCloudWorkspaceLibrary());
     const planCatalogLoaded = await runLoadStep("2YIP list", () => loadCloudPlanCatalog(), false);
-    const planContentLoaded = await runLoadStep("2YIP content", () => loadCloudState(), false);
-    const hasVerifiedPlanContent = planContentLoaded === "remote" || planContentLoaded === "local" || !firstPlanForActiveWorkspace();
+    const shouldLoadPlanContent = requestedScreen !== "workspace" && Boolean(firstPlanForActiveWorkspace());
+    const planContentLoaded = shouldLoadPlanContent
+      ? await runLoadStep("2YIP content", () => loadCloudState(), false)
+      : true;
+    const hasVerifiedPlanContent = !shouldLoadPlanContent || planContentLoaded === "remote" || planContentLoaded === "local" || !firstPlanForActiveWorkspace();
+    if (!shouldLoadPlanContent) {
+      await closeActivePlanSession({ persist: false, silent: true });
+    }
     cloud.loaded = hasVerifiedPlanContent;
     if (!hasVerifiedPlanContent) {
       planCatalogVerified = false;
@@ -3580,7 +3696,7 @@ async function validateAccessiblePlanAccess(userData = {}) {
         .get();
       if (snapshot.exists) {
         const data = snapshot.data() || {};
-        if (data.deletedAt) {
+        if (planIsDeleted(data)) {
           continue;
         }
         validAccessiblePlans[key] = {
@@ -3677,27 +3793,30 @@ async function saveCloudWorkspaceLibrary() {
 async function loadCloudPlanCatalog() {
   const workspaceId = cloudWorkspaceId();
   const loadedPlans = [];
-  const loadedDeletedPlans = [];
   const plansRef = cloud.db.collection("workspaces").doc(cloudWorkspaceId()).collection("plans");
+  const metaFromPlanDoc = (doc) => {
+    const data = doc.data() || {};
+    return normalizePlanMetadata({
+      id: doc.id,
+      title: data.title || data.state?.plan?.title || data.planShell?.plan?.title || "Untitled Plan",
+      subject: data.subject || data.state?.plan?.subject || data.planShell?.plan?.subject || "Art",
+      teamId: data.teamId || data.state?.plan?.teamId || data.planShell?.plan?.teamId || "",
+      teamName: data.teamName || data.state?.plan?.teamName || data.planShell?.plan?.teamName || "",
+      workspaceId,
+      role: data.role || (canManageActiveWorkspace() ? "owner" : "editor"),
+      status: data.status || (data.deletedAt ? "deleted" : "active"),
+      deletedAt: data.deletedAt || "",
+      deletedBy: data.deletedBy || "",
+      deletedReason: data.deletedReason || "",
+      lastVerifiedAt: new Date().toISOString(),
+    });
+  };
   try {
     if (canManageActiveWorkspace()) {
-      const snapshot = await plansRef.get();
+      const snapshot = await plansRef.where("status", "==", "active").get();
       snapshot.forEach((doc) => {
-        const data = doc.data() || {};
-        const meta = normalizePlanMetadata({
-          id: doc.id,
-          title: data.title || data.state?.plan?.title || data.planShell?.plan?.title || "Untitled Plan",
-          subject: data.subject || data.state?.plan?.subject || data.planShell?.plan?.subject || "Art",
-          teamId: data.teamId || data.state?.plan?.teamId || data.planShell?.plan?.teamId || "",
-          teamName: data.teamName || data.state?.plan?.teamName || data.planShell?.plan?.teamName || "",
-          workspaceId,
-          role: "owner",
-          deletedAt: data.deletedAt || "",
-          deletedBy: data.deletedBy || "",
-          deletedReason: data.deletedReason || "",
-          lastVerifiedAt: new Date().toISOString(),
-        });
-        (meta.deletedAt ? loadedDeletedPlans : loadedPlans).push(meta);
+        const meta = metaFromPlanDoc(doc);
+        if (!planIsDeleted(meta)) loadedPlans.push(meta);
       });
     } else {
       const sharedPlans = userAccessiblePlans.filter((plan) => plan.workspaceId === cloudWorkspaceId());
@@ -3714,12 +3833,13 @@ async function loadCloudPlanCatalog() {
               teamName: data.teamName || data.state?.plan?.teamName || data.planShell?.plan?.teamName || "",
               workspaceId,
               role: sharedPlan.role || "editor",
+              status: data.status || (data.deletedAt ? "deleted" : "active"),
               deletedAt: data.deletedAt || "",
               deletedBy: data.deletedBy || "",
               deletedReason: data.deletedReason || "",
               lastVerifiedAt: new Date().toISOString(),
             });
-            (meta.deletedAt ? loadedDeletedPlans : loadedPlans).push(meta);
+            if (!planIsDeleted(meta)) loadedPlans.push(meta);
           } else {
             loadedPlans.push(normalizePlanMetadata({ ...sharedPlan, id: sharedPlan.planId, title: sharedPlan.planTitle, stale: true }));
           }
@@ -3743,16 +3863,24 @@ async function loadCloudPlanCatalog() {
     planCatalogVerified = false;
     return false;
   }
+  if (!loadedPlans.length) {
+    const fallbackPlans = loadLastGoodPlanCatalog(workspaceId);
+    if (fallbackPlans.length) {
+      planCatalog = [
+        ...planCatalog.filter((plan) => plan.workspaceId !== workspaceId),
+        ...fallbackPlans.map((plan) => normalizePlanMetadata({ ...plan, stale: true })),
+      ];
+      savePlanCatalog();
+      renderCloudStatus("No active online plan index loaded. Showing last known list.", "Sign out");
+      planCatalogVerified = false;
+      return false;
+    }
+  }
   planCatalog = [
     ...planCatalog.filter((plan) => plan.workspaceId !== workspaceId),
     ...loadedPlans,
   ];
-  deletedPlanCatalog = [
-    ...deletedPlanCatalog.filter((plan) => plan.workspaceId !== workspaceId),
-    ...loadedDeletedPlans,
-  ];
   savePlanCatalog();
-  saveDeletedPlanCatalog();
   saveLastGoodPlanCatalog(workspaceId, loadedPlans);
   planCatalogVerified = true;
   const requestedPlanId = storedActivePlanId(workspaceId, { includeLegacy: true }) || (state.plan?.workspaceId === workspaceId ? state.plan?.id : "") || "";
@@ -3762,6 +3890,51 @@ async function loadCloudPlanCatalog() {
     setStoredActivePlanId(nextPlan.id, workspaceId);
   }
   return true;
+}
+
+async function loadCloudTrashCatalog(workspaceId = activeWorkspaceId()) {
+  if (!cloud.user || !cloud.db || !canManageActiveWorkspace()) return deletedPlansForActiveWorkspace();
+  const plansRef = cloud.db.collection("workspaces").doc(workspaceId).collection("plans");
+  const deletedByKey = new Map();
+  const addDeletedDoc = (doc) => {
+    const data = doc.data() || {};
+    const meta = normalizePlanMetadata({
+      id: doc.id,
+      title: data.title || data.state?.plan?.title || data.planShell?.plan?.title || "Deleted 2YIP",
+      subject: data.subject || data.state?.plan?.subject || data.planShell?.plan?.subject || "Art",
+      teamId: data.teamId || data.state?.plan?.teamId || data.planShell?.plan?.teamId || "",
+      teamName: data.teamName || data.state?.plan?.teamName || data.planShell?.plan?.teamName || "",
+      workspaceId,
+      role: "owner",
+      status: "deleted",
+      deletedAt: data.deletedAt || data.deletedAtMs || "",
+      deletedBy: data.deletedBy || "",
+      deletedReason: data.deletedReason || "",
+      lastVerifiedAt: new Date().toISOString(),
+    });
+    deletedByKey.set(`${workspaceId}::${doc.id}`, meta);
+  };
+  try {
+    const statusSnapshot = await plansRef.where("status", "==", "deleted").get();
+    statusSnapshot.forEach(addDeletedDoc);
+    try {
+      const legacySnapshot = await plansRef.where("deletedAtMs", ">", 0).get();
+      legacySnapshot.forEach(addDeletedDoc);
+    } catch (legacyError) {
+      console.warn("Legacy trash lookup skipped", legacyError);
+    }
+    const loadedDeletedPlans = [...deletedByKey.values()];
+    deletedPlanCatalog = [
+      ...deletedPlanCatalog.filter((plan) => plan.workspaceId !== workspaceId),
+      ...loadedDeletedPlans,
+    ];
+    saveDeletedPlanCatalog();
+    return loadedDeletedPlans;
+  } catch (error) {
+    console.warn("Trash catalog load failed", error);
+    renderCloudStatus(`Trash unavailable: ${errorLabel(error)}`, "Sign out");
+    return deletedPlansForActiveWorkspace();
+  }
 }
 
 async function loadCloudState() {
@@ -3788,7 +3961,7 @@ async function loadCloudState() {
   }
   const snapshotData = snapshot.exists ? snapshot.data() || {} : {};
   const remoteState = snapshotData.state || null;
-  if (snapshot.exists && snapshotData.deletedAt) {
+  if (snapshot.exists && planIsDeleted(snapshotData)) {
     pausePlanBodyLoading("plan-deleted", "Plan is in Trash.", identity);
     renderCloudStatus("This 2YIP is in Trash. Restore it before editing.", "Sign out");
     return false;
@@ -3846,7 +4019,7 @@ async function saveCloudStateNow(options = {}) {
     return false;
   }
   const planMeta = planMetaById(activePlanId());
-  if (!planCatalogVerified || !planMeta || planMeta.deletedAt || planMeta.stale || !statePlanMatchesSelectedPlan()) {
+  if (!planCatalogVerified || !planMeta || planIsDeleted(planMeta) || planMeta.stale || !statePlanMatchesSelectedPlan()) {
     cloudSaveBlocked = true;
     renderCloudStatus("Plan not verified. Saving paused to prevent overwrite.", "Sign out");
     return false;
@@ -3890,6 +4063,7 @@ async function saveCloudStateNow(options = {}) {
         teamId: state.plan?.teamId || "",
         teamName: state.plan?.teamName || "",
         workspaceId: identity.workspaceId,
+        status: "active",
         storageVersion: PLAN_STORAGE_VERSION,
         planShell: splitPlanShell(cleanState),
         summary: splitPlanSummary(cleanState),
@@ -4189,7 +4363,7 @@ function verifyCloudImageUploadReady() {
   if (!canEditActivePlan()) {
     throw new Error("Read-only. Take over editing before uploading an image.");
   }
-  if (!planCatalogVerified || !planMeta || planMeta.deletedAt || planMeta.stale || !statePlanMatchesSelectedPlan()) {
+  if (!planCatalogVerified || !planMeta || planIsDeleted(planMeta) || planMeta.stale || !statePlanMatchesSelectedPlan()) {
     throw new Error("Plan is not verified yet. Reopen this 2YIP before uploading an image.");
   }
 }
@@ -4378,7 +4552,7 @@ async function acquireEditingLock(options = {}) {
       const ref = cloudPlanRefFor(identity.planId, identity.workspaceId);
       const snapshot = await transaction.get(ref);
       const data = snapshot.exists ? snapshot.data() || {} : {};
-      if (snapshot.exists && data.deletedAt) {
+      if (snapshot.exists && planIsDeleted(data)) {
         throw Object.assign(new Error("Plan is in Trash."), { code: "plan-deleted" });
       }
       const now = Date.now();
@@ -5294,7 +5468,61 @@ function closeRecoveryModal() {
   els.recoveryBody.innerHTML = "";
 }
 
-function openTrashView() {
+async function compactDeletedPlanStorage(workspaceId = activeWorkspaceId()) {
+  if (!cloud.user || !cloud.db || !canManageActiveWorkspace()) return 0;
+  renderCloudStatus("Compacting Trash storage...", "Sign out", true);
+  const deletedPlans = await loadCloudTrashCatalog(workspaceId);
+  let compacted = 0;
+  for (const plan of deletedPlans) {
+    const planRef = cloud.db.collection("workspaces").doc(workspaceId).collection("plans").doc(plan.id);
+    const snapshot = await planRef.get();
+    const data = snapshot.exists ? snapshot.data() || {} : {};
+    if (data.state && Array.isArray(data.state.units)) {
+      const cleanState = cleanCloudState(normalizeState(data.state));
+      cleanState.plan = normalizePlanMetadata({
+        ...cleanState.plan,
+        id: plan.id,
+        workspaceId,
+        status: "deleted",
+        deletedAt: data.deletedAt || plan.deletedAt || new Date().toISOString(),
+        deletedBy: data.deletedBy || plan.deletedBy || cloud.user.uid,
+        deletedReason: data.deletedReason || plan.deletedReason || "trash-compact",
+      });
+      await createPlanSnapshot("trash-compact", cleanState, { planId: plan.id, workspaceId });
+      await writeSplitPlanContent(planIdentity(plan.id, workspaceId), cleanState);
+      await planRef.set({
+        title: cleanState.plan.title || data.title || plan.title || "Deleted 2YIP",
+        subject: cleanState.plan.subject || data.subject || plan.subject || "Art",
+        teamId: cleanState.plan.teamId || data.teamId || "",
+        teamName: cleanState.plan.teamName || data.teamName || "",
+        status: "deleted",
+        storageVersion: PLAN_STORAGE_VERSION,
+        planShell: splitPlanShell(cleanState),
+        summary: splitPlanSummary(cleanState),
+        unitIds: (cleanState.units || []).map((unit) => unit.id).filter(Boolean),
+        assessmentTaskIds: (cleanState.assessmentTasks || []).map((task) => task.id).filter(Boolean),
+        state: window.firebase.firestore.FieldValue.delete(),
+        compactedAtMs: Date.now(),
+        updatedAt: window.firebase.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
+      compacted += 1;
+    } else if (data.status !== "deleted") {
+      await planRef.set({
+        status: "deleted",
+        updatedAt: window.firebase.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
+    }
+  }
+  await loadCloudTrashCatalog(workspaceId);
+  renderCloudStatus(compacted ? `Trash compacted: ${compacted} old 2YIP plan${compacted === 1 ? "" : "s"} cleaned.` : "Trash already compact.", "Sign out");
+  return compacted;
+}
+
+async function openTrashView() {
+  if (cloud.loaded && canManageActiveWorkspace()) {
+    renderCloudStatus("Loading Trash...", "Sign out", true);
+    await loadCloudTrashCatalog(activeWorkspaceId());
+  }
   const deletedWorkspaces = deletedWorkspaceCatalog.filter((workspace) => workspace.deletedAt);
   const deletedPlans = deletedPlansForActiveWorkspace();
   const workspaceHtml = deletedWorkspaces.length
@@ -5320,6 +5548,8 @@ function openTrashView() {
       <p class="eyebrow">Workspaces</p>
       ${workspaceHtml}
       <p class="eyebrow">2YIP Plans</p>
+      ${canManageActiveWorkspace() ? `<button class="ghost-button compact-trash-button" type="button">Compact Trash Storage</button>` : ""}
+      <button class="ghost-button clear-local-cache-button" type="button">Clear Local Plan Cache</button>
       ${planHtml}
     </div>
   `);
@@ -5328,6 +5558,14 @@ function openTrashView() {
   });
   els.recoveryBody.querySelectorAll(".restore-plan-button").forEach((button) => {
     button.addEventListener("click", () => restorePlan(button.dataset.planId));
+  });
+  els.recoveryBody.querySelector(".compact-trash-button")?.addEventListener("click", async () => {
+    await compactDeletedPlanStorage(activeWorkspaceId());
+    await openTrashView();
+  });
+  els.recoveryBody.querySelector(".clear-local-cache-button")?.addEventListener("click", () => {
+    const cleared = clearLocalPlanBodyCache(activeWorkspaceId());
+    renderCloudStatus(cleared ? `Cleared ${cleared} local plan cache item${cleared === 1 ? "" : "s"}.` : "No local plan body cache found.", "Sign out");
   });
 }
 
@@ -5345,6 +5583,7 @@ async function restoreWorkspace(workspaceId) {
   }, { merge: true });
   const plansSnapshot = await workspaceRef.collection("plans").get();
   await Promise.all(plansSnapshot.docs.map((planDoc) => planDoc.ref.set({
+    status: "active",
     deletedAt: window.firebase.firestore.FieldValue.delete(),
     deletedAtMs: window.firebase.firestore.FieldValue.delete(),
     deletedBy: window.firebase.firestore.FieldValue.delete(),
@@ -5376,6 +5615,7 @@ async function restorePlan(planId) {
   if (!cloud.user || !cloud.db || !plan) return;
   renderCloudStatus("Restoring 2YIP...", "Sign out", true);
   await cloud.db.collection("workspaces").doc(activeWorkspaceId()).collection("plans").doc(planId).set({
+    status: "active",
     deletedAt: window.firebase.firestore.FieldValue.delete(),
     deletedAtMs: window.firebase.firestore.FieldValue.delete(),
     deletedBy: window.firebase.firestore.FieldValue.delete(),
@@ -5430,20 +5670,38 @@ async function restoreSnapshot(planId, snapshotId) {
   if (!confirmed) return;
   const planRef = cloud.db.collection("workspaces").doc(activeWorkspaceId()).collection("plans").doc(planId);
   const currentSnapshot = await planRef.get();
-  const currentState = currentSnapshot.exists ? currentSnapshot.data()?.state : null;
-  if (currentState) await createPlanSnapshot("before-restore", currentState, { planId, workspaceId: activeWorkspaceId() });
+  const currentData = currentSnapshot.exists ? currentSnapshot.data() || {} : {};
+  if (currentData.state) {
+    await createPlanSnapshot("before-restore", currentData.state, { planId, workspaceId: activeWorkspaceId() });
+  } else if (Number(currentData.storageVersion || 1) >= 2) {
+    try {
+      const currentSplit = await loadSplitCloudState(currentSnapshot, currentData, planIdentity(planId, activeWorkspaceId()));
+      await createPlanSnapshot("before-restore", currentSplit, { planId, workspaceId: activeWorkspaceId() });
+    } catch (error) {
+      console.warn("Could not snapshot current split plan before restore", error);
+    }
+  }
   const selectedSnapshot = await planRef.collection("snapshots").doc(snapshotId).get();
   const snapshotState = selectedSnapshot.exists ? selectedSnapshot.data()?.state : null;
   if (!snapshotState?.plan) {
     renderCloudStatus("Selected snapshot is not restorable", "Sign out");
     return;
   }
+  const cleanSnapshotState = cleanCloudState(normalizeState(snapshotState));
+  cleanSnapshotState.plan = normalizePlanMetadata({ ...cleanSnapshotState.plan, id: planId, workspaceId: activeWorkspaceId(), status: "active" });
+  await writeSplitPlanContent(planIdentity(planId, activeWorkspaceId()), cleanSnapshotState);
   await planRef.set({
-    title: snapshotState.plan.title || "Restored 2YIP",
-    subject: snapshotState.plan.subject || "Art",
-    teamId: snapshotState.plan.teamId || "",
-    teamName: snapshotState.plan.teamName || "",
-    state: snapshotState,
+    title: cleanSnapshotState.plan.title || "Restored 2YIP",
+    subject: cleanSnapshotState.plan.subject || "Art",
+    teamId: cleanSnapshotState.plan.teamId || "",
+    teamName: cleanSnapshotState.plan.teamName || "",
+    status: "active",
+    storageVersion: PLAN_STORAGE_VERSION,
+    planShell: splitPlanShell(cleanSnapshotState),
+    summary: splitPlanSummary(cleanSnapshotState),
+    unitIds: (cleanSnapshotState.units || []).map((unit) => unit.id).filter(Boolean),
+    assessmentTaskIds: (cleanSnapshotState.assessmentTasks || []).map((task) => task.id).filter(Boolean),
+    state: window.firebase.firestore.FieldValue.delete(),
     deletedAt: window.firebase.firestore.FieldValue.delete(),
     deletedAtMs: window.firebase.firestore.FieldValue.delete(),
     deletedBy: window.firebase.firestore.FieldValue.delete(),
@@ -6789,7 +7047,7 @@ async function read2YipImportFile(file) {
 async function confirm2YipImport() {
   if (!pending2YipImport?.units?.length || !canManageActiveWorkspace()) return;
   const imported = pending2YipImport;
-  await persistCurrentPlanBeforeSwitch();
+  if (state.currentScreen !== "workspace") await closeActivePlanSession({ persist: true, silent: true });
   const nextState = createPlanState({
     title: imported.planTitle,
     subject: "Art",
@@ -12346,7 +12604,7 @@ els.createPlan?.addEventListener("click", async () => {
   const title = els.newPlanTitle.value.trim();
   const subject = els.newPlanSubject.value;
   const teamName = workspaceLabel();
-  await persistCurrentPlanBeforeSwitch();
+  if (state.currentScreen !== "workspace") await closeActivePlanSession({ persist: true, silent: true });
   state = createPlanState({ title, subject, teamName });
   state.currentScreen = "timeline";
   setStoredActivePlanId(state.plan.id, state.plan.workspaceId);
@@ -12452,14 +12710,17 @@ els.workspaceSelect?.addEventListener("change", (event) => {
 });
 
 els.workspaceHome?.addEventListener("click", async () => {
-  await persistCurrentPlanBeforeSwitch();
-  await releaseEditingLock();
-  state.currentScreen = "workspace";
+  await closeActivePlanSession({ persist: true });
   workspaceDirectoryWorkspaceId = "";
   render();
 });
 
-els.recoveryTrash?.addEventListener("click", openTrashView);
+els.recoveryTrash?.addEventListener("click", () => {
+  openTrashView().catch((error) => {
+    console.warn("Trash view failed", error);
+    renderCloudStatus(`Trash unavailable: ${errorLabel(error)}`, "Sign out");
+  });
+});
 
 els.recoveryClose?.addEventListener("click", closeRecoveryModal);
 
