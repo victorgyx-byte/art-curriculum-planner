@@ -49,6 +49,8 @@ const assessmentLabelMap = {
 const learningOutcomeLabelMap = {
   "LO3: Explore and experiment with materials and techniques to communicate ideas.":
     "LO3: Explore and experiment with a variety of materials and techniques to communicate independent or shared ideas.",
+  "LO3: Explore and experiment with a variety of materials and techniques to communicate ideas.":
+    "LO3: Explore and experiment with a variety of materials and techniques to communicate independent or shared ideas.",
   "LO4: Develop personally relevant works of art independently or with others.":
     "LO4: Develop personally relevant works of art independently or with others, with consideration for aesthetic qualities and social and cultural awareness.",
   "LO6: Value art as an avenue for self-discovery and understanding the world.":
@@ -6394,7 +6396,7 @@ function timelineLayerCardsForUnit(unit) {
 
 function timelineCardDisplayLabel(card) {
   const label = readableCardValue(card) || normalizePlanningLabel(card.label || "", card.type);
-  if (card.type === "learningOutcomes") return label.match(/\bLO\d\b/)?.[0] || label;
+  if (card.type === "learningOutcomes") return learningOutcomeCode(label) || label;
   if (card.type === "artisticProcesses") return label.match(/\bAP\d\b/)?.[0] || label;
   if (card.type === "cc21Goals") return label.split(":")[0];
   if (card.type === "meaningText" && card.label === "Theme") return label;
