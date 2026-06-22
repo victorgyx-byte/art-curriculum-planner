@@ -124,6 +124,7 @@ function templateDetectionSchema() {
           "assessmentType",
           "assessmentPercent",
           "assessmentCriteria",
+          "lessonOutlines",
         ],
         properties: {
           sec: rowSchemaValue(),
@@ -144,6 +145,7 @@ function templateDetectionSchema() {
           assessmentType: rowSchemaValue(),
           assessmentPercent: rowSchemaValue(),
           assessmentCriteria: rowSchemaValue(),
+          lessonOutlines: rowSchemaArray(),
         },
       },
       warnings: {
@@ -208,6 +210,7 @@ async function callOpenAI(context) {
             "Portfolio core experience rows are near a Core Learning Experience / portfolio label and contain Document, Curate, Reflect, or (Re)present.",
             "Pedagogy rows contain pedagogy checkboxes such as Inquiry Based Learning, Differentiated Instruction, DI, E-Pedagogy, or similar pedagogy labels.",
             "Assessment rows contain assessment weighting, percentage, or criteria notes.",
+            "Lesson outline rows contain explicit lesson-by-lesson or week-by-week lesson description text. Return these rows only when there are clear lesson cues such as Lesson 1, Lesson 2, Week 1, or separated numbered lesson entries.",
             "If a role is unclear, return 0 or an empty array and add a short warning.",
             "Return structured JSON only.",
           ].join(" "),
