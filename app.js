@@ -5423,9 +5423,12 @@ async function runAiTemplateDetectionImport() {
     });
     const detectionPayload = await detectionResponse.json().catch(() => ({}));
     if (!detectionResponse.ok) throw new Error(detectionPayload.error || "AI-assisted row detection failed.");
-    const parsed = parse2YipWorkbook(sourceWorkbook, pendingImportFileName(), sourceSnapshot, detectionPayload.rows || {}, {
-      unitSlotMode: "template",
-    });
+    const parsed = parse2YipWorkbookWithDeterministicUnitSpine(
+      sourceWorkbook,
+      pendingImportFileName(),
+      sourceSnapshot,
+      detectionPayload.rows || {},
+    );
     const units = parsed.units || [];
     const gapRequest = buildAiGapSuggestionRequest(units);
     let suggestionCount = 0;
@@ -5815,6 +5818,22 @@ function parse2YipWorkbook(workbook, fileName = "Imported 2YIP", snapshot = null
     workbookSnapshot: snapshot,
     importMethod: "standard",
     units,
+  };
+}
+
+function parse2YipWorkbookWithDeterministicUnitSpine(workbook, fileName = "Imported 2YIP", snapshot = null, rowOverrides = null) {
+  const standardParsed = parse2YipWorkbook(workbook, fileName, snapshot);
+  const aiRowParsed = parse2YipWorkbook(workbook, fileName, snapshot, rowOverrides, {
+    unitSlotMode: "template",
+  });
+  if (!standardParsed.units.length) return aiRowParsed;
+
+  const aiRowsBySlot = new Map(aiRowParsed.units.map((entry) => [Number(entry.slotIndex), entry]));
+  return {
+    ...aiRowParsed,
+    units: standardParsed.units.map((standardEntry) =>
+      aiRowsBySlot.get(Number(standardEntry.slotIndex)) || standardEntry,
+    ),
   };
 }
 
