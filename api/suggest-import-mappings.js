@@ -246,6 +246,25 @@ function coreExperienceLabelFromText(area, value) {
   return "";
 }
 
+function coreExperienceLabelsFromText(area, value) {
+  const labels = [];
+  const text = normaliseSearchText(value);
+  if (area === "drawing") {
+    if (/\bobserve\b/.test(text)) labels.push("Drawing: Observe");
+    if (/\bthink\b/.test(text)) labels.push("Drawing: Think");
+    if (/\bimagine\b/.test(text)) labels.push("Drawing: Imagine");
+  }
+  if (area === "portfolio") {
+    if (/\bdocument\b/.test(text)) labels.push("Portfolio: Document");
+    if (/\bcurate\b/.test(text)) labels.push("Portfolio: Curate");
+    if (/\breflect\b/.test(text)) labels.push("Portfolio: Reflect");
+    if (/(^|[\s:;,\-\/])(represent|presentation|re\s*-?\s*present|\(?\s*re\s*\)?\s*present|re\s*\(?\s*represent\s*\)?)(?=$|[\s:;,\-\/.])/.test(text)) {
+      labels.push("Portfolio: (Re)present");
+    }
+  }
+  return labels;
+}
+
 function coreExperienceTrigger(label) {
   const normalised = normaliseSearchText(label);
   if (normalised === "drawing: observe") return { area: "drawing", pattern: /\bobserve\b/i };
@@ -257,7 +276,7 @@ function coreExperienceTrigger(label) {
   if (normalised === "portfolio: (re)present") {
     return {
       area: "portfolio",
-      pattern: /(^|[\s:;,\-\/])(represent|re\s*-?\s*present|\(?\s*re\s*\)?\s*present|re\s*\(?\s*represent\s*\)?)(?=$|[\s:;,\-\/.])/i,
+      pattern: /(^|[\s:;,\-\/])(represent|presentation|re\s*-?\s*present|\(?\s*re\s*\)?\s*present|re\s*\(?\s*represent\s*\)?)(?=$|[\s:;,\-\/.])/i,
     };
   }
   return null;
@@ -370,8 +389,14 @@ function templateCoreExperienceLabelsForUnit(workbook, unit) {
     coreExperienceRows(cells, area).forEach((row) => {
       const checked = columns.some((col) => templateChecked(cellText(cells, row, col)));
       const rowText = coreExperienceRowText(cells, row, columns);
-      const label = coreExperienceLabelFromText(area, rowText);
-      if (checked && label && !labels.includes(label)) labels.push(label);
+      const rowContext = cells
+        .filter((cell) => Math.abs((Number(cell.row) || 0) - row) <= 1)
+        .map((cell) => cell.value)
+        .join(" ");
+      const labelText = `${rowText} ${checked ? rowContext : ""}`;
+      coreExperienceLabelsFromText(area, labelText).forEach((label) => {
+        if (!labels.includes(label)) labels.push(label);
+      });
     });
   });
   return labels;
@@ -397,14 +422,10 @@ function workbookHasCoreExperienceTrigger(workbook, unit, label) {
   if (templateCoreExperienceLabelsForUnit(workbook, unit).includes(label)) return true;
   const cells = Array.isArray(workbook?.cells) ? workbook.cells : [];
   const columns = unitSlotColumns(unit);
-  const relevantCells = columns.length
-    ? cells.filter((cell) => columns.includes(Number(cell.col) || 0) || columns.includes((Number(cell.col) || 0) - 1))
-    : cells;
-  return relevantCells.some((cell) => {
-    const value = String(cell.value || "");
-    if (!trigger.pattern.test(value)) return false;
-    const context = normaliseSearchText(nearbyCellText(cells, cell));
-    return trigger.area === "drawing" ? /\bdrawing\b/.test(context) : /\bportfolio\b/.test(context);
+  if (!columns.length) return false;
+  return coreExperienceRows(cells, trigger.area).some((row) => {
+    const rowText = coreExperienceRowText(cells, row, columns);
+    return trigger.pattern.test(rowText);
   });
 }
 

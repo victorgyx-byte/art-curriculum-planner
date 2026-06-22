@@ -533,9 +533,29 @@ function coreExperienceTrigger(label) {
   if (text === "portfolio: curate") return { field: "portfolioCore", pattern: /\bcurate\b/i };
   if (text === "portfolio: reflect") return { field: "portfolioCore", pattern: /\breflect\b/i };
   if (text === "portfolio: (re)present") {
-    return { field: "portfolioCore", pattern: /(^|[\s:;,\-\/])(represent|re\s*-?\s*present|\(?\s*re\s*\)?\s*present)(?=$|[\s:;,\-\/.])/i };
+    return { field: "portfolioCore", pattern: /(^|[\s:;,\-\/])(represent|presentation|re\s*-?\s*present|\(?\s*re\s*\)?\s*present)(?=$|[\s:;,\-\/.])/i };
   }
   return null;
+}
+
+function boundedCoreExperienceLabels(packet, allowedCards) {
+  const labels = [];
+  const add = (label) => {
+    const canonical = canonicalLabel(allowedCards, "coreExperiences", label);
+    if (canonical && !labels.includes(canonical)) labels.push(canonical);
+  };
+  const drawing = packet.evidence?.drawingCore || "";
+  const portfolio = packet.evidence?.portfolioCore || "";
+  if (/\bobserve\b/i.test(drawing)) add("Drawing: Observe");
+  if (/\bthink\b/i.test(drawing)) add("Drawing: Think");
+  if (/\bimagine\b/i.test(drawing)) add("Drawing: Imagine");
+  if (/\bdocument\b/i.test(portfolio)) add("Portfolio: Document");
+  if (/\bcurate\b/i.test(portfolio)) add("Portfolio: Curate");
+  if (/\breflect\b/i.test(portfolio)) add("Portfolio: Reflect");
+  if (/(^|[\s:;,\-\/])(represent|presentation|re\s*-?\s*present|\(?\s*re\s*\)?\s*present)(?=$|[\s:;,\-\/.])/i.test(portfolio)) {
+    add("Portfolio: (Re)present");
+  }
+  return labels;
 }
 
 function evidenceSupportsCard(packet, card) {
@@ -624,9 +644,20 @@ function assembleUnits(packets, mappingResult, allowedCards) {
   return packets.map((packet) => {
     const mapped = mappedBySlot.get(packet.slotIndex) || {};
     const cardResult = validateCards(mapped.cards, packet, allowedCards);
+    boundedCoreExperienceLabels(packet, allowedCards).forEach((label) => {
+      const exists = cardResult.cards.some((card) => card.type === "coreExperiences" && card.label === label);
+      if (!exists) {
+        cardResult.cards.push({
+          type: "coreExperiences",
+          label,
+          value: "",
+          reason: "Read from bounded core learning experience evidence",
+        });
+      }
+    });
     return {
       slotIndex: packet.slotIndex,
-      title: packet.title || `Imported Unit ${packet.slotIndex}`,
+      title: cleanText(packet.title) || `Imported Unit ${packet.slotIndex}`,
       artTask: packet.artTask,
       year: packet.year,
       startTerm: packet.startTerm,
