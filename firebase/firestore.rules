@@ -107,6 +107,22 @@ service cloud.firestore {
           allow read, create: if canReadWritePlan(workspaceId, planId) || isWorkspaceCreator(workspaceId);
           allow update, delete: if false;
         }
+
+        match /units/{unitId} {
+          allow read, write: if canReadWritePlan(workspaceId, planId) || isWorkspaceCreator(workspaceId);
+
+          match /lessons/{lessonId} {
+            allow read, write: if canReadWritePlan(workspaceId, planId) || isWorkspaceCreator(workspaceId);
+          }
+        }
+
+        match /assessmentTasks/{taskId} {
+          allow read, write: if canReadWritePlan(workspaceId, planId) || isWorkspaceCreator(workspaceId);
+        }
+
+        match /rubrics/{rubricId} {
+          allow read, write: if canReadWritePlan(workspaceId, planId) || isWorkspaceCreator(workspaceId);
+        }
       }
     }
   }

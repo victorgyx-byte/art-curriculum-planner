@@ -24,6 +24,8 @@ const EDIT_LOCK_TIMEOUT_MS = 2 * 60 * 1000;
 const EDIT_LOCK_HEARTBEAT_MS = 25 * 1000;
 const EDIT_LOCK_SAME_USER_STALE_MS = EDIT_LOCK_HEARTBEAT_MS * 2 + 5000;
 const EDIT_SESSION_STORAGE_KEY = "art-curriculum-editor-session-id";
+const PLAN_STORAGE_VERSION = 2;
+const LOCAL_PLAN_BODY_MAX_CHARS = 900000;
 const CLOUD_IMAGE_MAX_CHARS = 320000;
 const CLOUD_IMAGE_TOTAL_MAX_CHARS = 620000;
 const IMAGE_PREVIEW_MAX_SIDE = 1100;
@@ -1510,6 +1512,15 @@ let cardDetailInsertAction = null;
 let lastPersistedContentHash = "";
 let activePlanRevision = 0;
 let loadedPlanKey = planIdentityKey(state.plan?.id, state.plan?.workspaceId);
+let lastCloudError = null;
+let planLoadStatus = {
+  verified: false,
+  reason: "startup",
+  detail: "Plan has not loaded yet.",
+  workspaceId: state.plan?.workspaceId || activeWorkspaceId(),
+  planId: state.plan?.id || "",
+  storageVersion: 1,
+};
 let editLock = {
   mode: "none",
   info: null,
@@ -1711,6 +1722,8 @@ const els = {
   lockPanel: document.querySelector("#lock-panel"),
   lockStatus: document.querySelector("#lock-status"),
   takeOverLock: document.querySelector("#take-over-lock"),
+  clearStaleLocks: document.querySelector("#clear-stale-locks"),
+  copyDiagnostics: document.querySelector("#copy-diagnostics"),
   resetDemo: document.querySelector("#reset-demo"),
   emptyState: document.querySelector("#empty-state"),
   unitEditor: document.querySelector("#unit-editor"),
@@ -1982,6 +1995,21 @@ function planStateStorageKey(planId = activePlanId(), workspaceId = activeWorksp
   return `${STORAGE_KEY}:${workspaceId || "local-workspace"}:${planId || CLOUD_PLAN_ID}`;
 }
 
+function planIdentity(planId = activePlanId(), workspaceId = activeWorkspaceId()) {
+  return {
+    planId: planId || CLOUD_PLAN_ID,
+    workspaceId: workspaceId || activeWorkspaceId(),
+  };
+}
+
+function activePlanIdentity() {
+  return planIdentity(activePlanId(), activeWorkspaceId());
+}
+
+function identityPlanKey(identity = activePlanIdentity()) {
+  return planIdentityKey(identity.planId, identity.workspaceId);
+}
+
 function activePlanStorageKey(workspaceId = activeWorkspaceId()) {
   return `${ACTIVE_PLAN_STORAGE_KEY}:${workspaceId || "local-workspace"}`;
 }
@@ -2117,6 +2145,47 @@ function loadLastGoodPlanState(planId = activePlanId(), workspaceId = activeWork
   }
 }
 
+function safeSerializedPlanState(planState = state) {
+  const serialized = JSON.stringify(planState);
+  if (!cloud.user || serialized.length <= LOCAL_PLAN_BODY_MAX_CHARS) {
+    return { serialized, reduced: false };
+  }
+  const reducedState = {
+    ...planState,
+    units: [],
+    assessmentTasks: [],
+    browserCacheReduced: true,
+    browserCacheReducedAtMs: Date.now(),
+  };
+  return { serialized: JSON.stringify(reducedState), reduced: true };
+}
+
+function writePlanStateCache(planState = state, options = {}) {
+  const planId = planState.plan?.id || activePlanId();
+  const workspaceId = planState.plan?.workspaceId || activeWorkspaceId();
+  const { serialized, reduced } = safeSerializedPlanState(planState);
+  localStorage.setItem(planStateStorageKey(planId, workspaceId), serialized);
+  if (!cloud.user || options.writeLegacy) {
+    localStorage.setItem(STORAGE_KEY, serialized);
+  } else {
+    localStorage.removeItem(STORAGE_KEY);
+  }
+  if (options.lastGood && !reduced && planContentScore(planState) > 0) {
+    localStorage.setItem(lastGoodPlanStateStorageKey(planId, workspaceId), JSON.stringify(cleanCloudState(planState)));
+  }
+  return !reduced;
+}
+
+function clearReducedLocalPlanCache(planId = activePlanId(), workspaceId = activeWorkspaceId()) {
+  const key = planStateStorageKey(planId, workspaceId);
+  try {
+    const saved = JSON.parse(localStorage.getItem(key));
+    if (saved?.browserCacheReduced) localStorage.removeItem(key);
+  } catch {
+    localStorage.removeItem(key);
+  }
+}
+
 function savePlanToCatalog(plan = state.plan) {
   const normalized = normalizePlanMetadata(plan);
   if (normalized.deletedAt) {
@@ -2137,14 +2206,14 @@ function savePlanToCatalog(plan = state.plan) {
   savePlanCatalog();
 }
 
-function mergeCloudPlanIntoCatalog(planId, data = {}) {
+function mergeCloudPlanIntoCatalog(planId, data = {}, workspaceId = cloudWorkspaceId()) {
   savePlanToCatalog({
     id: planId,
-    title: data.title || data.state?.plan?.title || "Untitled Plan",
-    subject: data.subject || data.state?.plan?.subject || "Art",
-    teamId: data.teamId || data.state?.plan?.teamId || "",
-    teamName: data.teamName || data.state?.plan?.teamName || "",
-    workspaceId: cloudWorkspaceId(),
+    title: data.title || data.state?.plan?.title || data.planShell?.plan?.title || "Untitled Plan",
+    subject: data.subject || data.state?.plan?.subject || data.planShell?.plan?.subject || "Art",
+    teamId: data.teamId || data.state?.plan?.teamId || data.planShell?.plan?.teamId || "",
+    teamName: data.teamName || data.state?.plan?.teamName || data.planShell?.plan?.teamName || "",
+    workspaceId,
     role: data.role || (canManageActiveWorkspace() ? "owner" : "editor"),
   });
 }
@@ -2172,6 +2241,7 @@ function createPlanState({ title, subject, teamName }) {
 function loadLocalPlanState(planId) {
   try {
     const saved = JSON.parse(localStorage.getItem(planStateStorageKey(planId)));
+    if (saved?.browserCacheReduced) return null;
     return saved && Array.isArray(saved.units) ? normalizeState(saved) : null;
   } catch {
     return null;
@@ -2190,26 +2260,39 @@ async function persistCurrentPlanBeforeSwitch() {
 }
 
 async function switchPlan(planId, options = {}) {
-  if (!planId || (planId === activePlanId() && statePlanMatchesSelectedPlan() && !options.force)) return;
+  const catalogPlan = planMetaById(planId);
+  const targetWorkspaceId = options.workspaceId || catalogPlan?.workspaceId || activeWorkspaceId();
+  const identity = planIdentity(planId, targetWorkspaceId);
+  if (!planId || (planId === activePlanId() && activePlanBodyVerified(identity) && statePlanMatchesSelectedPlan() && !options.force)) return;
   const currentScreen = options.targetScreen || state.currentScreen;
   if (!options.skipPersist) await persistCurrentPlanBeforeSwitch();
   window.clearTimeout(cloudSaveTimer);
   const previousSaveWritesPaused = saveWritesPaused;
   saveWritesPaused = true;
   await releaseEditingLock();
+  pausePlanBodyLoading("switching-plan", "Loading selected 2YIP.", identity);
   try {
-    const catalogPlan = planMetaById(planId);
-    let nextState = loadLocalPlanState(planId) || loadLastGoodPlanState(planId);
+    let nextState = loadLocalPlanState(planId) || loadLastGoodPlanState(planId, targetWorkspaceId);
     let cloudLoadFailed = false;
     let cloudSnapshotWasReadable = false;
 
     if (cloud.loaded) {
       try {
-        const snapshot = await cloudPlanRefFor(planId).get();
+        const snapshot = await cloudPlanRefFor(planId, targetWorkspaceId).get();
         cloudSnapshotWasReadable = true;
         const snapshotData = snapshot.exists ? snapshot.data() || {} : {};
+        if (snapshot.exists) mergeCloudPlanIntoCatalog(snapshot.id, snapshotData, targetWorkspaceId);
+        if (snapshot.exists && Number(snapshotData.storageVersion || 1) >= 2) {
+          activePlanRevision = Number(snapshotData.revision || 0);
+          nextState = await loadSplitCloudState(snapshot, snapshotData, identity);
+          nextState.plan = normalizePlanMetadata({
+            ...nextState.plan,
+            id: planId,
+            workspaceId: targetWorkspaceId,
+            role: planMetaById(planId)?.role || nextState.plan.role,
+          });
+        }
         const remoteState = snapshotData.state || null;
-        if (snapshot.exists) mergeCloudPlanIntoCatalog(snapshot.id, snapshotData);
         if (remoteState && Array.isArray(remoteState.units)) {
           activePlanRevision = Number(snapshotData.revision || 0);
           nextState = normalizeState(remoteState);
@@ -2220,11 +2303,12 @@ async function switchPlan(planId, options = {}) {
             subject: snapshotData.subject || nextState.plan.subject,
             teamId: snapshotData.teamId || nextState.plan.teamId,
             teamName: snapshotData.teamName || nextState.plan.teamName,
-            workspaceId: catalogPlan?.workspaceId || activeWorkspaceId(),
+            workspaceId: targetWorkspaceId,
             role: planMetaById(planId)?.role || nextState.plan.role,
           });
         }
       } catch (error) {
+        lastCloudError = { code: error?.code || "", message: error?.message || String(error) };
         cloudLoadFailed = true;
         console.warn("Plan switch cloud load failed", error);
       }
@@ -2239,12 +2323,13 @@ async function switchPlan(planId, options = {}) {
       nextState.plan = normalizePlanMetadata({
         ...nextState.plan,
         id: catalogPlan.id,
-        workspaceId: catalogPlan.workspaceId || activeWorkspaceId(),
+        workspaceId: catalogPlan.workspaceId || targetWorkspaceId,
         role: catalogPlan.role,
       });
     }
 
     if (!nextState || cloudLoadFailed && planContentScore(nextState) === 0) {
+      pausePlanBodyLoading(cloudLoadFailed ? "cloud-switch-failed" : "empty-plan-load", cloudLoadFailed ? "Could not read selected 2YIP." : "No plan content found.", identity);
       renderCloudStatus("Could not load that 2YIP. Switch cancelled to prevent overwrite.", cloud.user ? "Sign out" : "Sign in");
       return;
     }
@@ -2253,20 +2338,24 @@ async function switchPlan(planId, options = {}) {
     state.plan = normalizePlanMetadata({
       ...state.plan,
       id: planId,
-      workspaceId: catalogPlan?.workspaceId || state.plan.workspaceId || activeWorkspaceId(),
+      workspaceId: targetWorkspaceId,
       role: catalogPlan?.role || state.plan.role,
     });
     state.currentScreen = currentScreen || "timeline";
     setStoredActivePlanId(planId, state.plan.workspaceId);
     markLoadedPlanState(planId, state.plan.workspaceId);
-    localStorage.setItem(planStateStorageKey(planId), JSON.stringify(state));
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    if (planContentScore(state) > 0) {
-      localStorage.setItem(lastGoodPlanStateStorageKey(planId), JSON.stringify(cleanCloudState(state)));
-    }
+    setPlanLoadStatus({
+      verified: true,
+      reason: "loaded",
+      detail: "Selected 2YIP loaded.",
+      workspaceId: state.plan.workspaceId,
+      planId,
+      storageVersion: cloudSnapshotWasReadable ? PLAN_STORAGE_VERSION : 1,
+    });
+    writePlanStateCache(state, { lastGood: true });
     lastPersistedContentHash = planStateContentHash(state);
     if (cloud.loaded && state.currentScreen !== "workspace") {
-      await acquireEditingLock({ allowSameUserTakeover: true });
+      await acquireEditingLock({ allowSameUserTakeover: true, identity });
     }
     render();
   } finally {
@@ -2296,6 +2385,14 @@ async function switchWorkspace(workspaceId) {
   await persistCurrentPlanBeforeSwitch();
   await releaseEditingLock();
   localStorage.setItem(ACTIVE_WORKSPACE_STORAGE_KEY, workspaceId);
+  markLoadedPlanState("", workspaceId);
+  setPlanLoadStatus({
+    verified: false,
+    reason: "switching-workspace",
+    detail: "Workspace changed; waiting for selected 2YIP to load.",
+    workspaceId,
+    planId: "",
+  });
   setWorkspaceSharedLibrary(loadWorkspaceSharedLibrary(workspaceId));
   workspaceDirectoryWorkspaceId = "";
   workspaceMembers = [];
@@ -2314,7 +2411,7 @@ async function switchWorkspace(workspaceId) {
     return;
   }
   if (nextPlan) {
-    await switchPlan(nextPlan.id, { skipPersist: true, force: true });
+    await switchPlan(nextPlan.id, { skipPersist: true, force: true, workspaceId });
     return;
   }
   state.currentScreen = "workspace";
@@ -3118,6 +3215,7 @@ function planStateContentHash(planState) {
 }
 
 function applyLoadedPlanState(planState, snapshotId, snapshotData = {}) {
+  const workspaceId = snapshotData.workspaceId || planState.plan?.workspaceId || activeWorkspaceId();
   state = normalizeState(planState);
   state.plan = normalizePlanMetadata({
     ...state.plan,
@@ -3126,14 +3224,21 @@ function applyLoadedPlanState(planState, snapshotId, snapshotData = {}) {
     subject: snapshotData.subject || state.plan.subject,
     teamId: snapshotData.teamId || state.plan.teamId,
     teamName: snapshotData.teamName || state.plan.teamName,
+    workspaceId,
     role: planMetaById(snapshotId)?.role || state.plan.role,
   });
   savePlanToCatalog(state.plan);
   setStoredActivePlanId(snapshotId, state.plan.workspaceId);
   markLoadedPlanState(snapshotId, state.plan.workspaceId);
-  localStorage.setItem(planStateStorageKey(), JSON.stringify(state));
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  localStorage.setItem(lastGoodPlanStateStorageKey(), JSON.stringify(cleanCloudState(state)));
+  setPlanLoadStatus({
+    verified: true,
+    reason: "loaded",
+    detail: "Full 2YIP loaded.",
+    workspaceId: state.plan.workspaceId,
+    planId: snapshotId,
+    storageVersion: snapshotData.storageVersion || 1,
+  });
+  writePlanStateCache(state, { lastGood: true });
   lastPersistedContentHash = planStateContentHash(state);
   activePlanRevision = Number(snapshotData.revision || state.plan?.revision || activePlanRevision || 0);
 }
@@ -3141,6 +3246,10 @@ function applyLoadedPlanState(planState, snapshotId, snapshotData = {}) {
 function saveState(options = {}) {
   if (saveWritesPaused) return;
   if (state.currentScreen === "workspace") return;
+  if (cloud.user && firstPlanForActiveWorkspace() && !activePlanBodyVerified()) {
+    if (!options.localOnly) renderCloudStatus("Full 2YIP did not load. Saving paused to prevent overwrite.", "Sign out");
+    return;
+  }
   if (state.currentScreen !== "workspace" && firstPlanForActiveWorkspace() && !canEditActivePlan()) {
     if (!options.localOnly) renderCloudStatus("Read-only. Saving paused until you take over editing.", cloud.user ? "Sign out" : "Sign in");
     return;
@@ -3171,11 +3280,7 @@ function saveState(options = {}) {
   saveWorkspaceSharedLibrary();
   localStorage.setItem(ACTIVE_WORKSPACE_STORAGE_KEY, activeWorkspaceId());
   setStoredActivePlanId(activePlanId(), activeWorkspaceId());
-  localStorage.setItem(planStateStorageKey(), JSON.stringify(state));
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  if (hasContentChange && planContentScore(state) > 0) {
-    localStorage.setItem(lastGoodPlanStateStorageKey(), JSON.stringify(cleanCloudState(state)));
-  }
+  writePlanStateCache(state, { lastGood: hasContentChange });
   if (!options.localOnly && hasContentChange) scheduleCloudSave();
 }
 
@@ -3581,10 +3686,10 @@ async function loadCloudPlanCatalog() {
         const data = doc.data() || {};
         const meta = normalizePlanMetadata({
           id: doc.id,
-          title: data.title || data.state?.plan?.title || "Untitled Plan",
-          subject: data.subject || data.state?.plan?.subject || "Art",
-          teamId: data.teamId || data.state?.plan?.teamId || "",
-          teamName: data.teamName || data.state?.plan?.teamName || "",
+          title: data.title || data.state?.plan?.title || data.planShell?.plan?.title || "Untitled Plan",
+          subject: data.subject || data.state?.plan?.subject || data.planShell?.plan?.subject || "Art",
+          teamId: data.teamId || data.state?.plan?.teamId || data.planShell?.plan?.teamId || "",
+          teamName: data.teamName || data.state?.plan?.teamName || data.planShell?.plan?.teamName || "",
           workspaceId,
           role: "owner",
           deletedAt: data.deletedAt || "",
@@ -3605,8 +3710,8 @@ async function loadCloudPlanCatalog() {
               id: snapshot.id,
               title: data.title || sharedPlan.planTitle,
               subject: data.subject || sharedPlan.subject,
-              teamId: data.teamId || data.state?.plan?.teamId || "",
-              teamName: data.teamName || data.state?.plan?.teamName || "",
+              teamId: data.teamId || data.state?.plan?.teamId || data.planShell?.plan?.teamId || "",
+              teamName: data.teamName || data.state?.plan?.teamName || data.planShell?.plan?.teamName || "",
               workspaceId,
               role: sharedPlan.role || "editor",
               deletedAt: data.deletedAt || "",
@@ -3661,45 +3766,66 @@ async function loadCloudPlanCatalog() {
 
 async function loadCloudState() {
   if (!firstPlanForActiveWorkspace()) return;
-  const planRef = cloudPlanRef();
+  const identity = activePlanIdentity();
+  const planRef = cloudPlanRefFor(identity.planId, identity.workspaceId);
   let snapshot;
   try {
     snapshot = await planRef.get();
   } catch (error) {
+    lastCloudError = { code: error?.code || "", message: error?.message || String(error) };
     console.warn("Cloud state load failed; keeping local state", error);
-    const fallbackPlanId = activePlanId();
-    const fallbackState = loadLocalPlanState(fallbackPlanId) || loadLastGoodPlanState(fallbackPlanId);
+    const fallbackState = loadLocalPlanState(identity.planId) || loadLastGoodPlanState(identity.planId, identity.workspaceId);
     if (fallbackState && planContentScore(fallbackState) > 0) {
       cloudSyncPaused = true;
-      applyLoadedPlanState(fallbackState, fallbackPlanId, fallbackState.plan || {});
+      applyLoadedPlanState(fallbackState, identity.planId, { ...(fallbackState.plan || {}), workspaceId: identity.workspaceId });
       cloudSyncPaused = false;
       renderCloudStatus("Could not refresh online plan. Showing last known local version.", "Sign out");
       return "local";
     }
+    pausePlanBodyLoading("cloud-read-failed", errorLabel(error), identity);
     renderCloudStatus("Could not refresh online plan. Full plan loading paused.", "Sign out");
     return false;
   }
-  const remoteState = snapshot.exists ? snapshot.data()?.state : null;
-  if (snapshot.exists && snapshot.data()?.deletedAt) {
+  const snapshotData = snapshot.exists ? snapshot.data() || {} : {};
+  const remoteState = snapshotData.state || null;
+  if (snapshot.exists && snapshotData.deletedAt) {
+    pausePlanBodyLoading("plan-deleted", "Plan is in Trash.", identity);
     renderCloudStatus("This 2YIP is in Trash. Restore it before editing.", "Sign out");
     return false;
   }
+  if (snapshot.exists && Number(snapshotData.storageVersion || 1) >= 2) {
+    try {
+      const splitState = await loadSplitCloudState(snapshot, snapshotData, identity);
+      activePlanRevision = Number(snapshotData.revision || 0);
+      cloudSyncPaused = true;
+      applyLoadedPlanState(splitState, snapshot.id, { ...snapshotData, workspaceId: identity.workspaceId, storageVersion: PLAN_STORAGE_VERSION });
+      cloudSyncPaused = false;
+      render();
+      return "remote";
+    } catch (error) {
+      lastCloudError = { code: error?.code || "", message: error?.message || String(error) };
+      pausePlanBodyLoading("split-load-failed", errorLabel(error), identity);
+      renderCloudStatus(`Full 2YIP did not load: ${errorLabel(error)}`, "Sign out");
+      return false;
+    }
+  }
   if (remoteState && Array.isArray(remoteState.units)) {
-    const snapshotData = snapshot.data() || {};
     const normalizedRemote = normalizeState(remoteState);
     activePlanRevision = Number(snapshotData.revision || 0);
     cloudSyncPaused = true;
-    applyLoadedPlanState(normalizedRemote, snapshot.id, snapshotData);
+    applyLoadedPlanState(normalizedRemote, snapshot.id, { ...snapshotData, workspaceId: identity.workspaceId });
     cloudSyncPaused = false;
     render();
     return "remote";
   }
+  pausePlanBodyLoading(snapshot.exists ? "missing-plan-body" : "missing-plan-doc", snapshot.exists ? "No plan body found." : "Plan document not found.", identity);
   renderCloudStatus("No online plan body found. Local copy kept; saving paused to prevent overwrite.", "Sign out");
   return false;
 }
 
 function scheduleCloudSave() {
   if (cloudSyncPaused || !cloud.available || !cloud.user || !cloud.loaded || !cloud.db) return;
+  if (!activePlanBodyVerified()) return;
   if (!canEditActivePlan()) return;
   window.clearTimeout(cloudSaveTimer);
   cloudSaveTimer = window.setTimeout(saveCloudStateNow, 900);
@@ -3709,6 +3835,12 @@ async function saveCloudStateNow(options = {}) {
   window.clearTimeout(cloudSaveTimer);
   if (!cloud.available || !cloud.user || !cloud.db) return false;
   if (state.currentScreen === "workspace") return false;
+  const identity = activePlanIdentity();
+  if (!activePlanBodyVerified(identity)) {
+    cloudSaveBlocked = true;
+    renderCloudStatus("Full 2YIP did not load. Saving paused to prevent overwrite.", "Sign out");
+    return false;
+  }
   if (!canEditActivePlan()) {
     renderCloudStatus("Read-only. Saving paused until you take over editing.", "Sign out");
     return false;
@@ -3724,8 +3856,21 @@ async function saveCloudStateNow(options = {}) {
     const cleanState = cleanCloudState(state);
     cleanState.cloudSavedAtMs = Date.now();
     cleanState.localSavedAtMs = state.localSavedAtMs;
+    cleanState.plan = normalizePlanMetadata({ ...(cleanState.plan || {}), id: identity.planId, workspaceId: identity.workspaceId });
+    const ref = cloudPlanRefFor(identity.planId, identity.workspaceId);
+    const preflightSnapshot = await ref.get();
+    const preflightData = preflightSnapshot.exists ? preflightSnapshot.data() || {} : {};
+    const now = Date.now();
+    const currentLock = preflightData.editingLock || null;
+    if (!lockIsActive(currentLock, now) || !lockBelongsToThisSession(currentLock)) {
+      throw Object.assign(new Error("Editing lock lost."), { code: "editing-lock-lost", snapshotData: preflightData });
+    }
+    const remoteRevision = Number(preflightData.revision || 0);
+    if (!options.ignoreRevision && remoteRevision !== activePlanRevision) {
+      throw Object.assign(new Error("A newer cloud version exists."), { code: "revision-mismatch", snapshotData: preflightData, revision: remoteRevision });
+    }
+    await writeSplitPlanContent(identity, cleanState);
     const saveResult = await cloud.db.runTransaction(async (transaction) => {
-      const ref = cloudPlanRef();
       const snapshot = await transaction.get(ref);
       const data = snapshot.exists ? snapshot.data() || {} : {};
       const now = Date.now();
@@ -3733,19 +3878,24 @@ async function saveCloudStateNow(options = {}) {
       if (!lockIsActive(currentLock, now) || !lockBelongsToThisSession(currentLock)) {
         throw Object.assign(new Error("Editing lock lost."), { code: "editing-lock-lost", remoteState: data.state, snapshotData: data });
       }
-      const remoteRevision = Number(data.revision || 0);
-      if (!options.ignoreRevision && remoteRevision !== activePlanRevision) {
-        throw Object.assign(new Error("A newer cloud version exists."), { code: "revision-mismatch", remoteState: data.state, snapshotData: data, revision: remoteRevision });
+      const checkedRevision = Number(data.revision || 0);
+      if (!options.ignoreRevision && checkedRevision !== activePlanRevision) {
+        throw Object.assign(new Error("A newer cloud version exists."), { code: "revision-mismatch", remoteState: data.state, snapshotData: data, revision: checkedRevision });
       }
-      const nextRevision = remoteRevision + 1;
+      const nextRevision = checkedRevision + 1;
       const nextLock = lockPayload(now);
       transaction.set(ref, {
         title: activePlanTitle(),
         subject: state.plan?.subject || "Art",
         teamId: state.plan?.teamId || "",
         teamName: state.plan?.teamName || "",
-        workspaceId: activeWorkspaceId(),
-        state: cleanState,
+        workspaceId: identity.workspaceId,
+        storageVersion: PLAN_STORAGE_VERSION,
+        planShell: splitPlanShell(cleanState),
+        summary: splitPlanSummary(cleanState),
+        unitIds: (cleanState.units || []).map((unit) => unit.id).filter(Boolean),
+        assessmentTaskIds: (cleanState.assessmentTasks || []).map((task) => task.id).filter(Boolean),
+        state: window.firebase.firestore.FieldValue.delete(),
         revision: nextRevision,
         editingLock: nextLock,
         updatedAt: window.firebase.firestore.FieldValue.serverTimestamp(),
@@ -3753,32 +3903,52 @@ async function saveCloudStateNow(options = {}) {
       return { revision: nextRevision, lock: nextLock };
     });
     activePlanRevision = saveResult.revision;
+    setPlanLoadStatus({
+      verified: true,
+      reason: "saved",
+      detail: "Saved in split cloud storage.",
+      workspaceId: identity.workspaceId,
+      planId: identity.planId,
+      storageVersion: PLAN_STORAGE_VERSION,
+    });
     setEditLockMode("editing", saveResult.lock);
     state.cloudSavedAtMs = cleanState.cloudSavedAtMs;
-    localStorage.setItem(planStateStorageKey(), JSON.stringify(state));
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    localStorage.setItem(lastGoodPlanStateStorageKey(), JSON.stringify(cleanState));
-    await createPlanSnapshot("autosave", cleanState, { onlyIfDue: true });
+    writePlanStateCache(state, { lastGood: true });
+    try {
+      await createPlanSnapshot("autosave", cleanState, { onlyIfDue: true, planId: identity.planId, workspaceId: identity.workspaceId });
+    } catch (snapshotError) {
+      console.warn("Autosave snapshot skipped", snapshotError);
+    }
     cloudSaveBlocked = false;
     lastPersistedContentHash = planStateContentHash(state);
     renderCloudStatus(`Cloud saved: ${cloud.user.displayName || cloud.user.email || "signed in"}`, "Sign out");
     return true;
   } catch (error) {
     console.warn("Cloud save failed", error);
-    if ((error.code === "revision-mismatch" || error.code === "editing-lock-lost") && error.remoteState && Array.isArray(error.remoteState.units)) {
-      const normalizedRemote = normalizeState(error.remoteState);
+    if (error.code === "revision-mismatch" || error.code === "editing-lock-lost") {
       const snapshotData = error.snapshotData || {};
       activePlanRevision = Number(error.revision ?? snapshotData.revision ?? activePlanRevision);
-      cloudSyncPaused = true;
-      applyLoadedPlanState(normalizedRemote, activePlanId(), snapshotData);
-      cloudSyncPaused = false;
+      if (error.remoteState && Array.isArray(error.remoteState.units)) {
+        const normalizedRemote = normalizeState(error.remoteState);
+        cloudSyncPaused = true;
+        applyLoadedPlanState(normalizedRemote, activePlanId(), snapshotData);
+        cloudSyncPaused = false;
+      } else if (Number(snapshotData.storageVersion || 1) >= 2) {
+        const snapshot = await cloudPlanRefFor(identity.planId, identity.workspaceId).get();
+        const freshSnapshotData = snapshot.exists ? snapshot.data() || snapshotData : snapshotData;
+        const splitState = await loadSplitCloudState(snapshot, freshSnapshotData, identity);
+        cloudSyncPaused = true;
+        applyLoadedPlanState(splitState, identity.planId, { ...freshSnapshotData, workspaceId: identity.workspaceId, storageVersion: PLAN_STORAGE_VERSION });
+        cloudSyncPaused = false;
+      }
       setEditLockMode("readonly", snapshotData.editingLock || null);
       stopEditLockHeartbeat();
       render();
       renderCloudStatus(error.code === "revision-mismatch" ? "Newer online version found. Saving paused." : "Editing lock lost. Saving paused.", "Sign out");
       return false;
     }
-    localStorage.setItem(lastGoodPlanStateStorageKey(), JSON.stringify(cleanCloudState(state)));
+    lastCloudError = { code: error?.code || "", message: error?.message || String(error) };
+    writePlanStateCache(state, { lastGood: true });
     renderCloudStatus(`Saved locally, cloud retry pending: ${error.code || error.message || "check rules"}`, "Sign out");
     return false;
   }
@@ -3828,6 +3998,109 @@ function cleanCloudState(value) {
     });
   });
   return cleanState;
+}
+
+function splitPlanShell(cleanState) {
+  return {
+    plan: normalizePlanMetadata(cleanState.plan || {}),
+    cardLibrary: normalizeCardLibrary(cleanState.cardLibrary || []),
+  };
+}
+
+function splitPlanSummary(cleanState) {
+  const unitCount = cleanState.units?.length || 0;
+  const lessonCount = (cleanState.units || []).reduce((total, unit) => total + (unit.lessons?.length || 0), 0);
+  const cardCount = (cleanState.units || []).reduce((total, unit) => total + (unit.boardCards?.length || 0), 0);
+  return {
+    unitCount,
+    lessonCount,
+    assessmentTaskCount: cleanState.assessmentTasks?.length || 0,
+    cardCount,
+    selectedUnitId: cleanState.selectedUnitId || "",
+    selectedLessonId: cleanState.selectedLessonId || "",
+    timelineView: cleanState.timelineView || "overview",
+    timelinePlanningLayer: cleanState.timelinePlanningLayer || "meaning",
+  };
+}
+
+function unitDocForSplitStorage(unit) {
+  const clone = JSON.parse(JSON.stringify(unit || {}));
+  clone.lessonIds = (clone.lessons || []).map((lesson) => lesson.id).filter(Boolean);
+  delete clone.lessons;
+  return clone;
+}
+
+async function commitBatchChunks(operations) {
+  const chunkSize = 430;
+  for (let index = 0; index < operations.length; index += chunkSize) {
+    const batch = cloud.db.batch();
+    operations.slice(index, index + chunkSize).forEach((operation) => operation(batch));
+    await batch.commit();
+  }
+}
+
+async function writeSplitPlanContent(identity, cleanState) {
+  const planRef = cloudPlanRefFor(identity.planId, identity.workspaceId);
+  const operations = [];
+  (cleanState.units || []).forEach((unit) => {
+    const unitRef = planRef.collection("units").doc(unit.id || uid("unit"));
+    operations.push((batch) => batch.set(unitRef, unitDocForSplitStorage(unit), { merge: false }));
+    (unit.lessons || []).forEach((lesson) => {
+      const lessonRef = unitRef.collection("lessons").doc(lesson.id || uid("lesson"));
+      operations.push((batch) => batch.set(lessonRef, JSON.parse(JSON.stringify(lesson)), { merge: false }));
+    });
+  });
+  (cleanState.assessmentTasks || []).forEach((task) => {
+    const taskRef = planRef.collection("assessmentTasks").doc(task.id || uid("assessment-task"));
+    operations.push((batch) => batch.set(taskRef, JSON.parse(JSON.stringify(task)), { merge: false }));
+  });
+  await commitBatchChunks(operations);
+}
+
+async function docsByOrderedIds(collectionRef, ids = []) {
+  if (!ids.length) {
+    const snapshot = await collectionRef.get();
+    return snapshot.docs;
+  }
+  const docs = await Promise.all(ids.map((id) => collectionRef.doc(id).get()));
+  return docs.filter((doc) => doc.exists);
+}
+
+async function loadSplitCloudState(snapshot, snapshotData = {}, identity = activePlanIdentity()) {
+  const planRef = cloudPlanRefFor(identity.planId, identity.workspaceId);
+  const unitDocs = await docsByOrderedIds(planRef.collection("units"), snapshotData.unitIds || []);
+  const units = [];
+  for (const unitDoc of unitDocs) {
+    const unitData = unitDoc.data() || {};
+    const lessonDocs = await docsByOrderedIds(unitDoc.ref.collection("lessons"), unitData.lessonIds || []);
+    units.push({
+      ...unitData,
+      id: unitDoc.id,
+      lessons: lessonDocs.map((lessonDoc) => ({ ...(lessonDoc.data() || {}), id: lessonDoc.id })),
+    });
+  }
+  const taskDocs = await docsByOrderedIds(planRef.collection("assessmentTasks"), snapshotData.assessmentTaskIds || []);
+  const shell = snapshotData.planShell || {};
+  return normalizeState({
+    ...structuredClone(defaultState),
+    ...shell,
+    plan: {
+      ...(shell.plan || {}),
+      id: snapshot.id,
+      workspaceId: identity.workspaceId,
+      title: snapshotData.title || shell.plan?.title || "Untitled Plan",
+      subject: snapshotData.subject || shell.plan?.subject || "Art",
+      teamId: snapshotData.teamId || shell.plan?.teamId || "",
+      teamName: snapshotData.teamName || shell.plan?.teamName || "",
+      role: planMetaById(snapshot.id)?.role || shell.plan?.role || "editor",
+    },
+    units,
+    assessmentTasks: taskDocs.map((taskDoc) => ({ ...(taskDoc.data() || {}), id: taskDoc.id })),
+    selectedUnitId: snapshotData.summary?.selectedUnitId || units[0]?.id || "",
+    selectedLessonId: snapshotData.summary?.selectedLessonId || units[0]?.lessons?.[0]?.id || "",
+    timelineView: snapshotData.summary?.timelineView || "overview",
+    timelinePlanningLayer: snapshotData.summary?.timelinePlanningLayer || "meaning",
+  });
 }
 
 function imageSizeLabel(dataUrl = "") {
@@ -4018,13 +4291,13 @@ async function createPlanSnapshot(reason = "manual", planState = state, options 
 }
 
 function cloudPlanRef() {
-  return cloudPlanRefFor(activePlanId());
+  return cloudPlanRefFor(activePlanId(), activeWorkspaceId());
 }
 
-function cloudPlanRefFor(planId) {
+function cloudPlanRefFor(planId, workspaceId = activeWorkspaceId()) {
   return cloud.db
     .collection("workspaces")
-    .doc(cloudWorkspaceId())
+    .doc(workspaceId || cloudWorkspaceId())
     .collection("plans")
     .doc(planId || CLOUD_PLAN_ID);
 }
@@ -4065,6 +4338,7 @@ function lockPayload(now = Date.now()) {
 function canEditActivePlan() {
   if (state.currentScreen === "workspace") return true;
   if (!cloud.available || !cloud.user || !cloud.loaded || !firstPlanForActiveWorkspace()) return false;
+  if (!activePlanBodyVerified()) return false;
   return editLock.mode === "editing" && lockBelongsToThisSession(editLock.info);
 }
 
@@ -4085,18 +4359,28 @@ function startEditLockHeartbeat() {
 }
 
 async function acquireEditingLock(options = {}) {
+  const identity = options.identity || activePlanIdentity();
   if (!cloud.user || !cloud.db || !firstPlanForActiveWorkspace() || state.currentScreen === "workspace") {
     setEditLockMode("none", null);
     stopEditLockHeartbeat();
+    return false;
+  }
+  if (!options.allowUnverified && !activePlanBodyVerified(identity)) {
+    setEditLockMode("none", null);
+    stopEditLockHeartbeat();
+    renderCloudStatus("Full 2YIP did not load. Editing lock paused.", "Sign out");
     return false;
   }
   const force = Boolean(options.force);
   const allowSameUserTakeover = options.allowSameUserTakeover !== false;
   try {
     const result = await cloud.db.runTransaction(async (transaction) => {
-      const ref = cloudPlanRef();
+      const ref = cloudPlanRefFor(identity.planId, identity.workspaceId);
       const snapshot = await transaction.get(ref);
       const data = snapshot.exists ? snapshot.data() || {} : {};
+      if (snapshot.exists && data.deletedAt) {
+        throw Object.assign(new Error("Plan is in Trash."), { code: "plan-deleted" });
+      }
       const now = Date.now();
       const currentLock = data.editingLock || null;
       const active = lockIsActive(currentLock, now);
@@ -4112,10 +4396,14 @@ async function acquireEditingLock(options = {}) {
     });
     activePlanRevision = result.revision;
     if (result.owns) {
-      setEditLockMode("editing", result.lock);
-      startEditLockHeartbeat();
-      renderCloudStatus(`Editing as ${lockOwnerName(result.lock)}`, "Sign out");
-      return true;
+      const confirmed = await confirmEditingLock(identity, result.lock);
+      if (confirmed) {
+        setEditLockMode("editing", result.lock);
+        startEditLockHeartbeat();
+        renderCloudStatus(`Editing as ${lockOwnerName(result.lock)}`, "Sign out");
+        return true;
+      }
+      throw Object.assign(new Error("Lock confirmation failed."), { code: "lock-confirmation-failed" });
     }
     setEditLockMode("readonly", result.lock);
     stopEditLockHeartbeat();
@@ -4130,14 +4418,36 @@ async function acquireEditingLock(options = {}) {
   }
 }
 
+async function confirmEditingLock(identity = activePlanIdentity(), expectedLock = editLock.info) {
+  try {
+    const snapshot = await cloudPlanRefFor(identity.planId, identity.workspaceId).get();
+    const data = snapshot.exists ? snapshot.data() || {} : {};
+    const remoteLock = data.editingLock || null;
+    return Boolean(
+      lockBelongsToThisSession(remoteLock)
+        && remoteLock.sessionId === expectedLock?.sessionId
+        && activePlanBodyVerified(identity),
+    );
+  } catch (error) {
+    lastCloudError = { code: error?.code || "", message: error?.message || String(error) };
+    return false;
+  }
+}
+
 async function refreshEditingLock() {
   if (!cloud.user || !cloud.db || editLock.mode !== "editing" || state.currentScreen === "workspace") {
     stopEditLockHeartbeat();
     return false;
   }
+  if (!activePlanBodyVerified()) {
+    setEditLockMode("none", null);
+    stopEditLockHeartbeat();
+    return false;
+  }
+  const identity = activePlanIdentity();
   try {
     const result = await cloud.db.runTransaction(async (transaction) => {
-      const ref = cloudPlanRef();
+      const ref = cloudPlanRefFor(identity.planId, identity.workspaceId);
       const snapshot = await transaction.get(ref);
       const data = snapshot.exists ? snapshot.data() || {} : {};
       const now = Date.now();
@@ -4171,10 +4481,11 @@ async function refreshEditingLock() {
 
 async function releaseEditingLock() {
   if (!cloud.user || !cloud.db || editLock.mode !== "editing") return false;
+  const identity = activePlanIdentity();
   stopEditLockHeartbeat();
   try {
     await cloud.db.runTransaction(async (transaction) => {
-      const ref = cloudPlanRef();
+      const ref = cloudPlanRefFor(identity.planId, identity.workspaceId);
       const snapshot = await transaction.get(ref);
       const data = snapshot.exists ? snapshot.data() || {} : {};
       if (lockBelongsToThisSession(data.editingLock || null)) {
@@ -4210,6 +4521,42 @@ function planIdentityKey(planId = state.plan?.id, workspaceId = state.plan?.work
 
 function markLoadedPlanState(planId = state.plan?.id, workspaceId = state.plan?.workspaceId) {
   loadedPlanKey = planIdentityKey(planId, workspaceId);
+}
+
+function setPlanLoadStatus(status = {}) {
+  planLoadStatus = {
+    verified: Boolean(status.verified),
+    reason: status.reason || (status.verified ? "loaded" : "unknown"),
+    detail: status.detail || "",
+    workspaceId: status.workspaceId || activeWorkspaceId(),
+    planId: status.planId || activePlanId(),
+    storageVersion: Number(status.storageVersion || planLoadStatus.storageVersion || 1),
+    updatedAtMs: Date.now(),
+  };
+}
+
+function activePlanBodyVerified(identity = activePlanIdentity()) {
+  return Boolean(
+    planLoadStatus.verified
+      && planLoadStatus.planId === identity.planId
+      && planLoadStatus.workspaceId === identity.workspaceId
+      && loadedPlanKey === identityPlanKey(identity)
+      && state.plan?.id === identity.planId
+      && (state.plan?.workspaceId || activeWorkspaceId()) === identity.workspaceId,
+  );
+}
+
+function pausePlanBodyLoading(reason, detail = "", identity = activePlanIdentity()) {
+  setPlanLoadStatus({
+    verified: false,
+    reason,
+    detail,
+    workspaceId: identity.workspaceId,
+    planId: identity.planId,
+  });
+  cloudSaveBlocked = true;
+  stopEditLockHeartbeat();
+  setEditLockMode("none", null);
 }
 
 function storedActivePlanId(workspaceId = activeWorkspaceId(), options = {}) {
@@ -4255,12 +4602,29 @@ function renderLockStatus() {
   if (!els.lockPanel || !els.lockStatus || !els.takeOverLock) return;
   const show = state.currentScreen !== "workspace" && Boolean(cloud.user) && Boolean(firstPlanForActiveWorkspace());
   els.lockPanel.classList.toggle("hidden", !show);
-  if (!show) return;
+  if (!show) {
+    els.copyDiagnostics?.classList.add("hidden");
+    els.clearStaleLocks?.classList.add("hidden");
+    return;
+  }
+  const fullPlanLoaded = activePlanBodyVerified();
+  els.lockPanel.classList.toggle("needs-recovery", !fullPlanLoaded);
+  els.copyDiagnostics?.classList.toggle("hidden", fullPlanLoaded);
+  els.clearStaleLocks?.classList.toggle("hidden", fullPlanLoaded || !lockBelongsToCurrentUser(editLock.info || {}));
+  if (!fullPlanLoaded) {
+    els.lockPanel.classList.add("read-only");
+    els.lockStatus.textContent = planLoadStatus.detail
+      ? `Full 2YIP did not load: ${planLoadStatus.detail}`
+      : "Full 2YIP did not load. Saving is paused.";
+    els.takeOverLock.classList.add("hidden");
+    return;
+  }
   const editing = canEditActivePlan();
   els.lockPanel.classList.toggle("read-only", !editing);
   if (editing) {
     els.lockStatus.textContent = `Editing as ${lockOwnerName(editLock.info)}`;
     els.takeOverLock.classList.add("hidden");
+    els.clearStaleLocks?.classList.add("hidden");
     return;
   }
   const owner = editLock.info ? lockOwnerName(editLock.info) : "another session";
@@ -4270,11 +4634,119 @@ function renderLockStatus() {
     : `Read-only: ${owner} is editing`;
   els.takeOverLock.textContent = sameUser ? "Continue Here" : "Take Over Editing";
   els.takeOverLock.classList.remove("hidden");
+  els.clearStaleLocks?.classList.toggle("hidden", !sameUser);
+}
+
+function localStorageDiagnosticSummary() {
+  try {
+    const keys = Object.keys(localStorage);
+    const totalChars = keys.reduce((total, key) => total + key.length + String(localStorage.getItem(key) || "").length, 0);
+    const largestKeys = keys
+      .map((key) => ({ key, chars: String(localStorage.getItem(key) || "").length }))
+      .sort((a, b) => b.chars - a.chars)
+      .slice(0, 8);
+    return {
+      keyCount: keys.length,
+      approxMb: Number((totalChars / 1024 / 1024).toFixed(2)),
+      largestKeys,
+    };
+  } catch (error) {
+    return { error: errorLabel(error) };
+  }
+}
+
+function diagnosticInfo() {
+  const identity = activePlanIdentity();
+  return {
+    generatedAt: new Date().toISOString(),
+    urlHash: window.location.hash || "",
+    screen: state.currentScreen,
+    activeWorkspaceId: identity.workspaceId,
+    activePlanId: identity.planId,
+    statePlanId: state.plan?.id || "",
+    stateWorkspaceId: state.plan?.workspaceId || "",
+    loadedPlanKey,
+    planCatalogVerified,
+    planLoadStatus,
+    activePlanRevision,
+    cloudLoaded: cloud.loaded,
+    cloudAvailable: cloud.available,
+    userUid: cloud.user?.uid || "",
+    userEmail: cloud.user?.email || "",
+    editLock: {
+      mode: editLock.mode,
+      ownerUid: editLock.info?.uid || "",
+      ownerEmail: editLock.info?.email || "",
+      ownerName: editLock.info?.displayName || "",
+      sessionMatches: lockBelongsToThisSession(editLock.info),
+      expiresAtMs: editLock.info?.expiresAtMs || null,
+    },
+    lastCloudError,
+    localStorage: localStorageDiagnosticSummary(),
+  };
+}
+
+async function copyDiagnostics() {
+  const text = JSON.stringify(diagnosticInfo(), null, 2);
+  try {
+    await navigator.clipboard.writeText(text);
+    renderCloudStatus("Diagnostic info copied. It contains IDs and status only, not curriculum content.", "Sign out");
+  } catch (error) {
+    console.warn("Copy diagnostics failed", error);
+    renderCloudStatus("Could not copy diagnostics. Browser clipboard blocked it.", "Sign out");
+  }
+}
+
+async function clearMyStaleLocks() {
+  if (!cloud.user || !cloud.db) return false;
+  renderCloudStatus("Clearing your stale locks...", "Sign out", true);
+  const workspaceId = activeWorkspaceId();
+  const plans = plansForActiveWorkspace();
+  let cleared = 0;
+  for (const plan of plans) {
+    try {
+      const ref = cloudPlanRefFor(plan.id, plan.workspaceId || workspaceId);
+      await cloud.db.runTransaction(async (transaction) => {
+        const snapshot = await transaction.get(ref);
+        const data = snapshot.exists ? snapshot.data() || {} : {};
+        const lock = data.editingLock || null;
+        if (lockBelongsToCurrentUser(lock)) {
+          transaction.set(ref, {
+            editingLock: window.firebase.firestore.FieldValue.delete(),
+          }, { merge: true });
+          cleared += 1;
+        }
+      });
+    } catch (error) {
+      lastCloudError = { code: error?.code || "", message: error?.message || String(error) };
+      console.warn("Could not clear stale lock", plan.id, error);
+    }
+  }
+  if (activePlanBodyVerified()) await acquireEditingLock({ force: true, identity: activePlanIdentity() });
+  renderCloudStatus(cleared ? `Cleared ${cleared} stale lock${cleared === 1 ? "" : "s"}.` : "No same-user stale locks found.", "Sign out");
+  render();
+  return true;
+}
+
+async function takeOverVisiblePlan() {
+  const identity = activePlanIdentity();
+  if (!activePlanBodyVerified(identity)) {
+    renderCloudStatus("Full 2YIP did not load. Reopen the plan or copy diagnostics.", "Sign out");
+    renderLockStatus();
+    return false;
+  }
+  renderCloudStatus("Taking over editing...", "Sign out", true);
+  const ok = await acquireEditingLock({ force: true, identity });
+  if (!ok) {
+    renderCloudStatus(lastCloudError?.message ? `Could not take over: ${lastCloudError.message}` : "Could not take over editing. Try reopening the 2YIP.", "Sign out");
+  }
+  render();
+  return ok;
 }
 
 function applyEditingMode() {
   renderLockStatus();
-  const readOnly = state.currentScreen !== "workspace" && Boolean(firstPlanForActiveWorkspace()) && !canEditActivePlan();
+  const readOnly = state.currentScreen !== "workspace" && Boolean(firstPlanForActiveWorkspace()) && (!activePlanBodyVerified() || !canEditActivePlan());
   els.appShell?.classList.toggle("plan-read-only", readOnly);
   [els.timelineScreen, els.boardScreen, els.lessonScreen, els.assessmentScreen, els.cardLibraryPanel, els.lessonPickerPanel].filter(Boolean).forEach((root) => {
     root.querySelectorAll("input, textarea, select, button").forEach((control) => {
@@ -5012,15 +5484,17 @@ function openWorkspaceSetup() {
 
 async function openWorkspacePlan(planId) {
   if (!planId) return;
-  if (planId === activePlanId() && statePlanMatchesSelectedPlan()) {
+  const planMeta = planMetaById(planId);
+  const identity = planIdentity(planId, planMeta?.workspaceId || activeWorkspaceId());
+  if (planId === activePlanId() && statePlanMatchesSelectedPlan() && activePlanBodyVerified(identity)) {
     state.currentScreen = "timeline";
     state.unitOverviewOpen = false;
     state.lessonOverviewOpen = false;
-    await acquireEditingLock({ allowSameUserTakeover: true });
+    await acquireEditingLock({ allowSameUserTakeover: true, identity });
     render();
     return;
   }
-  await switchPlan(planId, { targetScreen: "timeline" });
+  await switchPlan(planId, { targetScreen: "timeline", workspaceId: identity.workspaceId, force: true });
 }
 
 function renderPlanSetup() {
@@ -6136,12 +6610,18 @@ async function confirm2YipImport() {
   pending2YipImport = null;
   setStoredActivePlanId(state.plan.id, state.plan.workspaceId);
   markLoadedPlanState(state.plan.id, state.plan.workspaceId);
+  setPlanLoadStatus({
+    verified: true,
+    reason: "created-from-import",
+    detail: "Imported draft 2YIP is loaded.",
+    workspaceId: state.plan.workspaceId,
+    planId: state.plan.id,
+    storageVersion: PLAN_STORAGE_VERSION,
+  });
   planCatalogVerified = true;
   activePlanRevision = 0;
   savePlanToCatalog(state.plan);
-  localStorage.setItem(planStateStorageKey(), JSON.stringify(state));
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  localStorage.setItem(lastGoodPlanStateStorageKey(), JSON.stringify(cleanCloudState(state)));
+  writePlanStateCache(state, { lastGood: true });
   lastPersistedContentHash = planStateContentHash(state);
   if (cloud.loaded) await acquireEditingLock({ force: true });
   render();
@@ -11670,13 +12150,19 @@ els.createPlan?.addEventListener("click", async () => {
   state.currentScreen = "timeline";
   setStoredActivePlanId(state.plan.id, state.plan.workspaceId);
   markLoadedPlanState(state.plan.id, state.plan.workspaceId);
+  setPlanLoadStatus({
+    verified: true,
+    reason: "created",
+    detail: "New 2YIP is loaded.",
+    workspaceId: state.plan.workspaceId,
+    planId: state.plan.id,
+    storageVersion: PLAN_STORAGE_VERSION,
+  });
   planSetupOpen = false;
   planCatalogVerified = true;
   activePlanRevision = 0;
   savePlanToCatalog(state.plan);
-  localStorage.setItem(planStateStorageKey(), JSON.stringify(state));
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  localStorage.setItem(lastGoodPlanStateStorageKey(), JSON.stringify(cleanCloudState(state)));
+  writePlanStateCache(state, { lastGood: true });
   lastPersistedContentHash = planStateContentHash(state);
   if (cloud.loaded) await acquireEditingLock({ force: true });
   render();
@@ -12383,10 +12869,10 @@ els.addActivity.addEventListener("click", () => {
 
 els.cloudAuth?.addEventListener("click", toggleCloudAuth);
 els.takeOverLock?.addEventListener("click", async () => {
-  renderCloudStatus("Taking over editing...", "Sign out", true);
-  await acquireEditingLock({ force: true });
-  render();
+  await takeOverVisiblePlan();
 });
+els.clearStaleLocks?.addEventListener("click", clearMyStaleLocks);
+els.copyDiagnostics?.addEventListener("click", copyDiagnostics);
 els.loginGoogle?.addEventListener("click", toggleCloudAuth);
 els.loginReset?.addEventListener("click", resetCloudSignIn);
 els.cardDetailCancel?.addEventListener("click", closeCardDetail);
