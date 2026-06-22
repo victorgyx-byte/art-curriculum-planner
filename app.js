@@ -5423,7 +5423,9 @@ async function runAiTemplateDetectionImport() {
     });
     const detectionPayload = await detectionResponse.json().catch(() => ({}));
     if (!detectionResponse.ok) throw new Error(detectionPayload.error || "AI-assisted row detection failed.");
-    const parsed = parse2YipWorkbook(sourceWorkbook, pendingImportFileName(), sourceSnapshot, detectionPayload.rows || {});
+    const parsed = parse2YipWorkbook(sourceWorkbook, pendingImportFileName(), sourceSnapshot, detectionPayload.rows || {}, {
+      unitSlotMode: "template",
+    });
     const units = parsed.units || [];
     const gapRequest = buildAiGapSuggestionRequest(units);
     let suggestionCount = 0;
@@ -5796,12 +5798,14 @@ function addImportedCard(unit, payload) {
   return card;
 }
 
-function parse2YipWorkbook(workbook, fileName = "Imported 2YIP", snapshot = null, rowOverrides = null) {
+function parse2YipWorkbook(workbook, fileName = "Imported 2YIP", snapshot = null, rowOverrides = null, options = {}) {
   const sheetName = workbook.SheetNames[0];
   const sheet = workbook.Sheets[sheetName];
   const rows = normalizeImportTemplateRows(rowOverrides || importTemplateRows);
   const planTitle = `Imported 2YIP - ${fileName.replace(/\.(xlsx|xls)$/i, "").replace(/[_-]+/g, " ")}`;
-  const unitSlots = detectImportUnitSlots(sheet, rows);
+  const unitSlots = options.unitSlotMode === "template"
+    ? importTemplateUnitSlots
+    : detectImportUnitSlots(sheet, rows);
   const units = unitSlots
     .map((slot) => parse2YipTemplateUnit(sheet, slot, rows))
     .filter(Boolean);
