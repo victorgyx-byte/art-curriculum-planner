@@ -324,6 +324,19 @@ function nearbyCellText(cells, target) {
 }
 
 function unitSlotColumns(unit) {
+  const cells = Array.isArray(unit?._workbookCells) ? unit._workbookCells : [];
+  const title = normaliseSearchText(unit?.title);
+  if (cells.length && title) {
+    const exactTitleCell = cells.find((cell) => normaliseSearchText(cell.value) === title);
+    const titleCell = exactTitleCell || cells.find((cell) => normaliseSearchText(cell.value).includes(title));
+    if (titleCell) {
+      const col = Number(titleCell.col) || 0;
+      const row = Number(titleCell.row) || 0;
+      const nextCellText = normaliseSearchText(cellText(cells, row, col + 1));
+      const nextColumnLooksLikeAnotherUnit = Boolean(nextCellText && nextCellText !== title);
+      return nextColumnLooksLikeAnotherUnit ? [col] : [col, col + 1];
+    }
+  }
   const slotIndex = Number(unit?.slotIndex) || 0;
   if (slotIndex < 1 || slotIndex > 10) return [];
   const firstColumn = 4 + (slotIndex - 1) * 2;
@@ -332,7 +345,7 @@ function unitSlotColumns(unit) {
 
 function unitRelevantText(workbook, unit) {
   const cells = Array.isArray(workbook?.cells) ? workbook.cells : [];
-  const columns = unitSlotColumns(unit);
+  const columns = unitSlotColumns({ ...unit, _workbookCells: cells });
   const slotText = columns.length
     ? cells
       .filter((cell) => columns.includes(Number(cell.col) || 0) && (Number(cell.row) || 0) <= 45)
@@ -351,7 +364,7 @@ function unitRelevantText(workbook, unit) {
 
 function coreExperienceRowText(cells, row, columns) {
   return columns
-    .flatMap((col) => [cellText(cells, row, col), cellText(cells, row, col + 1)])
+    .map((col) => cellText(cells, row, col))
     .filter(Boolean)
     .join(" ");
 }
@@ -382,7 +395,7 @@ function coreExperienceRows(cells, area) {
 
 function templateCoreExperienceLabelsForUnit(workbook, unit) {
   const cells = Array.isArray(workbook?.cells) ? workbook.cells : [];
-  const columns = unitSlotColumns(unit);
+  const columns = unitSlotColumns({ ...unit, _workbookCells: cells });
   if (!columns.length) return [];
   const labels = [];
   ["drawing", "portfolio"].forEach((area) => {
@@ -421,7 +434,7 @@ function workbookHasCoreExperienceTrigger(workbook, unit, label) {
   if (!trigger) return false;
   if (templateCoreExperienceLabelsForUnit(workbook, unit).includes(label)) return true;
   const cells = Array.isArray(workbook?.cells) ? workbook.cells : [];
-  const columns = unitSlotColumns(unit);
+  const columns = unitSlotColumns({ ...unit, _workbookCells: cells });
   if (!columns.length) return false;
   return coreExperienceRows(cells, trigger.area).some((row) => {
     const rowText = coreExperienceRowText(cells, row, columns);

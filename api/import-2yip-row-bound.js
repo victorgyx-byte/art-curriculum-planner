@@ -29,6 +29,7 @@ const STANDARD_ROWS = {
 const UNIT_SLOTS = Array.from({ length: 10 }, (_, index) => ({
   index: index + 1,
   col: 4 + index * 2,
+  width: 2,
 }));
 
 function json(res, status, payload) {
@@ -392,6 +393,48 @@ function rowsPairText(cells, rows, col) {
     .join("\n");
 }
 
+function rowSlotText(cells, row, slot) {
+  if (!row) return "";
+  const width = Math.max(1, Number(slot?.width) || 1);
+  return Array.from({ length: width }, (_, offset) => cellText(cells, row, slot.col + offset))
+    .filter(Boolean)
+    .join("\n");
+}
+
+function rowsSlotText(cells, rows, slot) {
+  return (Array.isArray(rows) ? rows : [])
+    .map((row) => {
+      const text = rowSlotText(cells, row, slot);
+      return text ? `Row ${row}: ${text}` : "";
+    })
+    .filter(Boolean)
+    .join("\n");
+}
+
+function detectUnitSlots(cells, rows) {
+  const titleRow = Number(rows?.title) || 0;
+  if (!titleRow) return UNIT_SLOTS;
+  const titleCells = cells
+    .filter((cell) => {
+      const row = Number(cell.row) || 0;
+      const col = Number(cell.col) || 0;
+      const text = cleanText(cell.value);
+      return row === titleRow && col >= 4 && text && !/^unit\s+plan\s+\d+$/i.test(text);
+    })
+    .sort((a, b) => (Number(a.col) || 0) - (Number(b.col) || 0));
+  if (!titleCells.length) return UNIT_SLOTS;
+  return titleCells.slice(0, 10).map((cell, index) => {
+    const col = Number(cell.col) || 0;
+    const nextText = cleanText(cellText(cells, titleRow, col + 1));
+    const nextColumnLooksLikeAnotherUnit = Boolean(nextText && !/^unit\s+plan\s+\d+$/i.test(nextText));
+    return {
+      index: index + 1,
+      col,
+      width: nextColumnLooksLikeAnotherUnit ? 1 : 2,
+    };
+  });
+}
+
 function parsePlacement(secRaw, durationRaw, warnings) {
   const combined = `${secRaw || ""} ${durationRaw || ""}`;
   const secMatch = combined.match(/sec(?:ondary)?\s*([12])/i);
@@ -421,16 +464,17 @@ function parsePlacement(secRaw, durationRaw, warnings) {
 
 function buildEvidencePackets(workbook, rows) {
   const cells = Array.isArray(workbook.cells) ? workbook.cells : [];
-  return UNIT_SLOTS.map((slot) => {
+  const slots = detectUnitSlots(cells, rows);
+  return slots.map((slot) => {
     const warnings = [];
-    const secText = rowPairText(cells, rows.sec, slot.col);
-    const durationText = rowPairText(cells, rows.duration, slot.col);
+    const secText = rowSlotText(cells, rows.sec, slot);
+    const durationText = rowSlotText(cells, rows.duration, slot);
     const placement = parsePlacement(secText, durationText, warnings);
     const packet = {
       slotIndex: slot.index,
-      unitColumnPair: `${slot.col}:${slot.col + 1}`,
-      title: rowPairText(cells, rows.title, slot.col),
-      artTask: rowPairText(cells, rows.artTask, slot.col),
+      unitColumnPair: slot.width > 1 ? `${slot.col}:${slot.col + slot.width - 1}` : `${slot.col}`,
+      title: rowSlotText(cells, rows.title, slot),
+      artTask: rowSlotText(cells, rows.artTask, slot),
       year: placement.year,
       startTerm: placement.startTerm,
       startWeek: placement.startWeek,
@@ -438,21 +482,21 @@ function buildEvidencePackets(workbook, rows) {
       endWeek: placement.endWeek,
       lessonCount: placement.lessonCount,
       evidence: {
-        bigIdeas: rowsPairText(cells, rows.bigIdeas, slot.col),
-        learningOutcomes: rowsPairText(cells, rows.learningOutcomes, slot.col),
-        media: rowPairText(cells, rows.media, slot.col),
-        artisticProcesses: rowPairText(cells, rows.artisticProcesses, slot.col),
-        visualQualities: rowPairText(cells, rows.visualQualities, slot.col),
-        context: rowPairText(cells, rows.context, slot.col),
-        drawingCore: rowsPairText(cells, rows.drawingCore, slot.col),
-        portfolioCore: rowsPairText(cells, rows.portfolioCore, slot.col),
-        electiveLearning: rowPairText(cells, rows.electiveLearning, slot.col),
-        pedagogy: rowsPairText(cells, rows.pedagogy, slot.col),
-        pedagogyOther: rowPairText(cells, rows.pedagogyOther, slot.col),
-        assessmentType: rowPairText(cells, rows.assessmentType, slot.col),
-        assessmentPercent: rowPairText(cells, rows.assessmentPercent, slot.col),
-        assessmentCriteria: rowPairText(cells, rows.assessmentCriteria, slot.col),
-        lessonOutlines: rowsPairText(cells, rows.lessonOutlines, slot.col),
+        bigIdeas: rowsSlotText(cells, rows.bigIdeas, slot),
+        learningOutcomes: rowsSlotText(cells, rows.learningOutcomes, slot),
+        media: rowSlotText(cells, rows.media, slot),
+        artisticProcesses: rowSlotText(cells, rows.artisticProcesses, slot),
+        visualQualities: rowSlotText(cells, rows.visualQualities, slot),
+        context: rowSlotText(cells, rows.context, slot),
+        drawingCore: rowsSlotText(cells, rows.drawingCore, slot),
+        portfolioCore: rowsSlotText(cells, rows.portfolioCore, slot),
+        electiveLearning: rowSlotText(cells, rows.electiveLearning, slot),
+        pedagogy: rowsSlotText(cells, rows.pedagogy, slot),
+        pedagogyOther: rowSlotText(cells, rows.pedagogyOther, slot),
+        assessmentType: rowSlotText(cells, rows.assessmentType, slot),
+        assessmentPercent: rowSlotText(cells, rows.assessmentPercent, slot),
+        assessmentCriteria: rowSlotText(cells, rows.assessmentCriteria, slot),
+        lessonOutlines: rowsSlotText(cells, rows.lessonOutlines, slot),
       },
       warnings,
     };
