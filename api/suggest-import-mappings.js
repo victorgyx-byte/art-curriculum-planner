@@ -492,7 +492,7 @@ async function callOpenAI(context) {
     },
     body: JSON.stringify({
       model: DEFAULT_MODEL,
-      temperature: 0.1,
+      temperature: 0,
       max_completion_tokens: 9000,
       response_format: {
         type: "json_schema",
