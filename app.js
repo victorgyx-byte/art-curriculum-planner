@@ -2315,6 +2315,68 @@ function planIndexDoc(meta = {}) {
   };
 }
 
+function markLoadedPlanCatalogVerified(identity = activePlanIdentity(), planState = state) {
+  if (!identity.planId || !identity.workspaceId) return;
+  const nextMeta = normalizePlanMetadata({
+    ...(planState.plan || {}),
+    id: identity.planId,
+    workspaceId: identity.workspaceId,
+    status: "active",
+    stale: false,
+    lastVerifiedAt: new Date().toISOString(),
+  });
+  planCatalog = [
+    ...planCatalog.filter((plan) => !(plan.id === identity.planId && (plan.workspaceId || activeWorkspaceId()) === identity.workspaceId)),
+    nextMeta,
+  ];
+  savePlanCatalog();
+  saveLastGoodPlanCatalog(identity.workspaceId, planCatalog.filter((plan) => (plan.workspaceId || activeWorkspaceId()) === identity.workspaceId));
+  planCatalogVerified = true;
+  if (cloud.user && cloud.db) {
+    writeCloudPlanIndex(identity, nextMeta).catch((error) => {
+      console.warn("Loaded plan index repair failed", identity, error);
+    });
+  }
+}
+
+function planMetaForIdentity(identity = activePlanIdentity()) {
+  return planCatalog.find((plan) => (
+    plan.id === identity.planId
+      && (plan.workspaceId || identity.workspaceId) === identity.workspaceId
+  )) || null;
+}
+
+function activePlanCloudWriteVerification(identity = activePlanIdentity()) {
+  if (!activePlanBodyVerified(identity)) {
+    return { ok: false, message: "Full 2YIP did not load. Saving paused to prevent overwrite." };
+  }
+  if (planLoadStatus.reason === "local-fallback") {
+    return { ok: false, message: "Online plan could not be verified. Saving paused to prevent overwrite." };
+  }
+  if (!statePlanMatchesSelectedPlan()) {
+    return { ok: false, message: "Plan not verified. Saving paused to prevent overwrite." };
+  }
+  let planMeta = planMetaForIdentity(identity);
+  if (!planMeta && state.plan?.id === identity.planId) {
+    markLoadedPlanCatalogVerified(identity, state);
+    planMeta = planMetaForIdentity(identity);
+  }
+  if (!planMeta) {
+    return { ok: false, message: "Plan catalog not verified. Saving paused to prevent overwrite." };
+  }
+  if (planIsDeleted(planMeta)) {
+    return { ok: false, message: "This 2YIP is in Trash. Restore it before editing." };
+  }
+  if (planMeta.stale || !planCatalogVerified) {
+    markLoadedPlanCatalogVerified(identity, state);
+    planMeta = planMetaForIdentity(identity);
+  }
+  if (planMeta?.stale) {
+    return { ok: false, message: "Plan catalog is stale. Reopen this 2YIP before saving." };
+  }
+  return { ok: true, message: "" };
+}
+
 function createPlanState({ title, subject, teamName }) {
   const next = normalizeState({
     ...structuredClone(defaultState),
@@ -2935,6 +2997,7 @@ async function switchPlan(planId, options = {}) {
     let nextState = await loadOfflinePlanState(identity) || loadLocalPlanState(planId) || loadLastGoodPlanState(planId, targetWorkspaceId);
     let cloudLoadFailed = false;
     let cloudSnapshotWasReadable = false;
+    let cloudPlanBodyWasLoaded = false;
 
     if (cloud.loaded) {
       try {
@@ -2950,6 +3013,7 @@ async function switchPlan(planId, options = {}) {
         if (snapshot.exists && Number(snapshotData.storageVersion || 1) >= 2) {
           activePlanRevision = Number(snapshotData.revision || 0);
           nextState = await loadSplitCloudState(snapshot, snapshotData, identity);
+          cloudPlanBodyWasLoaded = true;
           nextState.plan = normalizePlanMetadata({
             ...nextState.plan,
             id: planId,
@@ -2961,6 +3025,7 @@ async function switchPlan(planId, options = {}) {
         if (remoteState && Array.isArray(remoteState.units)) {
           activePlanRevision = Number(snapshotData.revision || 0);
           nextState = normalizeState(remoteState);
+          cloudPlanBodyWasLoaded = true;
           nextState.plan = normalizePlanMetadata({
             ...nextState.plan,
             id: planId,
@@ -3009,14 +3074,16 @@ async function switchPlan(planId, options = {}) {
     state.currentScreen = currentScreen || "timeline";
     setStoredActivePlanId(planId, state.plan.workspaceId);
     markLoadedPlanState(planId, state.plan.workspaceId);
+    const loadedFromLocalFallback = cloud.loaded && !cloudPlanBodyWasLoaded;
     setPlanLoadStatus({
       verified: true,
-      reason: "loaded",
-      detail: "Selected 2YIP loaded.",
+      reason: loadedFromLocalFallback ? "local-fallback" : "loaded",
+      detail: loadedFromLocalFallback ? "Selected 2YIP loaded from local fallback." : "Selected 2YIP loaded.",
       workspaceId: state.plan.workspaceId,
       planId,
-      storageVersion: cloudSnapshotWasReadable ? PLAN_STORAGE_VERSION : 1,
+      storageVersion: cloudPlanBodyWasLoaded ? PLAN_STORAGE_VERSION : 1,
     });
+    if (cloudPlanBodyWasLoaded) markLoadedPlanCatalogVerified(identity, state);
     writePlanStateCache(state, { lastGood: true });
     rememberObjectSaveBaseline(state);
     cachePlanStateOffline(state, { replace: true }).catch((error) => {
@@ -4146,7 +4213,7 @@ async function handleCloudUser(user) {
     workspaceDirectoryWorkspaceId = "";
     els.loginGate.classList.add("hidden");
     els.appShell.classList.remove("hidden");
-    if (!hasVerifiedPlanContent || planCatalogLoaded === false) planCatalogVerified = false;
+    if (!hasVerifiedPlanContent || (planCatalogLoaded === false && planContentLoaded !== "remote")) planCatalogVerified = false;
     saveWritesPaused = !hasVerifiedPlanContent;
     render();
     if (!hasVerifiedPlanContent) {
@@ -4538,6 +4605,13 @@ async function loadCloudState() {
     if (fallbackState && planContentScore(fallbackState) > 0) {
       cloudSyncPaused = true;
       applyLoadedPlanState(fallbackState, identity.planId, { ...(fallbackState.plan || {}), workspaceId: identity.workspaceId });
+      setPlanLoadStatus({
+        verified: true,
+        reason: "local-fallback",
+        detail: "Full 2YIP loaded from local fallback.",
+        workspaceId: identity.workspaceId,
+        planId: identity.planId,
+      });
       cloudSyncPaused = false;
       renderCloudStatus("Could not refresh online plan. Showing last known local version.", "Sign out");
       return "local";
@@ -4560,6 +4634,7 @@ async function loadCloudState() {
       cloudSyncPaused = true;
       applyLoadedPlanState(splitState, snapshot.id, { ...snapshotData, workspaceId: identity.workspaceId, storageVersion: PLAN_STORAGE_VERSION });
       cloudSyncPaused = false;
+      markLoadedPlanCatalogVerified(identity, state);
       render();
       return "remote";
     } catch (error) {
@@ -4575,6 +4650,7 @@ async function loadCloudState() {
     cloudSyncPaused = true;
     applyLoadedPlanState(normalizedRemote, snapshot.id, { ...snapshotData, workspaceId: identity.workspaceId });
     cloudSyncPaused = false;
+    markLoadedPlanCatalogVerified(identity, state);
     render();
     return "remote";
   }
@@ -4605,10 +4681,10 @@ async function saveCloudStateNow(options = {}) {
     renderCloudStatus("Read-only. Saving paused until you take over editing.", "Sign out");
     return false;
   }
-  const planMeta = planMetaById(activePlanId());
-  if (!planCatalogVerified || !planMeta || planIsDeleted(planMeta) || planMeta.stale || !statePlanMatchesSelectedPlan()) {
+  const verification = activePlanCloudWriteVerification(identity);
+  if (!verification.ok) {
     cloudSaveBlocked = true;
-    renderCloudStatus("Plan not verified. Saving paused to prevent overwrite.", "Sign out");
+    renderCloudStatus(verification.message, "Sign out");
     return false;
   }
   try {
@@ -4999,15 +5075,15 @@ function lessonImageStoragePath(lesson, fileName) {
 }
 
 function verifyCloudImageUploadReady() {
-  const planMeta = planMetaById(activePlanId());
   if (!cloud.available || !cloud.user || !cloud.storage) {
     throw new Error("Cloud image upload is not ready. Check that Firebase Storage is enabled.");
   }
   if (!canEditActivePlan()) {
     throw new Error("Read-only. Take over editing before uploading an image.");
   }
-  if (!planCatalogVerified || !planMeta || planIsDeleted(planMeta) || planMeta.stale || !statePlanMatchesSelectedPlan()) {
-    throw new Error("Plan is not verified yet. Reopen this 2YIP before uploading an image.");
+  const verification = activePlanCloudWriteVerification(activePlanIdentity());
+  if (!verification.ok) {
+    throw new Error(verification.message || "Plan is not verified yet. Reopen this 2YIP before uploading an image.");
   }
 }
 
