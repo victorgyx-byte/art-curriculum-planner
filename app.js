@@ -2249,6 +2249,43 @@ function mergeCloudPlanIntoCatalog(planId, data = {}, workspaceId = cloudWorkspa
   });
 }
 
+function planIndexMetadata(planId, data = {}, workspaceId = cloudWorkspaceId()) {
+  return normalizePlanMetadata({
+    id: planId,
+    title: data.title || data.state?.plan?.title || data.planShell?.plan?.title || data.plan?.title || "Untitled Plan",
+    subject: data.subject || data.state?.plan?.subject || data.planShell?.plan?.subject || data.plan?.subject || "Art",
+    teamId: data.teamId || data.state?.plan?.teamId || data.planShell?.plan?.teamId || data.plan?.teamId || "",
+    teamName: data.teamName || data.state?.plan?.teamName || data.planShell?.plan?.teamName || data.plan?.teamName || "",
+    workspaceId,
+    role: data.role || (canManageActiveWorkspace() ? "owner" : "editor"),
+    status: data.status || (data.deletedAt ? "deleted" : "active"),
+    deletedAt: data.deletedAt || "",
+    deletedAtMs: data.deletedAtMs || 0,
+    deletedBy: data.deletedBy || "",
+    deletedReason: data.deletedReason || "",
+    lastVerifiedAt: data.lastVerifiedAt || new Date().toISOString(),
+  });
+}
+
+function planIndexDoc(meta = {}) {
+  const normalized = normalizePlanMetadata(meta);
+  return {
+    id: normalized.id,
+    title: normalized.title || "Untitled Plan",
+    subject: normalized.subject || "Art",
+    teamId: normalized.teamId || "",
+    teamName: normalized.teamName || "",
+    workspaceId: normalized.workspaceId || activeWorkspaceId(),
+    status: normalized.status || "active",
+    deletedAt: normalized.deletedAt || "",
+    deletedAtMs: normalized.deletedAtMs || 0,
+    deletedBy: normalized.deletedBy || "",
+    deletedReason: normalized.deletedReason || "",
+    updatedAtMs: Date.now(),
+    updatedAt: window.firebase?.firestore?.FieldValue?.serverTimestamp?.() || new Date().toISOString(),
+  };
+}
+
 function createPlanState({ title, subject, teamName }) {
   const next = normalizeState({
     ...structuredClone(defaultState),
@@ -2792,13 +2829,22 @@ async function deletePlan(planId) {
 
 async function markPlanDeleted(workspaceId, planId, reason = "plan-delete") {
   const planRef = cloud.db.collection("workspaces").doc(workspaceId).collection("plans").doc(planId);
+  const deletedAtMs = Date.now();
   await planRef.set({
     status: "deleted",
     deletedAt: window.firebase.firestore.FieldValue.serverTimestamp(),
-    deletedAtMs: Date.now(),
+    deletedAtMs,
     deletedBy: cloud.user.uid,
     deletedReason: reason,
     state: window.firebase.firestore.FieldValue.delete(),
+    updatedAt: window.firebase.firestore.FieldValue.serverTimestamp(),
+  }, { merge: true });
+  await cloudPlanIndexRefFor(planId, workspaceId).set({
+    status: "deleted",
+    deletedAt: window.firebase.firestore.FieldValue.serverTimestamp(),
+    deletedAtMs,
+    deletedBy: cloud.user.uid,
+    deletedReason: reason,
     updatedAt: window.firebase.firestore.FieldValue.serverTimestamp(),
   }, { merge: true });
 }
@@ -3770,58 +3816,68 @@ async function loadCloudPlanCatalog() {
   const workspaceId = cloudWorkspaceId();
   const loadedPlans = [];
   const plansRef = cloud.db.collection("workspaces").doc(cloudWorkspaceId()).collection("plans");
+  const planIndexRef = cloud.db.collection("workspaces").doc(cloudWorkspaceId()).collection("planIndex");
   const metaFromPlanDoc = (doc) => {
     const data = doc.data() || {};
+    return planIndexMetadata(doc.id, data, workspaceId);
+  };
+  const metaFromIndexDoc = (doc) => {
+    const data = doc.data() || {};
     return normalizePlanMetadata({
+      ...data,
       id: doc.id,
-      title: data.title || data.state?.plan?.title || data.planShell?.plan?.title || "Untitled Plan",
-      subject: data.subject || data.state?.plan?.subject || data.planShell?.plan?.subject || "Art",
-      teamId: data.teamId || data.state?.plan?.teamId || data.planShell?.plan?.teamId || "",
-      teamName: data.teamName || data.state?.plan?.teamName || data.planShell?.plan?.teamName || "",
       workspaceId,
       role: data.role || (canManageActiveWorkspace() ? "owner" : "editor"),
-      status: data.status || (data.deletedAt ? "deleted" : "active"),
-      deletedAt: data.deletedAt || "",
-      deletedBy: data.deletedBy || "",
-      deletedReason: data.deletedReason || "",
       lastVerifiedAt: new Date().toISOString(),
     });
   };
   try {
     if (canManageActiveWorkspace()) {
-      let snapshot;
-      try {
-        snapshot = await plansRef.where("status", "==", "active").get();
-      } catch (activeQueryError) {
-        console.warn("Active plan catalog query failed; trying full plan catalog", activeQueryError);
-        snapshot = await plansRef.get();
-      }
-      snapshot.forEach((doc) => {
-        const meta = metaFromPlanDoc(doc);
+      const indexSnapshot = await planIndexRef.where("status", "==", "active").get();
+      indexSnapshot.forEach((doc) => {
+        const meta = metaFromIndexDoc(doc);
         if (!planIsDeleted(meta)) loadedPlans.push(meta);
       });
+      if (!loadedPlans.length) {
+        const snapshot = await plansRef.where("status", "==", "active").get();
+        snapshot.forEach((doc) => {
+          const meta = metaFromPlanDoc(doc);
+          if (!planIsDeleted(meta)) {
+            loadedPlans.push(meta);
+            writeCloudPlanIndex(planIdentity(meta.id, workspaceId), meta).catch((error) => {
+              console.warn("Plan index backfill failed", meta.id, error);
+            });
+          }
+        });
+      }
     } else {
       const sharedPlans = userAccessiblePlans.filter((plan) => plan.workspaceId === cloudWorkspaceId());
       for (const sharedPlan of sharedPlans) {
         try {
+          const indexSnapshot = await planIndexRef.doc(sharedPlan.planId).get();
+          if (indexSnapshot.exists) {
+            const meta = normalizePlanMetadata({
+              ...metaFromIndexDoc(indexSnapshot),
+              role: sharedPlan.role || "editor",
+            });
+            if (!planIsDeleted(meta)) loadedPlans.push(meta);
+            continue;
+          }
           const snapshot = await plansRef.doc(sharedPlan.planId).get();
           if (snapshot.exists) {
             const data = snapshot.data() || {};
             const meta = normalizePlanMetadata({
-              id: snapshot.id,
+              ...planIndexMetadata(snapshot.id, data, workspaceId),
               title: data.title || sharedPlan.planTitle,
               subject: data.subject || sharedPlan.subject,
-              teamId: data.teamId || data.state?.plan?.teamId || data.planShell?.plan?.teamId || "",
-              teamName: data.teamName || data.state?.plan?.teamName || data.planShell?.plan?.teamName || "",
-              workspaceId,
               role: sharedPlan.role || "editor",
-              status: data.status || (data.deletedAt ? "deleted" : "active"),
-              deletedAt: data.deletedAt || "",
-              deletedBy: data.deletedBy || "",
-              deletedReason: data.deletedReason || "",
-              lastVerifiedAt: new Date().toISOString(),
             });
-            if (!planIsDeleted(meta)) loadedPlans.push(meta);
+            if (!planIsDeleted(meta)) {
+              loadedPlans.push(meta);
+              writeCloudPlanIndex(planIdentity(meta.id, workspaceId), meta).catch((error) => {
+                console.warn("Shared plan index backfill failed", meta.id, error);
+              });
+            }
           } else {
             loadedPlans.push(normalizePlanMetadata({ ...sharedPlan, id: sharedPlan.planId, title: sharedPlan.planTitle, stale: true }));
           }
@@ -4057,6 +4113,16 @@ async function saveCloudStateNow(options = {}) {
         editingLock: nextLock,
         updatedAt: window.firebase.firestore.FieldValue.serverTimestamp(),
       }, { merge: true });
+      transaction.set(cloudPlanIndexRefFor(identity.planId, identity.workspaceId), planIndexDoc({
+        ...cleanState.plan,
+        id: identity.planId,
+        workspaceId: identity.workspaceId,
+        title: activePlanTitle(),
+        subject: state.plan?.subject || "Art",
+        teamId: state.plan?.teamId || "",
+        teamName: state.plan?.teamName || "",
+        status: "active",
+      }), { merge: true });
       return { revision: nextRevision, lock: nextLock };
     });
     activePlanRevision = saveResult.revision;
@@ -4457,6 +4523,25 @@ function cloudPlanRefFor(planId, workspaceId = activeWorkspaceId()) {
     .doc(workspaceId || cloudWorkspaceId())
     .collection("plans")
     .doc(planId || CLOUD_PLAN_ID);
+}
+
+function cloudPlanIndexRefFor(planId, workspaceId = activeWorkspaceId()) {
+  return cloud.db
+    .collection("workspaces")
+    .doc(workspaceId || cloudWorkspaceId())
+    .collection("planIndex")
+    .doc(planId || CLOUD_PLAN_ID);
+}
+
+async function writeCloudPlanIndex(identity = activePlanIdentity(), meta = state.plan) {
+  if (!cloud.available || !cloud.user || !cloud.db || !identity.planId || !identity.workspaceId) return false;
+  const normalized = normalizePlanMetadata({
+    ...(meta?.plan || meta || {}),
+    id: identity.planId,
+    workspaceId: identity.workspaceId,
+  });
+  await cloudPlanIndexRefFor(identity.planId, identity.workspaceId).set(planIndexDoc(normalized), { merge: true });
+  return true;
 }
 
 function lockOwnerName(lock = editLock.info) {
@@ -5605,6 +5690,16 @@ async function restorePlan(planId) {
     deletedReason: window.firebase.firestore.FieldValue.delete(),
     updatedAt: window.firebase.firestore.FieldValue.serverTimestamp(),
   }, { merge: true });
+  await cloudPlanIndexRefFor(planId, activeWorkspaceId()).set(planIndexDoc({
+    ...plan,
+    id: planId,
+    workspaceId: activeWorkspaceId(),
+    status: "active",
+    deletedAt: "",
+    deletedAtMs: 0,
+    deletedBy: "",
+    deletedReason: "",
+  }), { merge: true });
   deletedPlanCatalog = deletedPlanCatalog.filter((entry) => !(entry.id === planId && entry.workspaceId === activeWorkspaceId()));
   saveDeletedPlanCatalog();
   await loadCloudPlanCatalog();

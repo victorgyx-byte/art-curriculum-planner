@@ -88,6 +88,11 @@ service cloud.firestore {
         allow delete: if isWorkspaceOwner(workspaceId) || isWorkspaceCreator(workspaceId);
       }
 
+      match /planIndex/{planId} {
+        allow read: if canReadWritePlan(workspaceId, planId) || isWorkspaceCreator(workspaceId) || isOwnTeacherWorkspace(workspaceId);
+        allow create, update, delete: if canReadWritePlan(workspaceId, planId) || isWorkspaceCreator(workspaceId) || isOwnTeacherWorkspace(workspaceId);
+      }
+
       match /plans/{planId} {
         allow read, update: if canReadWritePlan(workspaceId, planId) || isWorkspaceCreator(workspaceId);
         allow create, delete: if isWorkspaceOwner(workspaceId) || isWorkspaceCreator(workspaceId) || isOwnTeacherWorkspace(workspaceId);
