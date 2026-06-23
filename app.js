@@ -25,7 +25,7 @@ const EDIT_LOCK_HEARTBEAT_MS = 25 * 1000;
 const EDIT_LOCK_SAME_USER_STALE_MS = EDIT_LOCK_HEARTBEAT_MS * 2 + 5000;
 const EDIT_SESSION_STORAGE_KEY = "art-curriculum-editor-session-id";
 const PLAN_STORAGE_VERSION = 2;
-const LOCAL_PLAN_BODY_MAX_CHARS = 900000;
+const LOCAL_PLAN_BODY_MAX_CHARS = 180000;
 const CLOUD_IMAGE_MAX_CHARS = 320000;
 const CLOUD_IMAGE_TOTAL_MAX_CHARS = 620000;
 const IMAGE_PREVIEW_MAX_SIDE = 1100;
@@ -2092,7 +2092,7 @@ function loadPlanCatalog() {
 }
 
 function savePlanCatalog() {
-  localStorage.setItem(PLAN_CATALOG_STORAGE_KEY, JSON.stringify(planCatalog));
+  localStorage.setItem(PLAN_CATALOG_STORAGE_KEY, JSON.stringify(planCatalog.map(normalizePlanMetadata)));
 }
 
 function loadDeletedWorkspaceCatalog() {
@@ -2287,16 +2287,21 @@ async function persistCurrentPlanBeforeSwitch() {
   if (state.currentScreen !== "workspace" && statePlanMatchesSelectedPlan()) {
     saveState();
   }
-  if (cloud.loaded && state.currentScreen !== "workspace" && statePlanMatchesSelectedPlan()) await saveCloudStateNow();
+  if (cloud.loaded && state.currentScreen !== "workspace" && statePlanMatchesSelectedPlan()) {
+    return await saveCloudStateNow();
+  }
+  return true;
 }
 
 async function closeActivePlanSession(options = {}) {
   const identity = activePlanIdentity();
   const shouldPersist = options.persist !== false;
+  let persisted = true;
   if (shouldPersist && state.currentScreen !== "workspace" && statePlanMatchesSelectedPlan()) {
-    await persistCurrentPlanBeforeSwitch();
+    persisted = await persistCurrentPlanBeforeSwitch();
   }
   window.clearTimeout(cloudSaveTimer);
+  if (cloud.user && identity.workspaceId && (!shouldPersist || persisted)) clearLocalPlanBodyCache(identity.workspaceId);
   await releaseEditingLock();
   stopEditLockHeartbeat();
   cloudSyncPaused = false;
@@ -3499,6 +3504,7 @@ async function handleCloudUser(user) {
 
   renderLoginGate("Loading your planner...", true);
   renderCloudStatus("Loading cloud save...", "Sign out", true);
+  lastCloudError = null;
   const warnings = [];
   const runLoadStep = async (label, action, fallbackValue = undefined) => {
     try {
@@ -3549,8 +3555,9 @@ async function handleCloudUser(user) {
     } else if (warnings.length) {
       renderCloudStatus(`Opened last known planner. Online refresh issue: ${warnings[0]}`, "Sign out");
     } else {
+      const catalogIssue = lastCloudError?.code || lastCloudError?.message || "";
       renderCloudStatus(planCatalogLoaded === false
-        ? "Could not refresh online plans. Showing last known list."
+        ? `Could not refresh online plans${catalogIssue ? ` (${catalogIssue})` : ""}. Showing last known list.`
         : `Cloud save: ${user.displayName || user.email || "signed in"}`, "Sign out");
     }
     saveWritesPaused = false;
@@ -3682,39 +3689,15 @@ async function validateAccessiblePlanAccess(userData = {}) {
   const rawAccessiblePlans = userData.accessiblePlans || {};
   const validAccessiblePlans = {};
   const validWorkspaceIds = new Set();
-  const cleanup = { accessiblePlans: {}, workspaces: {} };
-  let cleanupNeeded = false;
 
   for (const [key, sharedPlan] of Object.entries(rawAccessiblePlans)) {
     if (!sharedPlan?.workspaceId || !sharedPlan?.planId) continue;
-    try {
-      const snapshot = await cloud.db
-        .collection("workspaces")
-        .doc(sharedPlan.workspaceId)
-        .collection("plans")
-        .doc(sharedPlan.planId)
-        .get();
-      if (snapshot.exists) {
-        const data = snapshot.data() || {};
-        if (planIsDeleted(data)) {
-          continue;
-        }
-        validAccessiblePlans[key] = {
-          ...sharedPlan,
-          planTitle: data.title || sharedPlan.planTitle,
-          subject: data.subject || sharedPlan.subject || "Art",
-          stale: false,
-        };
-        validWorkspaceIds.add(sharedPlan.workspaceId);
-        continue;
-      }
-    } catch (error) {
-      console.warn("Could not verify shared plan; keeping last known access", sharedPlan, error);
-      validAccessiblePlans[key] = { ...sharedPlan, stale: true };
-      validWorkspaceIds.add(sharedPlan.workspaceId);
-      continue;
-    }
-    validAccessiblePlans[key] = { ...sharedPlan, stale: true };
+    validAccessiblePlans[key] = {
+      ...sharedPlan,
+      planTitle: sharedPlan.planTitle || "Shared 2YIP",
+      subject: sharedPlan.subject || "Art",
+      stale: false,
+    };
     validWorkspaceIds.add(sharedPlan.workspaceId);
   }
 
@@ -3725,13 +3708,6 @@ async function validateAccessiblePlanAccess(userData = {}) {
     } else if (workspace?.role === "owner" || validWorkspaceIds.has(workspaceId)) {
       validWorkspaces[workspaceId] = workspace;
     }
-  }
-
-  if (cleanupNeeded) {
-    const update = { updatedAt: window.firebase.firestore.FieldValue.serverTimestamp() };
-    if (Object.keys(cleanup.accessiblePlans).length) update.accessiblePlans = cleanup.accessiblePlans;
-    if (Object.keys(cleanup.workspaces).length) update.workspaces = cleanup.workspaces;
-    await cloud.db.collection("users").doc(cloud.user.uid).set(update, { merge: true });
   }
 
   return { workspaces: validWorkspaces, accessiblePlans: validAccessiblePlans };
