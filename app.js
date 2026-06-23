@@ -5353,7 +5353,7 @@ function renderWorkspaceHome() {
   const newWorkspaceCard = document.createElement("button");
   newWorkspaceCard.className = "workspace-card create-card";
   newWorkspaceCard.type = "button";
-  newWorkspaceCard.innerHTML = `<span class="workspace-card-eyebrow">New Team</span><strong>Create Team Workspace</strong><small>Invite colleagues by email</small>`;
+  newWorkspaceCard.innerHTML = `<span class="workspace-card-eyebrow">New Team</span><strong>Create Team Workspace</strong><small>Invite colleagues through email</small>`;
   newWorkspaceCard.addEventListener("click", openWorkspaceSetup);
   els.workspaceCardGrid.append(newWorkspaceCard);
   els.workspaceCardGrid.querySelectorAll(".workspace-open-button").forEach((button) => {
@@ -5766,7 +5766,7 @@ function open2YipImport() {
     return;
   }
   import2YipOpen = true;
-  import2YipMode = "";
+  import2YipMode = "detect";
   pending2YipImport = null;
   render();
 }
@@ -5774,24 +5774,24 @@ function open2YipImport() {
 function close2YipImport() {
   import2YipOpen = false;
   pending2YipImport = null;
-  import2YipMode = "";
+  import2YipMode = "detect";
   if (els.import2YipFile) els.import2YipFile.value = "";
   render();
 }
 
 function valid2YipImportMode(value) {
-  return ["standard", "ai", "detect"].includes(value) ? value : "standard";
+  return ["ai", "detect"].includes(value) ? value : "detect";
 }
 
 function importMethodLabel(method) {
   if (method === "ai") return "AI-assisted mapping";
-  if (method === "detect") return "Standard mapping + AI suggestions";
-  return "Standard mapping";
+  if (method === "detect") return "AI-assisted row-bound mapping";
+  return "AI-assisted row-bound mapping";
 }
 
 function importAiActionLabel(method, busy = false) {
   if (busy) return "Mapping...";
-  if (method === "detect") return "Run Standard + AI Suggestions Again";
+  if (method === "detect") return "Run Row-Bound Import Again";
   return "Run AI-Assisted Mapping Again";
 }
 
@@ -5829,8 +5829,8 @@ function render2YipImport() {
         <div class="import-loading-card" role="status" aria-live="polite">
           <span class="import-loading-spinner" aria-hidden="true"></span>
           <div>
-            <strong>${isDetection ? "Weave is running standard import, then AI suggestions" : "AI is reading your 2YIP file"}</strong>
-            <p>${isDetection ? "First confirming what can be read deterministically, then asking AI only about unresolved fields. Big Ideas and Learning Outcomes stay anchored to deterministic matching." : "Checking units, placement, Learning Outcomes, core learning experiences, and possible lesson outlines. This may take a moment."}</p>
+            <strong>${isDetection ? "Weave is running row-bound AI import" : "AI is reading your 2YIP file"}</strong>
+            <p>${isDetection ? "First reading the official template rows, then asking AI only about unresolved fields. Big Ideas and Learning Outcomes stay anchored to bounded evidence." : "Checking units, placement, Learning Outcomes, core learning experiences, and possible lesson outlines. This may take a moment."}</p>
           </div>
         </div>
       `;
@@ -5839,7 +5839,7 @@ function render2YipImport() {
   }
   if (pending2YipImport.awaitingMethod) {
     if (els.import2YipStatus) {
-      els.import2YipStatus.textContent = "File uploaded. Choose Standard import, Full AI-assisted import, or Standard import + AI suggestions to preview the mapping.";
+      els.import2YipStatus.textContent = "File uploaded. Choose the recommended row-bound import or full AI-assisted import to preview the mapping.";
       els.import2YipStatus.classList.remove("warning");
     }
     if (els.import2YipBody) els.import2YipBody.innerHTML = "";
@@ -6126,7 +6126,7 @@ async function runAiAssistedImportMapping() {
       awaitingMethod: false,
       aiStatus: units.length
         ? "AI-assisted mapping ready. Please review before creating the draft."
-        : "AI could not detect real units. Try the standard importer or review the spreadsheet.",
+        : "AI could not detect real units. Try row-bound import or review the spreadsheet.",
       units,
     };
   } catch (error) {
@@ -6141,18 +6141,18 @@ async function runAiAssistedImportMapping() {
 async function runAiTemplateDetectionImport() {
   if (!pending2YipImport?.workbookSnapshot) return;
   if (window.location.protocol === "file:") {
-    pending2YipImport.aiStatus = "Open the online or local server version to use Standard import + AI suggestions.";
+    pending2YipImport.aiStatus = "Open the online or local server version to use AI-assisted row-bound import.";
     render2YipImport();
     return;
   }
   if (!cloud.user) {
-    pending2YipImport.aiStatus = "Sign in online before using Standard import + AI suggestions.";
+    pending2YipImport.aiStatus = "Sign in online before using AI-assisted row-bound import.";
     render2YipImport();
     return;
   }
   pending2YipImport.importMethod = "detect";
   pending2YipImport.aiBusy = true;
-  pending2YipImport.aiStatus = "Detecting rows, running standard import, then asking AI only about unresolved fields...";
+  pending2YipImport.aiStatus = "Detecting rows, preparing the deterministic unit spine, then asking AI only about unresolved fields...";
   render2YipImport();
   try {
     const sourceWorkbook = pending2YipImport.workbook;
@@ -6207,16 +6207,16 @@ async function runAiTemplateDetectionImport() {
       awaitingMethod: false,
       detectionWarnings: [...diagnostics, ...detectionWarnings, ...spineWarnings],
       aiStatus: units.length
-        ? `Standard import + AI suggestions ready. ${diagnostics.join(" · ")}. ${suggestionCount} AI ${suggestionCount === 1 ? "suggestion" : "suggestions"} added for unresolved fields.${detectionWarnings.length + spineWarnings.length ? ` ${detectionWarnings.length + spineWarnings.length} import ${(detectionWarnings.length + spineWarnings.length) === 1 ? "note" : "notes"} to review.` : ""}`
-        : "No real units were detected. Try the standard importer or review the spreadsheet.",
+        ? `AI-assisted row-bound mapping ready. ${diagnostics.join(" · ")}. ${suggestionCount} AI ${suggestionCount === 1 ? "suggestion" : "suggestions"} added for unresolved fields.${detectionWarnings.length + spineWarnings.length ? ` ${detectionWarnings.length + spineWarnings.length} import ${(detectionWarnings.length + spineWarnings.length) === 1 ? "note" : "notes"} to review.` : ""}`
+        : "No real units were detected. Try full AI-assisted import or review the spreadsheet.",
       units,
     };
     if ((detectionWarnings.length || spineWarnings.length) && pending2YipImport.units.length) {
       pending2YipImport.units[0].warnings = [...detectionWarnings, ...spineWarnings, ...pending2YipImport.units[0].warnings];
     }
   } catch (error) {
-    console.warn("Standard import + AI suggestions failed", error);
-    pending2YipImport.aiStatus = error.message || "Standard import + AI suggestions failed.";
+    console.warn("AI-assisted row-bound import failed", error);
+    pending2YipImport.aiStatus = error.message || "AI-assisted row-bound import failed.";
   } finally {
     if (pending2YipImport) pending2YipImport.aiBusy = false;
     render2YipImport();
@@ -7011,7 +7011,7 @@ function importAssessmentFromTemplate(unit, assessmentType, assessmentPercent, a
 async function read2YipImportFile(file) {
   if (!file) return;
   pending2YipImport = null;
-  import2YipMode = "";
+  import2YipMode = "detect";
   render2YipImport();
   if (els.import2YipStatus) {
     els.import2YipStatus.textContent = "Reading Excel file...";
@@ -7027,11 +7027,12 @@ async function read2YipImportFile(file) {
       sheetName: snapshot.sheetName,
       workbook,
       workbookSnapshot: snapshot,
-      importMethod: "",
-      awaitingMethod: true,
+      importMethod: "detect",
+      awaitingMethod: false,
       units: [],
     };
     render2YipImport();
+    await runAiTemplateDetectionImport();
   } catch (error) {
     console.warn("2YIP import failed", error);
     pending2YipImport = null;
@@ -12641,9 +12642,7 @@ els.import2YipFile?.addEventListener("change", (event) => {
 els.import2YipModes?.forEach((input) => {
   input.addEventListener("change", async (event) => {
     import2YipMode = valid2YipImportMode(event.target.value);
-    if (import2YipMode === "standard") {
-      runStandard2YipImportMapping();
-    } else if (import2YipMode === "ai" && pending2YipImport?.workbookSnapshot) {
+    if (import2YipMode === "ai" && pending2YipImport?.workbookSnapshot) {
       await runAiAssistedImportMapping();
     } else if (import2YipMode === "detect" && pending2YipImport?.workbookSnapshot) {
       await runAiTemplateDetectionImport();

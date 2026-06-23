@@ -716,7 +716,7 @@
         <div>
           <p class="eyebrow">Import</p>
           <h2 id="import-2yip-title">Import 2YIP Template</h2>
-          <p class="modal-helper">Upload a 2YIP Excel file. Standard import uses the official template structure; AI-assisted import helps with edited templates. Both create a new draft plan and keep current plans untouched.</p>
+          <p class="modal-helper">Upload a 2YIP Excel file. Weave will use the recommended row-bound AI import for official template structures, then show a preview before creating a new draft plan. Current plans stay untouched.</p>
         </div>
 
         <label class="field-label" for="import-2yip-file">Excel Template</label>
@@ -724,24 +724,17 @@
 
         <div id="import-method-panel" class="import-mode-toggle hidden" role="radiogroup" aria-label="Import method">
           <label>
-            <input type="radio" name="import-2yip-mode" value="standard" />
+            <input type="radio" name="import-2yip-mode" value="detect" />
             <span>
-              <strong>Standard 2YIP template import</strong>
-              <small>Use this when the official template structure has not been changed.</small>
+              <strong>Recommended: AI-assisted row-bound import</strong>
+              <small>Best for the official template structure. Weave reads the rows first, then uses AI only for unresolved mappings.</small>
             </span>
           </label>
           <label>
             <input type="radio" name="import-2yip-mode" value="ai" />
             <span>
-              <strong>AI-assisted import</strong>
-              <small>Use this when teachers edited the template layout or entered information in unexpected places.</small>
-            </span>
-          </label>
-          <label>
-            <input type="radio" name="import-2yip-mode" value="detect" />
-            <span>
-              <strong>Standard import + AI suggestions</strong>
-              <small>Recommended for edited templates: Weave imports confirmed fields first, then AI suggests cards only for unresolved fields.</small>
+              <strong>Full AI-assisted import</strong>
+              <small>Use only when the template layout has been heavily changed and the row-bound method cannot read it well.</small>
             </span>
           </label>
         </div>
