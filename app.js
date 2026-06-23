@@ -26,6 +26,8 @@ const EDIT_LOCK_SAME_USER_STALE_MS = EDIT_LOCK_HEARTBEAT_MS * 2 + 5000;
 const EDIT_SESSION_STORAGE_KEY = "art-curriculum-editor-session-id";
 const PLAN_STORAGE_VERSION = 2;
 const LOCAL_PLAN_BODY_MAX_CHARS = 180000;
+const OFFLINE_DB_NAME = "weave-offline-drafts";
+const OFFLINE_DB_VERSION = 1;
 const CLOUD_IMAGE_MAX_CHARS = 320000;
 const CLOUD_IMAGE_TOTAL_MAX_CHARS = 620000;
 const IMAGE_PREVIEW_MAX_SIDE = 1100;
@@ -1513,6 +1515,7 @@ let lastPersistedContentHash = "";
 let activePlanRevision = 0;
 let loadedPlanKey = planIdentityKey(state.plan?.id, state.plan?.workspaceId);
 let lastCloudError = null;
+let objectSaveBaseline = createEmptyObjectSaveBaseline();
 let planLoadStatus = {
   verified: false,
   reason: "startup",
@@ -2157,8 +2160,20 @@ function loadLastGoodPlanState(planId = activePlanId(), workspaceId = activeWork
 }
 
 function safeSerializedPlanState(planState = state) {
+  if (cloud.user) {
+    const reducedState = {
+      ...planState,
+      units: [],
+      assessmentTasks: [],
+      cardLibrary: [],
+      browserCacheReduced: true,
+      browserCacheReducedAtMs: Date.now(),
+      browserCacheSummary: splitPlanSummary(planState),
+    };
+    return { serialized: JSON.stringify(reducedState), reduced: true };
+  }
   const serialized = JSON.stringify(planState);
-  if (!cloud.user || serialized.length <= LOCAL_PLAN_BODY_MAX_CHARS) {
+  if (serialized.length <= LOCAL_PLAN_BODY_MAX_CHARS) {
     return { serialized, reduced: false };
   }
   const reducedState = {
@@ -2207,6 +2222,20 @@ function clearLocalPlanBodyCache(workspaceId = activeWorkspaceId()) {
       localStorage.removeItem(key);
       cleared += 1;
     }
+  });
+  return cleared;
+}
+
+function compactOversizedBrowserPlanCaches() {
+  const userId = cloud.user?.uid || "local";
+  const lastGoodBodyPrefix = `${LAST_GOOD_PLAN_CATALOG_STORAGE_KEY}:state:${userId}:`;
+  let cleared = 0;
+  Object.keys(localStorage).forEach((key) => {
+    if (key !== STORAGE_KEY && !key.startsWith(`${STORAGE_KEY}:`) && !key.startsWith(lastGoodBodyPrefix)) return;
+    const value = localStorage.getItem(key) || "";
+    if (value.length <= LOCAL_PLAN_BODY_MAX_CHARS) return;
+    localStorage.removeItem(key);
+    cleared += 1;
   });
   return cleared;
 }
@@ -2316,6 +2345,516 @@ function loadLocalPlanState(planId) {
   }
 }
 
+function createEmptyObjectSaveBaseline() {
+  return {
+    planKey: "",
+    units: new Map(),
+    lessons: new Map(),
+    assessmentTasks: new Map(),
+  };
+}
+
+function objectFingerprint(value) {
+  return JSON.stringify(value || {});
+}
+
+function lessonObjectKey(unitId, lessonId) {
+  return `${unitId || ""}::${lessonId || ""}`;
+}
+
+function collectPlanObjectFingerprints(planState = state) {
+  const cleanState = cleanCloudState(planState);
+  const fingerprints = createEmptyObjectSaveBaseline();
+  fingerprints.planKey = planIdentityKey(cleanState.plan?.id, cleanState.plan?.workspaceId);
+  (cleanState.units || []).forEach((unit) => {
+    const unitId = unit.id || "";
+    if (!unitId) return;
+    fingerprints.units.set(unitId, objectFingerprint(unitDocForSplitStorage(unit)));
+    (unit.lessons || []).forEach((lesson) => {
+      if (!lesson.id) return;
+      fingerprints.lessons.set(lessonObjectKey(unitId, lesson.id), objectFingerprint(lesson));
+    });
+  });
+  (cleanState.assessmentTasks || []).forEach((task) => {
+    if (task.id) fingerprints.assessmentTasks.set(task.id, objectFingerprint(task));
+  });
+  return fingerprints;
+}
+
+function rememberObjectSaveBaseline(planState = state) {
+  objectSaveBaseline = collectPlanObjectFingerprints(planState);
+}
+
+function diffPlanObjectsForSave(planState = state, options = {}) {
+  const cleanState = cleanCloudState(planState);
+  const current = collectPlanObjectFingerprints(cleanState);
+  const baseline = objectSaveBaseline.planKey === current.planKey ? objectSaveBaseline : createEmptyObjectSaveBaseline();
+  const forceAll = Boolean(options.forceAll || !baseline.planKey);
+  const changedUnits = [];
+  const changedLessons = [];
+  const changedAssessmentTasks = [];
+  const deletedUnitIds = [];
+  const deletedLessons = [];
+  const deletedAssessmentTaskIds = [];
+
+  (cleanState.units || []).forEach((unit) => {
+    if (!unit.id || forceAll || baseline.units.get(unit.id) !== current.units.get(unit.id)) {
+      changedUnits.push(unit);
+    }
+    (unit.lessons || []).forEach((lesson) => {
+      const key = lessonObjectKey(unit.id, lesson.id);
+      if (!unit.id || !lesson.id || forceAll || baseline.lessons.get(key) !== current.lessons.get(key)) {
+        changedLessons.push({ unitId: unit.id, lesson });
+      }
+    });
+  });
+  (cleanState.assessmentTasks || []).forEach((task) => {
+    if (!task.id || forceAll || baseline.assessmentTasks.get(task.id) !== current.assessmentTasks.get(task.id)) {
+      changedAssessmentTasks.push(task);
+    }
+  });
+  if (!forceAll && baseline.planKey) {
+    baseline.lessons.forEach((_, key) => {
+      if (current.lessons.has(key)) return;
+      const [unitId, lessonId] = key.split("::");
+      if (unitId && lessonId) deletedLessons.push({ unitId, lessonId });
+    });
+    baseline.units.forEach((_, unitId) => {
+      if (!current.units.has(unitId)) deletedUnitIds.push(unitId);
+    });
+    baseline.assessmentTasks.forEach((_, taskId) => {
+      if (!current.assessmentTasks.has(taskId)) deletedAssessmentTaskIds.push(taskId);
+    });
+  }
+  return {
+    cleanState,
+    forceAll,
+    changedUnits,
+    changedLessons,
+    changedAssessmentTasks,
+    deletedUnitIds,
+    deletedLessons,
+    deletedAssessmentTaskIds,
+    operationCount: changedUnits.length + changedLessons.length + changedAssessmentTasks.length
+      + deletedUnitIds.length + deletedLessons.length + deletedAssessmentTaskIds.length,
+  };
+}
+
+function offlinePlanKey(identity = activePlanIdentity()) {
+  return `${identity.workspaceId || "local-workspace"}::${identity.planId || CLOUD_PLAN_ID}`;
+}
+
+function offlineObjectKey(identity, ...parts) {
+  return `${offlinePlanKey(identity)}::${parts.filter(Boolean).join("::")}`;
+}
+
+let offlineDbPromise = null;
+
+function openOfflineDb() {
+  if (!window.indexedDB) return Promise.resolve(null);
+  if (offlineDbPromise) return offlineDbPromise;
+  offlineDbPromise = new Promise((resolve, reject) => {
+    const request = window.indexedDB.open(OFFLINE_DB_NAME, OFFLINE_DB_VERSION);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      [
+        ["plans", "key"],
+        ["units", "key"],
+        ["lessons", "key"],
+        ["assessmentTasks", "key"],
+        ["rubrics", "key"],
+        ["outbox", "key"],
+        ["syncMeta", "key"],
+      ].forEach(([storeName, keyPath]) => {
+        if (!db.objectStoreNames.contains(storeName)) {
+          const store = db.createObjectStore(storeName, { keyPath });
+          if (storeName !== "syncMeta") store.createIndex("planKey", "planKey", { unique: false });
+          if (storeName === "outbox") store.createIndex("updatedAtMs", "updatedAtMs", { unique: false });
+        }
+      });
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  }).catch((error) => {
+    console.warn("IndexedDB unavailable", error);
+    offlineDbPromise = null;
+    return null;
+  });
+  return offlineDbPromise;
+}
+
+function idbRequest(request) {
+  return new Promise((resolve, reject) => {
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function idbStore(storeName, mode, callback) {
+  const db = await openOfflineDb();
+  if (!db) return null;
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(storeName, mode);
+    const store = transaction.objectStore(storeName);
+    let result;
+    try {
+      result = callback(store);
+    } catch (error) {
+      reject(error);
+      return;
+    }
+    transaction.oncomplete = () => resolve(result);
+    transaction.onerror = () => reject(transaction.error);
+    transaction.onabort = () => reject(transaction.error);
+  });
+}
+
+function getAllByPlanKey(store, planKey) {
+  const index = store.index("planKey");
+  return idbRequest(index.getAll(window.IDBKeyRange.only(planKey)));
+}
+
+async function clearOfflinePlanObjects(identity = activePlanIdentity()) {
+  const planKey = offlinePlanKey(identity);
+  const db = await openOfflineDb();
+  if (!db) return 0;
+  const stores = ["units", "lessons", "assessmentTasks", "rubrics"];
+  let cleared = 0;
+  await new Promise((resolve, reject) => {
+    const transaction = db.transaction(stores, "readwrite");
+    stores.forEach((storeName) => {
+      const store = transaction.objectStore(storeName);
+      const index = store.index("planKey");
+      const request = index.openCursor(window.IDBKeyRange.only(planKey));
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (!cursor) return;
+        store.delete(cursor.primaryKey);
+        cleared += 1;
+        cursor.continue();
+      };
+    });
+    transaction.oncomplete = resolve;
+    transaction.onerror = () => reject(transaction.error);
+    transaction.onabort = () => reject(transaction.error);
+  });
+  return cleared;
+}
+
+async function cachePlanStateOffline(planState = state, options = {}) {
+  const cleanState = cleanCloudState(planState);
+  const identity = planIdentity(cleanState.plan?.id, cleanState.plan?.workspaceId);
+  if (!identity.planId || !identity.workspaceId) return false;
+  const planKey = offlinePlanKey(identity);
+  if (options.replace) await clearOfflinePlanObjects(identity);
+  const updatedAtMs = Date.now();
+  const planRecord = {
+    key: planKey,
+    planKey,
+    workspaceId: identity.workspaceId,
+    planId: identity.planId,
+    revision: activePlanRevision,
+    title: cleanState.plan?.title || "Untitled Plan",
+    subject: cleanState.plan?.subject || "Art",
+    planShell: splitPlanShell(cleanState),
+    summary: splitPlanSummary(cleanState),
+    unitIds: (cleanState.units || []).map((unit) => unit.id).filter(Boolean),
+    assessmentTaskIds: (cleanState.assessmentTasks || []).map((task) => task.id).filter(Boolean),
+    updatedAtMs,
+  };
+  await idbStore("plans", "readwrite", (store) => store.put(planRecord));
+  await idbStore("units", "readwrite", (store) => {
+    (cleanState.units || []).forEach((unit) => {
+      if (!unit.id) return;
+      store.put({
+        key: offlineObjectKey(identity, "unit", unit.id),
+        planKey,
+        workspaceId: identity.workspaceId,
+        planId: identity.planId,
+        unitId: unit.id,
+        value: unitDocForSplitStorage(unit),
+        updatedAtMs,
+      });
+    });
+  });
+  await idbStore("lessons", "readwrite", (store) => {
+    (cleanState.units || []).forEach((unit) => {
+      (unit.lessons || []).forEach((lesson) => {
+        if (!unit.id || !lesson.id) return;
+        store.put({
+          key: offlineObjectKey(identity, "lesson", unit.id, lesson.id),
+          planKey,
+          workspaceId: identity.workspaceId,
+          planId: identity.planId,
+          unitId: unit.id,
+          lessonId: lesson.id,
+          value: lesson,
+          updatedAtMs,
+        });
+      });
+    });
+  });
+  await idbStore("assessmentTasks", "readwrite", (store) => {
+    (cleanState.assessmentTasks || []).forEach((task) => {
+      if (!task.id) return;
+      store.put({
+        key: offlineObjectKey(identity, "assessmentTask", task.id),
+        planKey,
+        workspaceId: identity.workspaceId,
+        planId: identity.planId,
+        taskId: task.id,
+        value: task,
+        updatedAtMs,
+      });
+    });
+  });
+  if (options.queueOutbox) await queueOfflineObjectChanges(cleanState);
+  return true;
+}
+
+async function cacheChangedPlanObjectsOffline(planState = state) {
+  const diff = diffPlanObjectsForSave(planState);
+  const cleanState = diff.cleanState;
+  const identity = planIdentity(cleanState.plan?.id, cleanState.plan?.workspaceId);
+  if (!identity.planId || !identity.workspaceId) return false;
+  const planKey = offlinePlanKey(identity);
+  const updatedAtMs = Date.now();
+  await idbStore("plans", "readwrite", (store) => store.put({
+    key: planKey,
+    planKey,
+    workspaceId: identity.workspaceId,
+    planId: identity.planId,
+    revision: activePlanRevision,
+    title: cleanState.plan?.title || "Untitled Plan",
+    subject: cleanState.plan?.subject || "Art",
+    planShell: splitPlanShell(cleanState),
+    summary: splitPlanSummary(cleanState),
+    unitIds: (cleanState.units || []).map((unit) => unit.id).filter(Boolean),
+    assessmentTaskIds: (cleanState.assessmentTasks || []).map((task) => task.id).filter(Boolean),
+    updatedAtMs,
+  }));
+  if (diff.changedUnits.length || diff.deletedUnitIds.length) {
+    await idbStore("units", "readwrite", (store) => {
+      diff.changedUnits.forEach((unit) => {
+        if (!unit.id) return;
+        store.put({
+          key: offlineObjectKey(identity, "unit", unit.id),
+          planKey,
+          workspaceId: identity.workspaceId,
+          planId: identity.planId,
+          unitId: unit.id,
+          value: unitDocForSplitStorage(unit),
+          updatedAtMs,
+        });
+      });
+      diff.deletedUnitIds.forEach((unitId) => store.delete(offlineObjectKey(identity, "unit", unitId)));
+    });
+  }
+  if (diff.changedLessons.length || diff.deletedLessons.length) {
+    await idbStore("lessons", "readwrite", (store) => {
+      diff.changedLessons.forEach(({ unitId, lesson }) => {
+        if (!unitId || !lesson.id) return;
+        store.put({
+          key: offlineObjectKey(identity, "lesson", unitId, lesson.id),
+          planKey,
+          workspaceId: identity.workspaceId,
+          planId: identity.planId,
+          unitId,
+          lessonId: lesson.id,
+          value: lesson,
+          updatedAtMs,
+        });
+      });
+      diff.deletedLessons.forEach(({ unitId, lessonId }) => {
+        store.delete(offlineObjectKey(identity, "lesson", unitId, lessonId));
+      });
+    });
+  }
+  if (diff.changedAssessmentTasks.length || diff.deletedAssessmentTaskIds.length) {
+    await idbStore("assessmentTasks", "readwrite", (store) => {
+      diff.changedAssessmentTasks.forEach((task) => {
+        if (!task.id) return;
+        store.put({
+          key: offlineObjectKey(identity, "assessmentTask", task.id),
+          planKey,
+          workspaceId: identity.workspaceId,
+          planId: identity.planId,
+          taskId: task.id,
+          value: task,
+          updatedAtMs,
+        });
+      });
+      diff.deletedAssessmentTaskIds.forEach((taskId) => {
+        store.delete(offlineObjectKey(identity, "assessmentTask", taskId));
+      });
+    });
+  }
+  await queueOfflineObjectChanges(cleanState);
+  return true;
+}
+
+async function queueOfflineObjectChanges(planState = state) {
+  const diff = diffPlanObjectsForSave(planState);
+  const identity = planIdentity(diff.cleanState.plan?.id, diff.cleanState.plan?.workspaceId);
+  if (!identity.planId || !identity.workspaceId) return false;
+  const planKey = offlinePlanKey(identity);
+  const updatedAtMs = Date.now();
+  const entries = [];
+  diff.changedUnits.forEach((unit) => {
+    if (unit.id) entries.push({
+      key: offlineObjectKey(identity, "outbox", "unit", unit.id),
+      planKey,
+      workspaceId: identity.workspaceId,
+      planId: identity.planId,
+      type: "unit",
+      action: "set",
+      unitId: unit.id,
+      value: unitDocForSplitStorage(unit),
+      updatedAtMs,
+    });
+  });
+  diff.changedLessons.forEach(({ unitId, lesson }) => {
+    if (unitId && lesson.id) entries.push({
+      key: offlineObjectKey(identity, "outbox", "lesson", unitId, lesson.id),
+      planKey,
+      workspaceId: identity.workspaceId,
+      planId: identity.planId,
+      type: "lesson",
+      action: "set",
+      unitId,
+      lessonId: lesson.id,
+      value: lesson,
+      updatedAtMs,
+    });
+  });
+  diff.changedAssessmentTasks.forEach((task) => {
+    if (task.id) entries.push({
+      key: offlineObjectKey(identity, "outbox", "assessmentTask", task.id),
+      planKey,
+      workspaceId: identity.workspaceId,
+      planId: identity.planId,
+      type: "assessmentTask",
+      action: "set",
+      taskId: task.id,
+      value: task,
+      updatedAtMs,
+    });
+  });
+  diff.deletedLessons.forEach(({ unitId, lessonId }) => {
+    entries.push({
+      key: offlineObjectKey(identity, "outbox", "lesson", unitId, lessonId),
+      planKey,
+      workspaceId: identity.workspaceId,
+      planId: identity.planId,
+      type: "lesson",
+      action: "delete",
+      unitId,
+      lessonId,
+      updatedAtMs,
+    });
+  });
+  diff.deletedUnitIds.forEach((unitId) => {
+    entries.push({
+      key: offlineObjectKey(identity, "outbox", "unit", unitId),
+      planKey,
+      workspaceId: identity.workspaceId,
+      planId: identity.planId,
+      type: "unit",
+      action: "delete",
+      unitId,
+      updatedAtMs,
+    });
+  });
+  diff.deletedAssessmentTaskIds.forEach((taskId) => {
+    entries.push({
+      key: offlineObjectKey(identity, "outbox", "assessmentTask", taskId),
+      planKey,
+      workspaceId: identity.workspaceId,
+      planId: identity.planId,
+      type: "assessmentTask",
+      action: "delete",
+      taskId,
+      updatedAtMs,
+    });
+  });
+  if (!entries.length) return true;
+  await idbStore("outbox", "readwrite", (store) => entries.forEach((entry) => store.put(entry)));
+  return true;
+}
+
+async function loadOfflinePlanState(identity = activePlanIdentity()) {
+  const planKey = offlinePlanKey(identity);
+  const planRecord = await idbStore("plans", "readonly", (store) => idbRequest(store.get(planKey)));
+  if (!planRecord) return null;
+  const db = await openOfflineDb();
+  if (!db) return null;
+  const [unitRecords, lessonRecords, taskRecords] = await Promise.all([
+    idbStore("units", "readonly", (store) => getAllByPlanKey(store, planKey)),
+    idbStore("lessons", "readonly", (store) => getAllByPlanKey(store, planKey)),
+    idbStore("assessmentTasks", "readonly", (store) => getAllByPlanKey(store, planKey)),
+  ]);
+  const lessonMap = new Map();
+  (lessonRecords || []).forEach((record) => {
+    if (!record.unitId) return;
+    if (!lessonMap.has(record.unitId)) lessonMap.set(record.unitId, []);
+    lessonMap.get(record.unitId).push({ ...(record.value || {}), id: record.lessonId || record.value?.id });
+  });
+  const units = (unitRecords || [])
+    .sort((a, b) => (planRecord.unitIds || []).indexOf(a.unitId) - (planRecord.unitIds || []).indexOf(b.unitId))
+    .map((record) => ({
+      ...(record.value || {}),
+      id: record.unitId || record.value?.id,
+      lessons: (lessonMap.get(record.unitId) || []).sort((a, b) => {
+        const lessonIds = record.value?.lessonIds || [];
+        return lessonIds.indexOf(a.id) - lessonIds.indexOf(b.id);
+      }),
+    }));
+  const assessmentTasks = (taskRecords || [])
+    .sort((a, b) => (planRecord.assessmentTaskIds || []).indexOf(a.taskId) - (planRecord.assessmentTaskIds || []).indexOf(b.taskId))
+    .map((record) => ({ ...(record.value || {}), id: record.taskId || record.value?.id }));
+  return normalizeState({
+    ...structuredClone(defaultState),
+    ...(planRecord.planShell || {}),
+    plan: normalizePlanMetadata({
+      ...(planRecord.planShell?.plan || {}),
+      id: identity.planId,
+      workspaceId: identity.workspaceId,
+      title: planRecord.title || planRecord.planShell?.plan?.title || "Untitled Plan",
+      subject: planRecord.subject || planRecord.planShell?.plan?.subject || "Art",
+      role: planMetaById(identity.planId)?.role || planRecord.planShell?.plan?.role || "editor",
+    }),
+    units,
+    assessmentTasks,
+    selectedUnitId: planRecord.summary?.selectedUnitId || units[0]?.id || "",
+    selectedLessonId: planRecord.summary?.selectedLessonId || units[0]?.lessons?.[0]?.id || "",
+    timelineView: planRecord.summary?.timelineView || "overview",
+    timelinePlanningLayer: planRecord.summary?.timelinePlanningLayer || "meaning",
+  });
+}
+
+async function clearSyncedOutboxForPlan(identity = activePlanIdentity()) {
+  const planKey = offlinePlanKey(identity);
+  const db = await openOfflineDb();
+  if (!db) return 0;
+  let cleared = 0;
+  await new Promise((resolve, reject) => {
+    const transaction = db.transaction("outbox", "readwrite");
+    const store = transaction.objectStore("outbox");
+    const request = store.index("planKey").openCursor(window.IDBKeyRange.only(planKey));
+    request.onsuccess = () => {
+      const cursor = request.result;
+      if (!cursor) return;
+      store.delete(cursor.primaryKey);
+      cleared += 1;
+      cursor.continue();
+    };
+    transaction.oncomplete = resolve;
+    transaction.onerror = () => reject(transaction.error);
+    transaction.onabort = () => reject(transaction.error);
+  });
+  return cleared;
+}
+
 function planMetaById(planId) {
   return planCatalog.find((plan) => plan.id === planId && planBelongsToActiveWorkspace(plan)) || null;
 }
@@ -2346,6 +2885,7 @@ async function closeActivePlanSession(options = {}) {
   lastCloudError = null;
   activePlanRevision = 0;
   lastPersistedContentHash = "";
+  objectSaveBaseline = createEmptyObjectSaveBaseline();
   import2YipOpen = false;
   pending2YipImport = null;
   import2YipMode = "";
@@ -2392,7 +2932,7 @@ async function switchPlan(planId, options = {}) {
   saveWritesPaused = true;
   pausePlanBodyLoading("switching-plan", "Loading selected 2YIP.", identity);
   try {
-    let nextState = loadLocalPlanState(planId) || loadLastGoodPlanState(planId, targetWorkspaceId);
+    let nextState = await loadOfflinePlanState(identity) || loadLocalPlanState(planId) || loadLastGoodPlanState(planId, targetWorkspaceId);
     let cloudLoadFailed = false;
     let cloudSnapshotWasReadable = false;
 
@@ -2478,7 +3018,11 @@ async function switchPlan(planId, options = {}) {
       storageVersion: cloudSnapshotWasReadable ? PLAN_STORAGE_VERSION : 1,
     });
     writePlanStateCache(state, { lastGood: true });
-    lastPersistedContentHash = planStateContentHash(state);
+    rememberObjectSaveBaseline(state);
+    cachePlanStateOffline(state, { replace: true }).catch((error) => {
+      console.warn("Offline plan cache failed after switch", error);
+    });
+    lastPersistedContentHash = "";
     if (cloud.loaded && state.currentScreen !== "workspace") {
       await acquireEditingLock({ allowSameUserTakeover: true, identity });
     }
@@ -3400,7 +3944,11 @@ function applyLoadedPlanState(planState, snapshotId, snapshotData = {}) {
     storageVersion: snapshotData.storageVersion || 1,
   });
   writePlanStateCache(state, { lastGood: true });
-  lastPersistedContentHash = planStateContentHash(state);
+  rememberObjectSaveBaseline(state);
+  cachePlanStateOffline(state, { replace: true }).catch((error) => {
+    console.warn("Offline plan cache failed", error);
+  });
+  lastPersistedContentHash = "";
   activePlanRevision = Number(snapshotData.revision || state.plan?.revision || activePlanRevision || 0);
 }
 
@@ -3422,13 +3970,12 @@ function saveState(options = {}) {
   }
   state.plan = normalizePlanMetadata(state.plan);
   state.cardLibrary = normalizeCardLibrary(state.cardLibrary);
-  const currentContentHash = planStateContentHash(state);
-  const hasContentChange = currentContentHash !== lastPersistedContentHash || options.forceCloud;
+  const hasContentChange = options.assumeChanged !== false || options.forceCloud || options.forceLocal;
   if (options.localOnly && !hasContentChange) return;
   if (!hasContentChange && !options.forceLocal) return;
   if (hasContentChange) {
     state.localSavedAtMs = Date.now();
-    lastPersistedContentHash = currentContentHash;
+    lastPersistedContentHash = "";
   }
   savePlanToCatalog(state.plan);
   const currentWorkspace = currentWorkspaceMeta();
@@ -3442,12 +3989,17 @@ function saveState(options = {}) {
   localStorage.setItem(ACTIVE_WORKSPACE_STORAGE_KEY, activeWorkspaceId());
   setStoredActivePlanId(activePlanId(), activeWorkspaceId());
   writePlanStateCache(state, { lastGood: hasContentChange });
+  if (hasContentChange && activePlanBodyVerified(activePlanIdentity())) {
+    cacheChangedPlanObjectsOffline(state).catch((error) => {
+      console.warn("Offline draft cache failed", error);
+    });
+  }
   if (!options.localOnly && hasContentChange) scheduleCloudSave();
 }
 
-function saveStateSafely() {
+function saveStateSafely(options = {}) {
   try {
-    saveState();
+    saveState(options);
   } catch {
     // Local browser storage can fail in private or quota-limited contexts.
   }
@@ -3551,6 +4103,7 @@ async function handleCloudUser(user) {
   renderLoginGate("Loading your planner...", true);
   renderCloudStatus("Loading cloud save...", "Sign out", true);
   lastCloudError = null;
+  const clearedLocalPlans = compactOversizedBrowserPlanCaches();
   const warnings = [];
   const runLoadStep = async (label, action, fallbackValue = undefined) => {
     try {
@@ -3600,6 +4153,8 @@ async function handleCloudUser(user) {
       renderCloudStatus("Full 2YIP did not load. Staying in Workspace to prevent data loss.", "Sign out");
     } else if (warnings.length) {
       renderCloudStatus(`Opened last known planner. Online refresh issue: ${warnings[0]}`, "Sign out");
+    } else if (clearedLocalPlans) {
+      renderCloudStatus(`Cleaned ${clearedLocalPlans} old browser plan cache${clearedLocalPlans === 1 ? "" : "s"}.`, "Sign out");
     } else {
       const catalogIssue = lastCloudError?.code || lastCloudError?.message || "";
       renderCloudStatus(planCatalogLoaded === false
@@ -3838,18 +4393,6 @@ async function loadCloudPlanCatalog() {
         const meta = metaFromIndexDoc(doc);
         if (!planIsDeleted(meta)) loadedPlans.push(meta);
       });
-      if (!loadedPlans.length) {
-        const snapshot = await plansRef.where("status", "==", "active").get();
-        snapshot.forEach((doc) => {
-          const meta = metaFromPlanDoc(doc);
-          if (!planIsDeleted(meta)) {
-            loadedPlans.push(meta);
-            writeCloudPlanIndex(planIdentity(meta.id, workspaceId), meta).catch((error) => {
-              console.warn("Plan index backfill failed", meta.id, error);
-            });
-          }
-        });
-      }
     } else {
       const sharedPlans = userAccessiblePlans.filter((plan) => plan.workspaceId === cloudWorkspaceId());
       for (const sharedPlan of sharedPlans) {
@@ -3904,10 +4447,13 @@ async function loadCloudPlanCatalog() {
   }
   if (!loadedPlans.length) {
     const fallbackPlans = loadLastGoodPlanCatalog(workspaceId);
-    if (fallbackPlans.length) {
+    const existingWorkspacePlans = planCatalog
+      .filter((plan) => (plan.workspaceId || personalWorkspaceId()) === workspaceId && !planIsDeleted(plan));
+    const safeFallbackPlans = fallbackPlans.length ? fallbackPlans : existingWorkspacePlans;
+    if (safeFallbackPlans.length) {
       planCatalog = [
         ...planCatalog.filter((plan) => plan.workspaceId !== workspaceId),
-        ...fallbackPlans.map((plan) => normalizePlanMetadata({ ...plan, stale: true })),
+        ...safeFallbackPlans.map((plan) => normalizePlanMetadata({ ...plan, stale: true })),
       ];
       savePlanCatalog();
       renderCloudStatus("No active online plan index loaded. Showing last known list.", "Sign out");
@@ -3986,7 +4532,9 @@ async function loadCloudState() {
   } catch (error) {
     lastCloudError = { code: error?.code || "", message: error?.message || String(error) };
     console.warn("Cloud state load failed; keeping local state", error);
-    const fallbackState = loadLocalPlanState(identity.planId) || loadLastGoodPlanState(identity.planId, identity.workspaceId);
+    const fallbackState = await loadOfflinePlanState(identity)
+      || loadLocalPlanState(identity.planId)
+      || loadLastGoodPlanState(identity.planId, identity.workspaceId);
     if (fallbackState && planContentScore(fallbackState) > 0) {
       cloudSyncPaused = true;
       applyLoadedPlanState(fallbackState, identity.planId, { ...(fallbackState.plan || {}), workspaceId: identity.workspaceId });
@@ -4081,7 +4629,7 @@ async function saveCloudStateNow(options = {}) {
     if (!options.ignoreRevision && remoteRevision !== activePlanRevision) {
       throw Object.assign(new Error("A newer cloud version exists."), { code: "revision-mismatch", snapshotData: preflightData, revision: remoteRevision });
     }
-    await writeSplitPlanContent(identity, cleanState);
+    await writeChangedSplitPlanContent(identity, cleanState, { forceAll: options.forceAllContent });
     const saveResult = await cloud.db.runTransaction(async (transaction) => {
       const snapshot = await transaction.get(ref);
       const data = snapshot.exists ? snapshot.data() || {} : {};
@@ -4137,13 +4685,16 @@ async function saveCloudStateNow(options = {}) {
     setEditLockMode("editing", saveResult.lock);
     state.cloudSavedAtMs = cleanState.cloudSavedAtMs;
     writePlanStateCache(state, { lastGood: true });
+    rememberObjectSaveBaseline(cleanState);
+    await cachePlanStateOffline(cleanState, { replace: true });
+    await clearSyncedOutboxForPlan(identity);
     try {
       await createPlanSnapshot("autosave", cleanState, { onlyIfDue: true, planId: identity.planId, workspaceId: identity.workspaceId });
     } catch (snapshotError) {
       console.warn("Autosave snapshot skipped", snapshotError);
     }
     cloudSaveBlocked = false;
-    lastPersistedContentHash = planStateContentHash(state);
+    lastPersistedContentHash = "";
     renderCloudStatus(`Cloud saved: ${cloud.user.displayName || cloud.user.email || "signed in"}`, "Sign out");
     return true;
   } catch (error) {
@@ -4172,6 +4723,11 @@ async function saveCloudStateNow(options = {}) {
     }
     lastCloudError = { code: error?.code || "", message: error?.message || String(error) };
     writePlanStateCache(state, { lastGood: true });
+    try {
+      await cacheChangedPlanObjectsOffline(state);
+    } catch (cacheError) {
+      console.warn("Could not queue offline draft", cacheError);
+    }
     renderCloudStatus(`Saved locally, cloud retry pending: ${error.code || error.message || "check rules"}`, "Sign out");
     return false;
   }
@@ -4278,6 +4834,44 @@ async function writeSplitPlanContent(identity, cleanState) {
     operations.push((batch) => batch.set(taskRef, JSON.parse(JSON.stringify(task)), { merge: false }));
   });
   await commitBatchChunks(operations);
+  return { operationCount: operations.length, forceAll: true };
+}
+
+async function writeChangedSplitPlanContent(identity, planState, options = {}) {
+  const diff = diffPlanObjectsForSave(planState, options);
+  if (diff.forceAll) return writeSplitPlanContent(identity, diff.cleanState);
+  if (!diff.operationCount) return { operationCount: 0, forceAll: false };
+  const planRef = cloudPlanRefFor(identity.planId, identity.workspaceId);
+  const operations = [];
+  diff.changedUnits.forEach((unit) => {
+    if (!unit.id) return;
+    const unitRef = planRef.collection("units").doc(unit.id);
+    operations.push((batch) => batch.set(unitRef, unitDocForSplitStorage(unit), { merge: false }));
+  });
+  diff.changedLessons.forEach(({ unitId, lesson }) => {
+    if (!unitId || !lesson.id) return;
+    const lessonRef = planRef.collection("units").doc(unitId).collection("lessons").doc(lesson.id);
+    operations.push((batch) => batch.set(lessonRef, JSON.parse(JSON.stringify(lesson)), { merge: false }));
+  });
+  diff.changedAssessmentTasks.forEach((task) => {
+    if (!task.id) return;
+    const taskRef = planRef.collection("assessmentTasks").doc(task.id);
+    operations.push((batch) => batch.set(taskRef, JSON.parse(JSON.stringify(task)), { merge: false }));
+  });
+  diff.deletedLessons.forEach(({ unitId, lessonId }) => {
+    const lessonRef = planRef.collection("units").doc(unitId).collection("lessons").doc(lessonId);
+    operations.push((batch) => batch.delete(lessonRef));
+  });
+  diff.deletedUnitIds.forEach((unitId) => {
+    const unitRef = planRef.collection("units").doc(unitId);
+    operations.push((batch) => batch.delete(unitRef));
+  });
+  diff.deletedAssessmentTaskIds.forEach((taskId) => {
+    const taskRef = planRef.collection("assessmentTasks").doc(taskId);
+    operations.push((batch) => batch.delete(taskRef));
+  });
+  await commitBatchChunks(operations);
+  return { operationCount: operations.length, forceAll: false };
 }
 
 async function docsByOrderedIds(collectionRef, ids = []) {
@@ -7161,7 +7755,7 @@ async function confirm2YipImport() {
   activePlanRevision = 0;
   savePlanToCatalog(state.plan);
   writePlanStateCache(state, { lastGood: true });
-  lastPersistedContentHash = planStateContentHash(state);
+  lastPersistedContentHash = "";
   if (cloud.loaded) await acquireEditingLock({ force: true });
   render();
   if (cloud.loaded) await saveCloudStateNow({ ignoreRevision: true });
@@ -12715,7 +13309,7 @@ els.createPlan?.addEventListener("click", async () => {
   activePlanRevision = 0;
   savePlanToCatalog(state.plan);
   writePlanStateCache(state, { lastGood: true });
-  lastPersistedContentHash = planStateContentHash(state);
+  lastPersistedContentHash = "";
   if (cloud.loaded) await acquireEditingLock({ force: true });
   render();
   if (cloud.loaded) await saveCloudStateNow();
@@ -13453,8 +14047,8 @@ window.addEventListener("popstate", () => {
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "hidden") saveStateSafely();
 });
-lastPersistedContentHash = planStateContentHash(state);
-window.setInterval(saveStateSafely, 2000);
+lastPersistedContentHash = "";
+window.setInterval(() => saveStateSafely({ localOnly: true, assumeChanged: false }), 30000);
 
 window.__ART_APP_BOOTED__ = true;
 initCloudSync();
