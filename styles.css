@@ -874,6 +874,18 @@ button:disabled {
   color: #9b3d2e;
 }
 
+.import-prep-notice {
+  margin: 0;
+  border: 1px solid var(--line);
+  border-left: 6px solid var(--teal);
+  border-radius: 8px;
+  padding: 12px 14px;
+  color: var(--ink);
+  background: var(--teal-soft);
+  font-weight: 850;
+  line-height: 1.35;
+}
+
 .import-mode-toggle {
   display: grid;
   gap: 8px;
