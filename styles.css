@@ -702,6 +702,14 @@ button:disabled {
   border-color: var(--accent);
 }
 
+.primary-button.is-loading,
+.ghost-button.is-loading,
+.workspace-open-button.is-loading,
+.open-plan-button.is-loading {
+  cursor: wait;
+  opacity: 0.82;
+}
+
 .workspace {
   display: grid;
   grid-template-columns: 280px minmax(0, 1fr);

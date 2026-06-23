@@ -1508,6 +1508,7 @@ let workspaceInvites = [];
 let userAccessiblePlans = [];
 let workspaceDirectoryWorkspaceId = "";
 let workspaceDirectoryLoading = false;
+let navigationBusy = { type: "", id: "" };
 let planCatalogVerified = false;
 let cloudSaveBlocked = false;
 let cardDetailInsertAction = null;
@@ -2919,6 +2920,36 @@ async function clearSyncedOutboxForPlan(identity = activePlanIdentity()) {
 
 function planMetaById(planId) {
   return planCatalog.find((plan) => plan.id === planId && planBelongsToActiveWorkspace(plan)) || null;
+}
+
+function setNavigationButtonLoading(button, label) {
+  if (!button) return;
+  button.dataset.originalLabel = button.textContent;
+  button.textContent = label;
+  button.disabled = true;
+  button.classList.add("is-loading");
+}
+
+function restoreNavigationButton(button) {
+  if (!button || !button.isConnected) return;
+  button.textContent = button.dataset.originalLabel || button.textContent;
+  button.disabled = false;
+  button.classList.remove("is-loading");
+  delete button.dataset.originalLabel;
+}
+
+async function runNavigationWithLoading({ type, id = "", button = null, label = "Loading...", status = "" } = {}, action) {
+  if (navigationBusy.type) return false;
+  navigationBusy = { type, id };
+  setNavigationButtonLoading(button, label);
+  if (status) renderCloudStatus(status, "Sign out", true);
+  try {
+    await action();
+    return true;
+  } finally {
+    navigationBusy = { type: "", id: "" };
+    restoreNavigationButton(button);
+  }
 }
 
 async function persistCurrentPlanBeforeSwitch() {
@@ -5947,6 +5978,9 @@ function renderScreens() {
   els.cardLibraryPanel.classList.toggle("hidden", showTimeline || showAssessment);
   els.timelineHealth?.classList.toggle("hidden", !showTimeline || state.timelineView === "planning");
   els.workspaceHome.classList.toggle("hidden", showWorkspace);
+  els.workspaceHome.disabled = navigationBusy.type === "workspace-close";
+  els.workspaceHome.textContent = navigationBusy.type === "workspace-close" ? "Closing..." : "Workspace";
+  els.workspaceHome.classList.toggle("is-loading", navigationBusy.type === "workspace-close");
   els.modeSwitch.classList.toggle("hidden", showWorkspace);
   els.resetDemo?.classList.toggle("hidden", true);
   els.plannerKicker.textContent = showWorkspace ? "Workspace" : `2YIP Plan · ${workspaceLabel()}`;
@@ -6065,17 +6099,21 @@ function renderWorkspaceHome() {
       const selected = meta.id === activeWorkspaceId() ? " selected" : "";
       const canEditWorkspace = meta.role === "owner" && meta.type === "team";
       const canDeleteWorkspace = canEditWorkspace && meta.type === "team";
+      const workspaceOpening = navigationBusy.type === "workspace-open" && navigationBusy.id === meta.id;
+      const workspaceButtonLabel = workspaceOpening ? "Opening..." : "Open";
+      const workspaceButtonState = navigationBusy.type ? " disabled" : "";
+      const workspaceButtonClass = workspaceOpening ? " is-loading" : "";
       const workspaceActions = canEditWorkspace
         ? `
           <div class="plan-card-actions">
-            <button class="primary-button workspace-open-button" type="button" data-workspace-id="${escapeAttr(meta.id)}">Open</button>
-            <button class="ghost-button workspace-rename-button" type="button" data-workspace-id="${escapeAttr(meta.id)}">Rename</button>
-            ${canDeleteWorkspace ? `<button class="ghost-button danger-button workspace-delete-button" type="button" data-workspace-id="${escapeAttr(meta.id)}">Delete</button>` : ""}
+            <button class="primary-button workspace-open-button${workspaceButtonClass}" type="button" data-workspace-id="${escapeAttr(meta.id)}"${workspaceButtonState}>${workspaceButtonLabel}</button>
+            <button class="ghost-button workspace-rename-button" type="button" data-workspace-id="${escapeAttr(meta.id)}"${workspaceButtonState}>Rename</button>
+            ${canDeleteWorkspace ? `<button class="ghost-button danger-button workspace-delete-button" type="button" data-workspace-id="${escapeAttr(meta.id)}"${workspaceButtonState}>Delete</button>` : ""}
           </div>
         `
         : `
           <div class="plan-card-actions">
-            <button class="primary-button workspace-open-button" type="button" data-workspace-id="${escapeAttr(meta.id)}">Open</button>
+            <button class="primary-button workspace-open-button${workspaceButtonClass}" type="button" data-workspace-id="${escapeAttr(meta.id)}"${workspaceButtonState}>${workspaceButtonLabel}</button>
           </div>
         `;
       return `
@@ -6095,7 +6133,19 @@ function renderWorkspaceHome() {
   newWorkspaceCard.addEventListener("click", openWorkspaceSetup);
   els.workspaceCardGrid.append(newWorkspaceCard);
   els.workspaceCardGrid.querySelectorAll(".workspace-open-button").forEach((button) => {
-    button.addEventListener("click", () => switchWorkspace(button.dataset.workspaceId));
+    button.addEventListener("click", () => {
+      const workspaceId = button.dataset.workspaceId;
+      runNavigationWithLoading({
+        type: "workspace-open",
+        id: workspaceId,
+        button,
+        label: "Opening...",
+        status: "Opening workspace...",
+      }, () => switchWorkspace(workspaceId)).catch((error) => {
+        console.warn("Workspace open failed", error);
+        renderCloudStatus(`Workspace did not open: ${errorLabel(error)}`, "Sign out");
+      });
+    });
   });
   els.workspaceCardGrid.querySelectorAll(".workspace-rename-button").forEach((button) => {
     button.addEventListener("click", () => renameWorkspace(button.dataset.workspaceId));
@@ -6126,16 +6176,20 @@ function renderWorkspaceHome() {
           ${inviteHtml}
         `
         : "";
+      const planOpening = navigationBusy.type === "plan-open" && navigationBusy.id === meta.id;
+      const planActionDisabled = navigationBusy.type ? " disabled" : "";
+      const planOpenClass = planOpening ? " is-loading" : "";
+      const planOpenLabel = planOpening ? "Opening..." : "Open";
       return `
         <article class="plan-card" data-plan-id="${escapeAttr(meta.id)}">
           <span class="workspace-card-eyebrow">${escapeHtml(meta.subject || "Subject")}</span>
           <strong>${escapeHtml(meta.title || "Untitled Plan")}</strong>
           <small>${escapeHtml(meta.role === "owner" ? "Owner" : "Editor")} · ${escapeHtml(activeWorkspace.name || "Workspace")}</small>
           <div class="plan-card-actions">
-            <button class="primary-button open-plan-button" type="button" data-plan-id="${escapeAttr(meta.id)}">Open</button>
-            <button class="ghost-button plan-history-button" type="button" data-plan-id="${escapeAttr(meta.id)}">History</button>
-            ${canManagePlanSharing() ? `<button class="ghost-button plan-rename-button" type="button" data-plan-id="${escapeAttr(meta.id)}">Rename</button>` : ""}
-            ${canManagePlanSharing() ? `<button class="ghost-button danger-button plan-delete-button" type="button" data-plan-id="${escapeAttr(meta.id)}">Delete</button>` : ""}
+            <button class="primary-button open-plan-button${planOpenClass}" type="button" data-plan-id="${escapeAttr(meta.id)}"${planActionDisabled}>${planOpenLabel}</button>
+            <button class="ghost-button plan-history-button" type="button" data-plan-id="${escapeAttr(meta.id)}"${planActionDisabled}>History</button>
+            ${canManagePlanSharing() ? `<button class="ghost-button plan-rename-button" type="button" data-plan-id="${escapeAttr(meta.id)}"${planActionDisabled}>Rename</button>` : ""}
+            ${canManagePlanSharing() ? `<button class="ghost-button danger-button plan-delete-button" type="button" data-plan-id="${escapeAttr(meta.id)}"${planActionDisabled}>Delete</button>` : ""}
           </div>
           ${shareHtml}
         </article>
@@ -6158,7 +6212,19 @@ function renderWorkspaceHome() {
     els.planCardGrid.append(importPlanCard);
   }
   els.planCardGrid.querySelectorAll(".open-plan-button").forEach((button) => {
-    button.addEventListener("click", () => openWorkspacePlan(button.dataset.planId));
+    button.addEventListener("click", () => {
+      const planId = button.dataset.planId;
+      runNavigationWithLoading({
+        type: "plan-open",
+        id: planId,
+        button,
+        label: "Opening...",
+        status: "Opening 2YIP...",
+      }, () => openWorkspacePlan(planId)).catch((error) => {
+        console.warn("2YIP open failed", error);
+        renderCloudStatus(`2YIP did not open: ${errorLabel(error)}`, "Sign out");
+      });
+    });
   });
   els.planCardGrid.querySelectorAll(".plan-history-button").forEach((button) => {
     button.addEventListener("click", () => openPlanHistory(button.dataset.planId));
@@ -13471,9 +13537,19 @@ els.workspaceSelect?.addEventListener("change", (event) => {
 });
 
 els.workspaceHome?.addEventListener("click", async () => {
-  await closeActivePlanSession({ persist: true });
-  workspaceDirectoryWorkspaceId = "";
-  render();
+  await runNavigationWithLoading({
+    type: "workspace-close",
+    button: els.workspaceHome,
+    label: "Closing...",
+    status: "Closing 2YIP safely...",
+  }, async () => {
+    await closeActivePlanSession({ persist: true });
+    workspaceDirectoryWorkspaceId = "";
+    render();
+  }).catch((error) => {
+    console.warn("Workspace close failed", error);
+    renderCloudStatus(`Could not close 2YIP safely: ${errorLabel(error)}`, "Sign out");
+  });
 });
 
 els.recoveryTrash?.addEventListener("click", () => {
