@@ -2918,6 +2918,40 @@ async function clearSyncedOutboxForPlan(identity = activePlanIdentity()) {
   return cleared;
 }
 
+async function countOfflineStoreRecords(storeName, identity = null) {
+  const db = await openOfflineDb();
+  if (!db) return 0;
+  const planKey = identity ? offlinePlanKey(identity) : "";
+  return idbStore(storeName, "readonly", (store) => {
+    if (planKey && store.indexNames.contains("planKey")) {
+      return idbRequest(store.index("planKey").count(window.IDBKeyRange.only(planKey)));
+    }
+    return idbRequest(store.count());
+  });
+}
+
+async function offlineDiagnosticSummary(identity = activePlanIdentity()) {
+  try {
+    const db = await openOfflineDb();
+    if (!db) return { available: false };
+    const stores = ["plans", "units", "lessons", "assessmentTasks", "rubrics", "outbox"];
+    const allCounts = {};
+    const activePlanCounts = {};
+    for (const storeName of stores) {
+      allCounts[storeName] = await countOfflineStoreRecords(storeName);
+      activePlanCounts[storeName] = await countOfflineStoreRecords(storeName, identity);
+    }
+    return {
+      available: true,
+      activePlanKey: offlinePlanKey(identity),
+      allCounts,
+      activePlanCounts,
+    };
+  } catch (error) {
+    return { available: false, error: errorLabel(error) };
+  }
+}
+
 function planMetaById(planId) {
   return planCatalog.find((plan) => plan.id === planId && planBelongsToActiveWorkspace(plan)) || null;
 }
@@ -4719,6 +4753,7 @@ async function saveCloudStateNow(options = {}) {
     return false;
   }
   try {
+    renderCloudStatus("Saving online...", "Sign out", true);
     state.localSavedAtMs = Date.now();
     const cleanState = cleanCloudState(state);
     cleanState.cloudSavedAtMs = Date.now();
@@ -4835,7 +4870,12 @@ async function saveCloudStateNow(options = {}) {
     } catch (cacheError) {
       console.warn("Could not queue offline draft", cacheError);
     }
-    renderCloudStatus(`Saved locally, cloud retry pending: ${error.code || error.message || "check rules"}`, "Sign out");
+    const offlineSummary = await offlineDiagnosticSummary(identity);
+    const pendingCount = Number(offlineSummary?.activePlanCounts?.outbox || 0);
+    const pendingText = pendingCount
+      ? `${pendingCount} local change${pendingCount === 1 ? "" : "s"} waiting to sync`
+      : "online retry pending";
+    renderCloudStatus(`Saved locally; ${pendingText}: ${error.code || error.message || "check rules"}`, "Sign out");
     return false;
   }
 }
@@ -5532,6 +5572,16 @@ function activePlanTitle() {
   return state.plan?.title || "Main 2YIP";
 }
 
+function statusNeedsDiagnostics(status = "") {
+  return /blocked|could not|did not load|failed|lost|mismatch|paused|pending|retry|unavailable|verify/i.test(String(status || ""));
+}
+
+function updateDiagnosticsButtonVisibility(status = cloud.status, force = false) {
+  if (!els.copyDiagnostics) return;
+  const show = Boolean(cloud.user) && (force || statusNeedsDiagnostics(status));
+  els.copyDiagnostics.classList.toggle("hidden", !show);
+}
+
 function renderCloudStatus(status, buttonLabel, disabled = false) {
   if (!els.cloudPanel) return;
   cloud.status = status;
@@ -5539,6 +5589,7 @@ function renderCloudStatus(status, buttonLabel, disabled = false) {
   els.cloudAuth.textContent = buttonLabel;
   els.cloudAuth.disabled = disabled && buttonLabel !== "Sign in";
   els.cloudPanel.classList.toggle("online", Boolean(cloud.user));
+  updateDiagnosticsButtonVisibility(status);
 }
 
 function renderLockStatus() {
@@ -5546,13 +5597,13 @@ function renderLockStatus() {
   const show = state.currentScreen !== "workspace" && Boolean(cloud.user) && Boolean(firstPlanForActiveWorkspace());
   els.lockPanel.classList.toggle("hidden", !show);
   if (!show) {
-    els.copyDiagnostics?.classList.add("hidden");
+    updateDiagnosticsButtonVisibility();
     els.clearStaleLocks?.classList.add("hidden");
     return;
   }
   const fullPlanLoaded = activePlanBodyVerified();
   els.lockPanel.classList.toggle("needs-recovery", !fullPlanLoaded);
-  els.copyDiagnostics?.classList.toggle("hidden", fullPlanLoaded);
+  updateDiagnosticsButtonVisibility(cloud.status, !fullPlanLoaded);
   els.clearStaleLocks?.classList.toggle("hidden", fullPlanLoaded || !lockBelongsToCurrentUser(editLock.info || {}));
   if (!fullPlanLoaded) {
     els.lockPanel.classList.add("read-only");
@@ -5630,7 +5681,9 @@ function diagnosticInfo() {
 }
 
 async function copyDiagnostics() {
-  const text = JSON.stringify(diagnosticInfo(), null, 2);
+  const info = diagnosticInfo();
+  info.offlineDb = await offlineDiagnosticSummary(activePlanIdentity());
+  const text = JSON.stringify(info, null, 2);
   try {
     await navigator.clipboard.writeText(text);
     renderCloudStatus("Diagnostic info copied. It contains IDs and status only, not curriculum content.", "Sign out");
