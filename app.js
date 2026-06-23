@@ -3813,7 +3813,13 @@ async function loadCloudPlanCatalog() {
   };
   try {
     if (canManageActiveWorkspace()) {
-      const snapshot = await plansRef.where("status", "==", "active").get();
+      let snapshot;
+      try {
+        snapshot = await plansRef.where("status", "==", "active").get();
+      } catch (activeQueryError) {
+        console.warn("Active plan catalog query failed; trying full plan catalog", activeQueryError);
+        snapshot = await plansRef.get();
+      }
       snapshot.forEach((doc) => {
         const meta = metaFromPlanDoc(doc);
         if (!planIsDeleted(meta)) loadedPlans.push(meta);
@@ -3851,6 +3857,7 @@ async function loadCloudPlanCatalog() {
     }
   } catch (error) {
     console.warn("Cloud plan catalog refresh failed", error);
+    lastCloudError = { code: error?.code || "", message: error?.message || String(error) };
     const fallbackPlans = loadLastGoodPlanCatalog(workspaceId);
     if (fallbackPlans.length) {
       planCatalog = [
@@ -3859,7 +3866,7 @@ async function loadCloudPlanCatalog() {
       ];
       savePlanCatalog();
     }
-    renderCloudStatus("Could not refresh online plans. Showing last known list.", "Sign out");
+    renderCloudStatus(`Could not refresh online plans (${errorLabel(error)}). Showing last known list.`, "Sign out");
     planCatalogVerified = false;
     return false;
   }
@@ -7117,18 +7124,31 @@ function cardPreviewTone(type) {
 
 function cardPreviewTitle(payload) {
   if (!payload) return "Card";
-  if (isTextCard(payload.type) && payload.value?.trim()) return payload.value.trim();
   return payload.label || cardTypeLabel(payload.type, payload);
+}
+
+function userEnteredCardDescription(payload) {
+  if (!payload || !isTextCard(payload.type)) return "";
+  return String(payload.value || "").trim();
 }
 
 function cardDetailFor(payload) {
   if (!payload) return null;
   const label = normalizePlanningLabel(payload.label || "", payload.type);
-  return libraryCardDetails[label] || {
+  const userDescription = userEnteredCardDescription(payload);
+  const fallback = {
     tone: cardPreviewTone(payload.type),
     title: cardPreviewTitle({ ...payload, label }),
     detailLabel: "",
     context: ["Coming soon."],
+  };
+  const detail = libraryCardDetails[label] || fallback;
+  if (!userDescription) return detail;
+  return {
+    ...detail,
+    title: label || detail.title || cardTypeLabel(payload.type, payload),
+    detailLabel: "",
+    context: [userDescription],
   };
 }
 
@@ -7147,7 +7167,7 @@ function openCardDetail(payload, onInsert, options = {}) {
     els.cardDetailLabel.textContent = "";
     els.cardDetailLabel.classList.add("hidden");
   }
-  els.cardDetailContext.innerHTML = detail.context.map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`).join("");
+  els.cardDetailContext.innerHTML = detail.context.map((paragraph) => renderTeacherText(paragraph)).join("");
   els.cardDetailCancel?.classList.toggle("hidden", mode !== "insert");
   if (els.cardDetailInsert) {
     els.cardDetailInsert.textContent = mode === "insert" ? "Insert Into Board" : "Return To Board";
