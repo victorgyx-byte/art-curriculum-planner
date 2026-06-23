@@ -1509,6 +1509,7 @@ let userAccessiblePlans = [];
 let workspaceDirectoryWorkspaceId = "";
 let workspaceDirectoryLoading = false;
 let navigationBusy = { type: "", id: "" };
+let workspaceDiagnosticsRenderId = 0;
 let planCatalogVerified = false;
 let cloudSaveBlocked = false;
 let cardDetailInsertAction = null;
@@ -1564,6 +1565,9 @@ const els = {
   modeSwitch: document.querySelector("#mode-switch"),
   workspaceCardGrid: document.querySelector("#workspace-card-grid"),
   planCardGrid: document.querySelector("#plan-card-grid"),
+  pilotDiagnosticsBody: document.querySelector("#pilot-diagnostics-body"),
+  refreshPilotDiagnostics: document.querySelector("#refresh-pilot-diagnostics"),
+  copyPilotDiagnostics: document.querySelector("#copy-pilot-diagnostics"),
   workspacePlanHeading: document.querySelector("#workspace-plan-heading"),
   recoveryTrash: document.querySelector("#recovery-trash"),
   recoveryModal: document.querySelector("#recovery-modal"),
@@ -5693,6 +5697,76 @@ async function copyDiagnostics() {
   }
 }
 
+async function renderPilotDiagnostics() {
+  if (!els.pilotDiagnosticsBody) return;
+  const renderId = ++workspaceDiagnosticsRenderId;
+  const identity = activePlanIdentity();
+  const workspacePlans = plansForActiveWorkspace();
+  els.pilotDiagnosticsBody.innerHTML = `<span class="muted">Checking storage health...</span>`;
+  const offline = await offlineDiagnosticSummary(identity);
+  if (renderId !== workspaceDiagnosticsRenderId) return;
+  const allCounts = offline?.allCounts || {};
+  const activePlanCounts = offline?.activePlanCounts || {};
+  const outboxCount = Number(allCounts.outbox || 0);
+  const activeOutboxCount = Number(activePlanCounts.outbox || 0);
+  const cloudIssue = lastCloudError?.code || lastCloudError?.message || "";
+  const syncClass = outboxCount ? " needs-attention" : "";
+  const fullPlanLoaded = activePlanBodyVerified();
+  const statusItems = [
+    {
+      label: "Active plans",
+      value: `${workspacePlans.length} in this workspace`,
+      detail: `${planCatalog.length} active plans in accessible catalog`,
+    },
+    {
+      label: "Browser cache",
+      value: offline?.available ? `${Number(allCounts.plans || 0)} plan shells` : "Unavailable",
+      detail: offline?.available
+        ? `${Number(allCounts.units || 0)} units · ${Number(allCounts.lessons || 0)} lessons · ${Number(allCounts.assessmentTasks || 0)} tasks`
+        : (offline?.error || "IndexedDB unavailable"),
+    },
+    {
+      label: "Pending sync",
+      value: outboxCount ? `${outboxCount} object${outboxCount === 1 ? "" : "s"}` : "Clear",
+      detail: activeOutboxCount ? `${activeOutboxCount} pending for the selected 2YIP` : "No local changes waiting for this 2YIP",
+      attention: Boolean(outboxCount),
+    },
+    {
+      label: "Loaded 2YIP",
+      value: fullPlanLoaded ? "Verified" : "Closed or not loaded",
+      detail: planLoadStatus.detail || planLoadStatus.reason || "No active 2YIP body loaded",
+      attention: state.currentScreen !== "workspace" && !fullPlanLoaded,
+    },
+    {
+      label: "Editing lock",
+      value: editLock.mode || "none",
+      detail: editLock.info?.displayName || editLock.info?.email || "No active editor lock",
+    },
+    {
+      label: "Last cloud issue",
+      value: cloudIssue ? errorLabel(lastCloudError) : "None",
+      detail: cloud.status || "No status yet",
+      attention: Boolean(cloudIssue),
+    },
+  ];
+  els.pilotDiagnosticsBody.innerHTML = `
+    <div class="pilot-diagnostics-grid">
+      ${statusItems.map((item) => `
+        <article class="pilot-diagnostic-card${item.attention ? " needs-attention" : ""}">
+          <span>${escapeHtml(item.label)}</span>
+          <strong>${escapeHtml(item.value)}</strong>
+          <small>${escapeHtml(item.detail)}</small>
+        </article>
+      `).join("")}
+    </div>
+    <p class="pilot-diagnostics-note${syncClass}">
+      ${outboxCount
+        ? "Some changes are saved locally and waiting to sync online. Use Copy diagnostics if this number does not clear."
+        : "Workspace is using lightweight metadata here. Trash and full 2YIP content are not loaded until requested."}
+    </p>
+  `;
+}
+
 async function clearMyStaleLocks() {
   if (!cloud.user || !cloud.db) return false;
   renderCloudStatus("Clearing your stale locks...", "Sign out", true);
@@ -6306,6 +6380,7 @@ function renderWorkspaceHome() {
   });
 
   renderWorkspaceDirectory();
+  renderPilotDiagnostics();
 }
 
 function renderWorkspaceDirectory() {
@@ -14225,6 +14300,8 @@ els.takeOverLock?.addEventListener("click", async () => {
 });
 els.clearStaleLocks?.addEventListener("click", clearMyStaleLocks);
 els.copyDiagnostics?.addEventListener("click", copyDiagnostics);
+els.refreshPilotDiagnostics?.addEventListener("click", renderPilotDiagnostics);
+els.copyPilotDiagnostics?.addEventListener("click", copyDiagnostics);
 els.loginGoogle?.addEventListener("click", toggleCloudAuth);
 els.loginReset?.addEventListener("click", resetCloudSignIn);
 els.cardDetailCancel?.addEventListener("click", closeCardDetail);

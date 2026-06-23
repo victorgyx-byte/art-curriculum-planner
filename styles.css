@@ -822,6 +822,67 @@ button:disabled {
   color: #843326;
 }
 
+.pilot-diagnostics-panel {
+  background: rgba(255, 253, 250, 0.78);
+}
+
+.pilot-diagnostics-body {
+  display: grid;
+  gap: 10px;
+}
+
+.pilot-diagnostics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.pilot-diagnostic-card {
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 11px 12px;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.pilot-diagnostic-card span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.pilot-diagnostic-card strong {
+  color: var(--ink);
+  font-size: 18px;
+  line-height: 1.12;
+}
+
+.pilot-diagnostic-card small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 780;
+  line-height: 1.25;
+}
+
+.pilot-diagnostic-card.needs-attention {
+  border-color: rgba(166, 66, 50, 0.36);
+  background: rgba(254, 242, 237, 0.76);
+}
+
+.pilot-diagnostics-note {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.pilot-diagnostics-note.needs-attention {
+  color: #8b3a2d;
+}
+
 .plan-share-row {
   border-top: 1px solid var(--line);
   padding-top: 10px;
