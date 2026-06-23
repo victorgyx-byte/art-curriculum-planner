@@ -5789,10 +5789,10 @@ function importMethodLabel(method) {
   return "AI-assisted row-bound mapping";
 }
 
-function importAiActionLabel(method, busy = false) {
+function importAiActionLabel(method, busy = false, hasPreview = false) {
   if (busy) return "Mapping...";
-  if (method === "detect") return "Run Row-Bound Import Again";
-  return "Run AI-Assisted Mapping Again";
+  if (method === "detect") return hasPreview ? "Run Row-Bound Import Again" : "Preview Row-Bound Import";
+  return hasPreview ? "Run AI-Assisted Mapping Again" : "Preview Full AI Import";
 }
 
 function render2YipImport() {
@@ -5805,10 +5805,12 @@ function render2YipImport() {
   els.importMethodPanel?.classList.toggle("hidden", !pending2YipImport?.workbookSnapshot);
   if (els.confirmImport2Yip) els.confirmImport2Yip.disabled = !pending2YipImport?.units?.length || Boolean(pending2YipImport?.awaitingMethod);
   if (els.suggestImportMappings) {
-    const rerunnableAiMethod = ["ai", "detect"].includes(pending2YipImport?.importMethod);
+    const selectedMethod = valid2YipImportMode(pending2YipImport?.importMethod || import2YipMode);
+    const canRunImport = ["ai", "detect"].includes(selectedMethod);
+    const hasPreview = Boolean(pending2YipImport?.units?.length);
     els.suggestImportMappings.disabled = !pending2YipImport?.workbookSnapshot || Boolean(pending2YipImport?.aiBusy);
-    els.suggestImportMappings.classList.toggle("hidden", !pending2YipImport?.workbookSnapshot || !rerunnableAiMethod);
-    els.suggestImportMappings.textContent = importAiActionLabel(pending2YipImport?.importMethod, pending2YipImport?.aiBusy);
+    els.suggestImportMappings.classList.toggle("hidden", !pending2YipImport?.workbookSnapshot || !canRunImport);
+    els.suggestImportMappings.textContent = importAiActionLabel(selectedMethod, pending2YipImport?.aiBusy, hasPreview);
   }
   if (!pending2YipImport) {
     if (els.import2YipStatus) {
@@ -7027,12 +7029,11 @@ async function read2YipImportFile(file) {
       sheetName: snapshot.sheetName,
       workbook,
       workbookSnapshot: snapshot,
-      importMethod: "detect",
-      awaitingMethod: false,
+      importMethod: "",
+      awaitingMethod: true,
       units: [],
     };
     render2YipImport();
-    await runAiTemplateDetectionImport();
   } catch (error) {
     console.warn("2YIP import failed", error);
     pending2YipImport = null;
@@ -12640,15 +12641,15 @@ els.import2YipFile?.addEventListener("change", (event) => {
 });
 
 els.import2YipModes?.forEach((input) => {
-  input.addEventListener("change", async (event) => {
+  input.addEventListener("change", (event) => {
     import2YipMode = valid2YipImportMode(event.target.value);
-    if (import2YipMode === "ai" && pending2YipImport?.workbookSnapshot) {
-      await runAiAssistedImportMapping();
-    } else if (import2YipMode === "detect" && pending2YipImport?.workbookSnapshot) {
-      await runAiTemplateDetectionImport();
-    } else {
-      render2YipImport();
+    if (pending2YipImport) {
+      pending2YipImport.importMethod = import2YipMode;
+      pending2YipImport.awaitingMethod = true;
+      pending2YipImport.units = [];
+      pending2YipImport.aiStatus = "";
     }
+    render2YipImport();
   });
 });
 
