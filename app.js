@@ -4796,7 +4796,7 @@ async function loadCloudState() {
     lastCloudError = { code: error?.code || "", message: error?.message || String(error) };
     console.warn("Cloud state load failed; keeping local state", error);
     const fallbackState = await loadOfflinePlanState(identity)
-      || loadLocalPlanState(identity.planId)
+      || loadLocalPlanState(identity.planId, identity.workspaceId)
       || loadLastGoodPlanState(identity.planId, identity.workspaceId);
     if (fallbackState && planContentScore(fallbackState) > 0) {
       cloudSyncPaused = true;
