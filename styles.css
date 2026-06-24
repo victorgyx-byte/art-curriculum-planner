@@ -23,6 +23,7 @@
 
 body {
   margin: 0;
+  overflow-x: hidden;
   color: var(--ink);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0)),
@@ -900,23 +901,28 @@ button:disabled {
 }
 
 .pilot-diagnostics-panel {
+  max-width: 100%;
+  min-width: 0;
   background: rgba(255, 253, 250, 0.78);
 }
 
 .pilot-diagnostics-body {
   display: grid;
   gap: 10px;
+  min-width: 0;
 }
 
 .pilot-diagnostics-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr));
   gap: 10px;
+  min-width: 0;
 }
 
 .pilot-diagnostic-card {
   display: grid;
   gap: 4px;
+  min-width: 0;
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 11px 12px;
@@ -935,6 +941,7 @@ button:disabled {
   color: var(--ink);
   font-size: 18px;
   line-height: 1.12;
+  overflow-wrap: anywhere;
 }
 
 .pilot-diagnostic-card small {
@@ -942,6 +949,7 @@ button:disabled {
   font-size: 12px;
   font-weight: 780;
   line-height: 1.25;
+  overflow-wrap: anywhere;
 }
 
 .pilot-diagnostic-card.needs-attention {
@@ -954,6 +962,7 @@ button:disabled {
   color: var(--muted);
   font-size: 13px;
   font-weight: 800;
+  overflow-wrap: anywhere;
 }
 
 .pilot-diagnostics-note.needs-attention {
@@ -5848,10 +5857,16 @@ button:disabled {
 
   .workspace {
     grid-template-columns: 1fr;
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: hidden;
   }
 
   .workspace-home {
+    max-width: 100%;
+    min-width: 0;
     padding: 12px;
+    overflow-x: hidden;
   }
 
   .workspace-home-heading,
@@ -5864,6 +5879,24 @@ button:disabled {
   .workspace-section-heading {
     display: grid;
     align-items: start;
+    min-width: 0;
+  }
+
+  .workspace-home-heading h2,
+  .workspace-section-heading h2 {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .workspace-home-section,
+  .team-management-panel,
+  .pilot-diagnostics-panel {
+    min-width: 0;
+    overflow-x: hidden;
+  }
+
+  .pilot-diagnostics-grid {
+    grid-template-columns: 1fr;
   }
 
   .team-invite-form {
