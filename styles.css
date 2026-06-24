@@ -657,10 +657,11 @@ button:disabled {
   align-items: center;
   justify-content: space-between;
   gap: 14px;
-  margin: 10px 18px 0;
+  width: min(1100px, calc(100% - 36px));
+  margin: 18px auto 22px;
   border: 1px solid rgba(47, 111, 115, 0.28);
   border-radius: var(--radius);
-  padding: 11px 13px;
+  padding: 10px 12px;
   background: rgba(219, 238, 237, 0.58);
 }
 
@@ -693,13 +694,14 @@ button:disabled {
 }
 
 .planner-save-health-copy .eyebrow {
-  margin-bottom: 2px;
+  margin-bottom: 1px;
+  font-size: 11px;
 }
 
 .planner-save-health-copy strong {
   display: block;
   color: var(--ink);
-  font-size: 15px;
+  font-size: 14px;
   line-height: 1.15;
 }
 
@@ -707,7 +709,7 @@ button:disabled {
   display: block;
   margin-top: 2px;
   color: var(--muted);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 800;
   line-height: 1.25;
 }
@@ -722,7 +724,7 @@ button:disabled {
 }
 
 .planner-save-health-actions .ghost-button {
-  min-height: 32px;
+  min-height: 30px;
   padding: 5px 9px;
   font-size: 12px;
 }
