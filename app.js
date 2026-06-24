@@ -2423,9 +2423,9 @@ function createPlanState({ title, subject, teamName }) {
   return next;
 }
 
-function loadLocalPlanState(planId) {
+function loadLocalPlanState(planId, workspaceId = activeWorkspaceId()) {
   try {
-    const saved = JSON.parse(localStorage.getItem(planStateStorageKey(planId)));
+    const saved = JSON.parse(localStorage.getItem(planStateStorageKey(planId, workspaceId)));
     if (saved?.browserCacheReduced) return null;
     return saved && Array.isArray(saved.units) ? normalizeState(saved) : null;
   } catch {
@@ -3167,7 +3167,7 @@ async function switchPlan(planId, options = {}) {
   saveWritesPaused = true;
   pausePlanBodyLoading("switching-plan", "Loading selected 2YIP.", identity);
   try {
-    let nextState = await loadOfflinePlanState(identity) || loadLocalPlanState(planId) || loadLastGoodPlanState(planId, targetWorkspaceId);
+    let nextState = await loadOfflinePlanState(identity) || loadLocalPlanState(planId, targetWorkspaceId) || loadLastGoodPlanState(planId, targetWorkspaceId);
     let cloudLoadFailed = false;
     let cloudSnapshotWasReadable = false;
     let cloudPlanBodyWasLoaded = false;
@@ -3291,7 +3291,10 @@ function firstPlanForActiveWorkspace() {
 
 async function switchWorkspace(workspaceId) {
   if (!workspaceId || workspaceId === activeWorkspaceId()) return;
-  if (state.currentScreen !== "workspace") await closeActivePlanSession({ persist: true, silent: true });
+  if (state.currentScreen !== "workspace") {
+    const closed = await closeActivePlanSession({ persist: true, silent: true });
+    if (!closed) return false;
+  }
   localStorage.setItem(ACTIVE_WORKSPACE_STORAGE_KEY, workspaceId);
   markLoadedPlanState("", workspaceId);
   setPlanLoadStatus({
@@ -3320,11 +3323,12 @@ async function switchWorkspace(workspaceId) {
   }
   if (nextPlan) {
     await switchPlan(nextPlan.id, { skipPersist: true, force: true, workspaceId });
-    return;
+    return true;
   }
   state.currentScreen = "workspace";
   clearStoredActivePlanId(workspaceId);
   render();
+  return true;
 }
 
 function workspaceLabel(workspaceId = activeWorkspaceId()) {
