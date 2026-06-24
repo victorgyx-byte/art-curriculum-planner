@@ -1509,9 +1509,12 @@ let userAccessiblePlans = [];
 let workspaceDirectoryWorkspaceId = "";
 let workspaceDirectoryLoading = false;
 let navigationBusy = { type: "", id: "" };
+let autoSyncRetryTimer = null;
+let autoSyncRetryDelayMs = 8000;
 let workspaceDiagnosticsRenderId = 0;
 let planCatalogVerified = false;
 let cloudSaveBlocked = false;
+let pendingLocalSyncCount = 0;
 let cardDetailInsertAction = null;
 let lastPersistedContentHash = "";
 let activePlanRevision = 0;
@@ -1568,6 +1571,14 @@ const els = {
   pilotDiagnosticsBody: document.querySelector("#pilot-diagnostics-body"),
   refreshPilotDiagnostics: document.querySelector("#refresh-pilot-diagnostics"),
   copyPilotDiagnostics: document.querySelector("#copy-pilot-diagnostics"),
+  retryPendingSync: document.querySelector("#retry-pending-sync"),
+  clearLocalDraftCache: document.querySelector("#clear-local-draft-cache"),
+  plannerSaveHealth: document.querySelector("#planner-save-health"),
+  plannerSaveHealthTitle: document.querySelector("#planner-save-health-title"),
+  plannerSaveHealthDetail: document.querySelector("#planner-save-health-detail"),
+  plannerRetrySync: document.querySelector("#planner-retry-sync"),
+  plannerCopyDiagnostics: document.querySelector("#planner-copy-diagnostics"),
+  plannerGoWorkspaceDiagnostics: document.querySelector("#planner-go-workspace-diagnostics"),
   workspacePlanHeading: document.querySelector("#workspace-plan-heading"),
   recoveryTrash: document.querySelector("#recovery-trash"),
   recoveryModal: document.querySelector("#recovery-modal"),
@@ -1763,18 +1774,27 @@ const els = {
 
 function loadState() {
   try {
+    compactOversizedBrowserPlanCaches();
     const storedPlanId = storedActivePlanId(activeWorkspaceId(), { includeLegacy: true });
     const catalogPlanId = planCatalog.find(planBelongsToActiveWorkspace)?.id || "";
     const activePlanId = storedPlanId || catalogPlanId;
     const savedRaw = activePlanId ? localStorage.getItem(planStateStorageKey(activePlanId)) : localStorage.getItem(STORAGE_KEY);
     const saved = savedRaw ? JSON.parse(savedRaw) : null;
-    const loaded = saved && Array.isArray(saved.units) ? normalizeState(saved) : structuredClone(defaultState);
+    const loaded = saved && !saved.browserCacheReduced && Array.isArray(saved.units)
+      ? normalizeState(saved)
+      : structuredClone(defaultState);
     loaded.currentScreen = screenFromLocation();
-    if (activePlanId && (!loaded.plan?.id || loaded.plan.id === CLOUD_PLAN_ID)) {
-      loaded.plan = normalizePlanMetadata({ ...(loaded.plan || {}), id: activePlanId });
+    if (activePlanId && (!loaded.plan?.id || loaded.plan.id === CLOUD_PLAN_ID || saved?.browserCacheReduced)) {
+      loaded.plan = normalizePlanMetadata({
+        ...(saved?.plan || loaded.plan || {}),
+        id: activePlanId,
+        workspaceId: saved?.plan?.workspaceId || activeWorkspaceId(),
+      });
     }
-    if ((activePlanId && loaded.plan?.id === activePlanId) || saved) {
+    if (activePlanId && loaded.plan?.id === activePlanId && !saved?.browserCacheReduced) {
       savePlanToCatalog(loaded.plan);
+      setStoredActivePlanId(loaded.plan.id, loaded.plan.workspaceId || activeWorkspaceId());
+    } else if (activePlanId && saved?.browserCacheReduced) {
       setStoredActivePlanId(loaded.plan.id, loaded.plan.workspaceId || activeWorkspaceId());
     } else {
       clearStoredActivePlanId(activeWorkspaceId());
@@ -2236,9 +2256,10 @@ function compactOversizedBrowserPlanCaches() {
   const lastGoodBodyPrefix = `${LAST_GOOD_PLAN_CATALOG_STORAGE_KEY}:state:${userId}:`;
   let cleared = 0;
   Object.keys(localStorage).forEach((key) => {
-    if (key !== STORAGE_KEY && !key.startsWith(`${STORAGE_KEY}:`) && !key.startsWith(lastGoodBodyPrefix)) return;
+    const isPlanBodyKey = key === STORAGE_KEY || key.startsWith(`${STORAGE_KEY}:`) || key.startsWith(lastGoodBodyPrefix);
+    if (!isPlanBodyKey) return;
     const value = localStorage.getItem(key) || "";
-    if (value.length <= LOCAL_PLAN_BODY_MAX_CHARS) return;
+    if (!cloud.user && value.length <= LOCAL_PLAN_BODY_MAX_CHARS) return;
     localStorage.removeItem(key);
     cleared += 1;
   });
@@ -2845,6 +2866,10 @@ async function queueOfflineObjectChanges(planState = state) {
     });
   });
   if (!entries.length) return true;
+  const activeIdentity = activePlanIdentity();
+  if (identity.workspaceId === activeIdentity.workspaceId && identity.planId === activeIdentity.planId) {
+    pendingLocalSyncCount = Math.max(pendingLocalSyncCount, entries.length);
+  }
   await idbStore("outbox", "readwrite", (store) => entries.forEach((entry) => store.put(entry)));
   return true;
 }
@@ -2919,7 +2944,60 @@ async function clearSyncedOutboxForPlan(identity = activePlanIdentity()) {
     transaction.onerror = () => reject(transaction.error);
     transaction.onabort = () => reject(transaction.error);
   });
+  const activeIdentity = activePlanIdentity();
+  if (identity.workspaceId === activeIdentity.workspaceId && identity.planId === activeIdentity.planId) {
+    pendingLocalSyncCount = 0;
+  }
   return cleared;
+}
+
+async function clearOfflineWorkspaceCache(workspaceId = activeWorkspaceId()) {
+  const db = await openOfflineDb();
+  const stores = ["plans", "units", "lessons", "assessmentTasks", "rubrics", "outbox"];
+  let cleared = clearLocalPlanBodyCache(workspaceId);
+  if (!db) return cleared;
+  await new Promise((resolve, reject) => {
+    const transaction = db.transaction(stores, "readwrite");
+    stores.forEach((storeName) => {
+      const store = transaction.objectStore(storeName);
+      const request = store.openCursor();
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (!cursor) return;
+        const record = cursor.value || {};
+        if (record.workspaceId === workspaceId) {
+          store.delete(cursor.primaryKey);
+          cleared += 1;
+        }
+        cursor.continue();
+      };
+    });
+    transaction.oncomplete = resolve;
+    transaction.onerror = () => reject(transaction.error);
+    transaction.onabort = () => reject(transaction.error);
+  });
+  return cleared;
+}
+
+async function countOfflineWorkspaceRecords(storeName, workspaceId = activeWorkspaceId()) {
+  const db = await openOfflineDb();
+  if (!db) return 0;
+  let count = 0;
+  await new Promise((resolve, reject) => {
+    const transaction = db.transaction(storeName, "readonly");
+    const store = transaction.objectStore(storeName);
+    const request = store.openCursor();
+    request.onsuccess = () => {
+      const cursor = request.result;
+      if (!cursor) return;
+      if ((cursor.value || {}).workspaceId === workspaceId) count += 1;
+      cursor.continue();
+    };
+    transaction.oncomplete = resolve;
+    transaction.onerror = () => reject(transaction.error);
+    transaction.onabort = () => reject(transaction.error);
+  });
+  return count;
 }
 
 async function countOfflineStoreRecords(storeName, identity = null) {
@@ -2940,15 +3018,18 @@ async function offlineDiagnosticSummary(identity = activePlanIdentity()) {
     if (!db) return { available: false };
     const stores = ["plans", "units", "lessons", "assessmentTasks", "rubrics", "outbox"];
     const allCounts = {};
+    const workspaceCounts = {};
     const activePlanCounts = {};
     for (const storeName of stores) {
       allCounts[storeName] = await countOfflineStoreRecords(storeName);
+      workspaceCounts[storeName] = await countOfflineWorkspaceRecords(storeName, identity.workspaceId || activeWorkspaceId());
       activePlanCounts[storeName] = await countOfflineStoreRecords(storeName, identity);
     }
     return {
       available: true,
       activePlanKey: offlinePlanKey(identity),
       allCounts,
+      workspaceCounts,
       activePlanCounts,
     };
   } catch (error) {
@@ -2976,15 +3057,31 @@ function restoreNavigationButton(button) {
   delete button.dataset.originalLabel;
 }
 
-async function runNavigationWithLoading({ type, id = "", button = null, label = "Loading...", status = "" } = {}, action) {
+async function runNavigationWithLoading({
+  type,
+  id = "",
+  button = null,
+  label = "Loading...",
+  status = "",
+  slowStatus = "",
+  slowAfterMs = 12000,
+} = {}, action) {
   if (navigationBusy.type) return false;
   navigationBusy = { type, id };
   setNavigationButtonLoading(button, label);
   if (status) renderCloudStatus(status, "Sign out", true);
+  const slowTimer = window.setTimeout(() => {
+    const fallbackStatus = type === "plan-open"
+      ? "This 2YIP is taking longer than usual to load. If it does not open, clear local draft cache or reopen it."
+      : "This workspace is taking longer than usual to load.";
+    renderCloudStatus(slowStatus || fallbackStatus, "Sign out", true);
+    if (button?.isConnected) button.textContent = "Still opening...";
+  }, slowAfterMs);
   try {
     await action();
     return true;
   } finally {
+    window.clearTimeout(slowTimer);
     navigationBusy = { type: "", id: "" };
     restoreNavigationButton(button);
   }
@@ -3006,6 +3103,11 @@ async function closeActivePlanSession(options = {}) {
   let persisted = true;
   if (shouldPersist && state.currentScreen !== "workspace" && statePlanMatchesSelectedPlan()) {
     persisted = await persistCurrentPlanBeforeSwitch();
+  }
+  if (shouldPersist && !persisted && options.allowCloseWithPendingSync !== true) {
+    renderCloudStatus("Online save did not finish. Staying in this 2YIP so your draft is protected.", cloud.user ? "Sign out" : "Sign in");
+    renderPlannerSaveHealth();
+    return false;
   }
   window.clearTimeout(cloudSaveTimer);
   if (cloud.user && identity.workspaceId && (!shouldPersist || persisted)) clearLocalPlanBodyCache(identity.workspaceId);
@@ -3047,6 +3149,7 @@ async function closeActivePlanSession(options = {}) {
   setEditLockMode("none", null);
   if (els.rubricDraftStatus) els.rubricDraftStatus.textContent = "";
   if (!options.silent) renderCloudStatus("2YIP closed. Workspace loaded.", cloud.user ? "Sign out" : "Sign in");
+  return true;
 }
 
 async function switchPlan(planId, options = {}) {
@@ -3056,7 +3159,8 @@ async function switchPlan(planId, options = {}) {
   if (!planId || (planId === activePlanId() && activePlanBodyVerified(identity) && statePlanMatchesSelectedPlan() && !options.force)) return;
   const currentScreen = options.targetScreen || state.currentScreen;
   if (state.currentScreen !== "workspace") {
-    await closeActivePlanSession({ persist: !options.skipPersist, silent: true });
+    const closed = await closeActivePlanSession({ persist: !options.skipPersist, silent: true });
+    if (!closed) return;
   }
   window.clearTimeout(cloudSaveTimer);
   const previousSaveWritesPaused = saveWritesPaused;
@@ -4141,6 +4245,25 @@ function saveStateSafely(options = {}) {
   }
 }
 
+function shouldWarnAboutUnsyncedWork() {
+  if (state.currentScreen === "workspace") return false;
+  if (!cloud.user) return false;
+  const localSavedAt = Number(state.localSavedAtMs || 0);
+  const cloudSavedAt = Number(state.cloudSavedAtMs || 0);
+  const cloudStatus = String(cloud.status || "");
+  if (pendingLocalSyncCount > 0) return true;
+  if (localSavedAt && (!cloudSavedAt || localSavedAt > cloudSavedAt + 750)) return true;
+  return /saved locally|retry pending|pending sync|unavailable|failed|saving paused|online retry/i.test(cloudStatus);
+}
+
+function handleBeforeUnload(event) {
+  saveStateSafely({ localOnly: true, assumeChanged: false });
+  if (!shouldWarnAboutUnsyncedWork()) return undefined;
+  event.preventDefault();
+  event.returnValue = "";
+  return "";
+}
+
 function showSaveStatus(message) {
   els.saveStatus.textContent = message;
   window.setTimeout(() => {
@@ -4733,11 +4856,52 @@ function scheduleCloudSave() {
   if (!activePlanBodyVerified()) return;
   if (!canEditActivePlan()) return;
   window.clearTimeout(cloudSaveTimer);
+  pendingLocalSyncCount = Math.max(pendingLocalSyncCount, 1);
   cloudSaveTimer = window.setTimeout(saveCloudStateNow, 900);
+}
+
+function isRetriableCloudError(error = {}) {
+  const code = String(error.code || "").toLowerCase();
+  const message = String(error.message || error || "").toLowerCase();
+  return /unavailable|deadline|network|offline|timeout|temporarily|internal|aborted/.test(`${code} ${message}`);
+}
+
+function hasPendingLocalSync() {
+  const status = String(cloud.status || "");
+  return pendingLocalSyncCount > 0 || /saved locally|retry pending|online retry|pending sync/i.test(status);
+}
+
+function canQuietlyRetrySync() {
+  if (state.currentScreen === "workspace") return false;
+  if (navigationBusy.type || cloudSyncPaused || cloudSaveTimer || autoSyncRetryTimer) return false;
+  if (!cloud.available || !cloud.user || !cloud.loaded || !cloud.db) return false;
+  if (!activePlanBodyVerified()) return false;
+  if (!canEditActivePlan()) return false;
+  return hasPendingLocalSync();
+}
+
+function scheduleAutoSyncRetry(reason = "pending-sync", delayMs = autoSyncRetryDelayMs) {
+  if (!hasPendingLocalSync()) return false;
+  if (autoSyncRetryTimer) return true;
+  if (typeof navigator !== "undefined" && navigator.onLine === false) return false;
+  autoSyncRetryTimer = window.setTimeout(async () => {
+    autoSyncRetryTimer = null;
+    if (!canQuietlyRetrySync()) return;
+    renderCloudStatus("Retrying online save...", "Sign out", true);
+    const saved = await saveCloudStateNow();
+    if (saved) {
+      autoSyncRetryDelayMs = 8000;
+      return;
+    }
+    autoSyncRetryDelayMs = Math.min(autoSyncRetryDelayMs * 2, 60000);
+    scheduleAutoSyncRetry(reason, autoSyncRetryDelayMs);
+  }, delayMs);
+  return true;
 }
 
 async function saveCloudStateNow(options = {}) {
   window.clearTimeout(cloudSaveTimer);
+  cloudSaveTimer = null;
   if (!cloud.available || !cloud.user || !cloud.db) return false;
   if (state.currentScreen === "workspace") return false;
   const identity = activePlanIdentity();
@@ -4834,6 +4998,10 @@ async function saveCloudStateNow(options = {}) {
     rememberObjectSaveBaseline(cleanState);
     await cachePlanStateOffline(cleanState, { replace: true });
     await clearSyncedOutboxForPlan(identity);
+    pendingLocalSyncCount = 0;
+    window.clearTimeout(autoSyncRetryTimer);
+    autoSyncRetryTimer = null;
+    autoSyncRetryDelayMs = 8000;
     try {
       await createPlanSnapshot("autosave", cleanState, { onlyIfDue: true, planId: identity.planId, workspaceId: identity.workspaceId });
     } catch (snapshotError) {
@@ -4876,10 +5044,12 @@ async function saveCloudStateNow(options = {}) {
     }
     const offlineSummary = await offlineDiagnosticSummary(identity);
     const pendingCount = Number(offlineSummary?.activePlanCounts?.outbox || 0);
+    pendingLocalSyncCount = pendingCount || pendingLocalSyncCount || 1;
     const pendingText = pendingCount
       ? `${pendingCount} local change${pendingCount === 1 ? "" : "s"} waiting to sync`
       : "online retry pending";
     renderCloudStatus(`Saved locally; ${pendingText}: ${error.code || error.message || "check rules"}`, "Sign out");
+    if (isRetriableCloudError(error)) scheduleAutoSyncRetry("save-failed");
     return false;
   }
 }
@@ -5594,6 +5764,7 @@ function renderCloudStatus(status, buttonLabel, disabled = false) {
   els.cloudAuth.disabled = disabled && buttonLabel !== "Sign in";
   els.cloudPanel.classList.toggle("online", Boolean(cloud.user));
   updateDiagnosticsButtonVisibility(status);
+  renderPlannerSaveHealth();
 }
 
 function renderLockStatus() {
@@ -5633,6 +5804,94 @@ function renderLockStatus() {
   els.takeOverLock.textContent = sameUser ? "Continue Here" : "Take Over Editing";
   els.takeOverLock.classList.remove("hidden");
   els.clearStaleLocks?.classList.toggle("hidden", !sameUser);
+  renderPlannerSaveHealth();
+}
+
+function plannerSaveHealthState() {
+  if (state.currentScreen === "workspace" || !cloud.user || !firstPlanForActiveWorkspace()) {
+    return { show: false };
+  }
+  const identity = activePlanIdentity();
+  const fullPlanLoaded = activePlanBodyVerified(identity);
+  const status = String(cloud.status || "");
+  if (!fullPlanLoaded) {
+    return {
+      show: true,
+      kind: "blocked",
+      title: "Plan not fully loaded",
+      detail: planLoadStatus.detail || "Saving is paused until this 2YIP loads safely.",
+      canRetry: false,
+    };
+  }
+  if (!canEditActivePlan()) {
+    const sameUser = editLock.info?.uid && editLock.info.uid === cloud.user?.uid;
+    const owner = editLock.info ? lockOwnerName(editLock.info) : "another session";
+    return {
+      show: true,
+      kind: "blocked",
+      title: sameUser ? "Open in another tab" : "Read-only",
+      detail: sameUser
+        ? "Saving is paused here. Use Continue Here above if this is the tab you want to edit in."
+        : `${owner} is editing this 2YIP. You can still view it safely.`,
+      canRetry: false,
+    };
+  }
+  if (/saving|syncing|retrying/i.test(status)) {
+    return {
+      show: true,
+      kind: "saving",
+      title: "Saving online",
+      detail: status || "Weave is syncing the latest changes.",
+      canRetry: false,
+    };
+  }
+  if (pendingLocalSyncCount > 0) {
+    return {
+      show: true,
+      kind: "saving",
+      title: "Sync queued",
+      detail: `${pendingLocalSyncCount} local change${pendingLocalSyncCount === 1 ? "" : "s"} waiting to sync online.`,
+      canRetry: true,
+    };
+  }
+  if (/saved locally|retry pending|pending|unavailable|failed|could not|blocked/i.test(status)) {
+    return {
+      show: true,
+      kind: "warning",
+      title: "Saved locally, online retry pending",
+      detail: status || "Your work is on this device and waiting to sync online.",
+      canRetry: true,
+    };
+  }
+  if (/paused|verify|mismatch|did not load|lost/i.test(status)) {
+    return {
+      show: true,
+      kind: "blocked",
+      title: "Saving paused",
+      detail: status || "Weave paused saving to protect the online 2YIP.",
+      canRetry: false,
+    };
+  }
+  return {
+    show: true,
+    kind: "ok",
+    title: "Saved online",
+    detail: status || "This 2YIP is verified and ready for planning.",
+    canRetry: false,
+  };
+}
+
+function renderPlannerSaveHealth() {
+  if (!els.plannerSaveHealth) return;
+  const health = plannerSaveHealthState();
+  els.plannerSaveHealth.classList.toggle("hidden", !health.show);
+  if (!health.show) return;
+  els.plannerSaveHealth.classList.remove("is-ok", "is-saving", "is-warning", "is-blocked");
+  els.plannerSaveHealth.classList.add(`is-${health.kind}`);
+  els.plannerSaveHealthTitle.textContent = health.title;
+  els.plannerSaveHealthDetail.textContent = health.detail;
+  els.plannerRetrySync.hidden = !health.canRetry;
+  els.plannerRetrySync.disabled = !health.canRetry || navigationBusy.type !== "";
 }
 
 function localStorageDiagnosticSummary() {
@@ -5705,9 +5964,9 @@ async function renderPilotDiagnostics() {
   els.pilotDiagnosticsBody.innerHTML = `<span class="muted">Checking storage health...</span>`;
   const offline = await offlineDiagnosticSummary(identity);
   if (renderId !== workspaceDiagnosticsRenderId) return;
-  const allCounts = offline?.allCounts || {};
+  const workspaceCounts = offline?.workspaceCounts || {};
   const activePlanCounts = offline?.activePlanCounts || {};
-  const outboxCount = Number(allCounts.outbox || 0);
+  const outboxCount = Number(workspaceCounts.outbox || 0);
   const activeOutboxCount = Number(activePlanCounts.outbox || 0);
   const cloudIssue = lastCloudError?.code || lastCloudError?.message || "";
   const syncClass = outboxCount ? " needs-attention" : "";
@@ -5720,9 +5979,9 @@ async function renderPilotDiagnostics() {
     },
     {
       label: "Browser cache",
-      value: offline?.available ? `${Number(allCounts.plans || 0)} plan shells` : "Unavailable",
+      value: offline?.available ? `${Number(workspaceCounts.plans || 0)} plan shells` : "Unavailable",
       detail: offline?.available
-        ? `${Number(allCounts.units || 0)} units · ${Number(allCounts.lessons || 0)} lessons · ${Number(allCounts.assessmentTasks || 0)} tasks`
+        ? `${Number(workspaceCounts.units || 0)} units · ${Number(workspaceCounts.lessons || 0)} lessons · ${Number(workspaceCounts.assessmentTasks || 0)} tasks in this workspace`
         : (offline?.error || "IndexedDB unavailable"),
     },
     {
@@ -5765,6 +6024,46 @@ async function renderPilotDiagnostics() {
         : "Workspace is using lightweight metadata here. Trash and full 2YIP content are not loaded until requested."}
     </p>
   `;
+}
+
+async function retryPendingSyncFromDiagnostics() {
+  if (!cloud.user || !cloud.loaded) {
+    renderCloudStatus("Sign in before retrying online sync.", cloud.user ? "Sign out" : "Sign in");
+    return false;
+  }
+  const identity = activePlanIdentity();
+  if (state.currentScreen === "workspace" || !activePlanBodyVerified(identity)) {
+    renderCloudStatus("Open the 2YIP with pending changes before retrying sync.", "Sign out");
+    return false;
+  }
+  if (!canEditActivePlan()) {
+    renderCloudStatus("Read-only. Take over editing before retrying sync.", "Sign out");
+    return false;
+  }
+  renderCloudStatus("Retrying pending sync...", "Sign out", true);
+  const savedOnline = await saveCloudStateNow();
+  await renderPilotDiagnostics();
+  return savedOnline;
+}
+
+async function clearLocalDraftCacheFromDiagnostics() {
+  const workspaceId = activeWorkspaceId();
+  const offline = await offlineDiagnosticSummary(activePlanIdentity());
+  const pendingCount = Number(offline?.workspaceCounts?.outbox || 0);
+  if (pendingCount) {
+    const confirmed = window.confirm(
+      `There ${pendingCount === 1 ? "is" : "are"} ${pendingCount} local change${pendingCount === 1 ? "" : "s"} waiting to sync. Clearing this device's draft cache may discard unsynced local-only changes. Cloud plans will not be deleted. Continue?`
+    );
+    if (!confirmed) {
+      renderCloudStatus("Local draft cache was not cleared.", "Sign out");
+      return false;
+    }
+  }
+  renderCloudStatus("Clearing this device's draft cache...", "Sign out", true);
+  const cleared = await clearOfflineWorkspaceCache(workspaceId);
+  renderCloudStatus(cleared ? `Cleared ${cleared} local draft cache item${cleared === 1 ? "" : "s"} for this workspace.` : "No local draft cache found for this workspace.", "Sign out");
+  await renderPilotDiagnostics();
+  return true;
 }
 
 async function clearMyStaleLocks() {
@@ -6076,6 +6375,7 @@ function render() {
   renderAssessmentStudio();
   renderEditor();
   renderOverlayButtons();
+  renderPlannerSaveHealth();
   applyEditingMode();
   if (state.currentScreen === "workspace") {
     saveWorkspaceCatalog();
@@ -6268,6 +6568,7 @@ function renderWorkspaceHome() {
         button,
         label: "Opening...",
         status: "Opening workspace...",
+        slowStatus: "Workspace is taking longer than usual to open. If it does not respond, refresh or copy diagnostics.",
       }, () => switchWorkspace(workspaceId)).catch((error) => {
         console.warn("Workspace open failed", error);
         renderCloudStatus(`Workspace did not open: ${errorLabel(error)}`, "Sign out");
@@ -6347,6 +6648,7 @@ function renderWorkspaceHome() {
         button,
         label: "Opening...",
         status: "Opening 2YIP...",
+        slowStatus: "This 2YIP is taking longer than usual to load. If it does not open, clear local draft cache or copy diagnostics.",
       }, () => openWorkspacePlan(planId)).catch((error) => {
         console.warn("2YIP open failed", error);
         renderCloudStatus(`2YIP did not open: ${errorLabel(error)}`, "Sign out");
@@ -13664,20 +13966,30 @@ els.workspaceSelect?.addEventListener("change", (event) => {
   switchWorkspace(event.target.value);
 });
 
-els.workspaceHome?.addEventListener("click", async () => {
+async function closeToWorkspaceHome(button = els.workspaceHome, options = {}) {
   await runNavigationWithLoading({
     type: "workspace-close",
-    button: els.workspaceHome,
+    button,
     label: "Closing...",
     status: "Closing 2YIP safely...",
   }, async () => {
-    await closeActivePlanSession({ persist: true });
+    const closed = await closeActivePlanSession({ persist: true });
+    if (!closed) return;
     workspaceDirectoryWorkspaceId = "";
     render();
+    if (options.focusDiagnostics) {
+      window.setTimeout(() => {
+        els.pilotDiagnosticsBody?.closest(".pilot-diagnostics-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 40);
+    }
   }).catch((error) => {
     console.warn("Workspace close failed", error);
     renderCloudStatus(`Could not close 2YIP safely: ${errorLabel(error)}`, "Sign out");
   });
+}
+
+els.workspaceHome?.addEventListener("click", async () => {
+  await closeToWorkspaceHome(els.workspaceHome);
 });
 
 els.recoveryTrash?.addEventListener("click", () => {
@@ -14302,6 +14614,13 @@ els.clearStaleLocks?.addEventListener("click", clearMyStaleLocks);
 els.copyDiagnostics?.addEventListener("click", copyDiagnostics);
 els.refreshPilotDiagnostics?.addEventListener("click", renderPilotDiagnostics);
 els.copyPilotDiagnostics?.addEventListener("click", copyDiagnostics);
+els.retryPendingSync?.addEventListener("click", retryPendingSyncFromDiagnostics);
+els.clearLocalDraftCache?.addEventListener("click", clearLocalDraftCacheFromDiagnostics);
+els.plannerRetrySync?.addEventListener("click", retryPendingSyncFromDiagnostics);
+els.plannerCopyDiagnostics?.addEventListener("click", copyDiagnostics);
+els.plannerGoWorkspaceDiagnostics?.addEventListener("click", () => {
+  closeToWorkspaceHome(els.plannerGoWorkspaceDiagnostics, { focusDiagnostics: true });
+});
 els.loginGoogle?.addEventListener("click", toggleCloudAuth);
 els.loginReset?.addEventListener("click", resetCloudSignIn);
 els.cardDetailCancel?.addEventListener("click", closeCardDetail);
@@ -14319,7 +14638,7 @@ window.addEventListener("error", (event) => {
   renderLoginGate(`Startup paused: ${event.message || "reload and try again."}`, false);
 });
 
-window.addEventListener("beforeunload", saveStateSafely);
+window.addEventListener("beforeunload", handleBeforeUnload);
 window.addEventListener("popstate", () => {
   historySyncPaused = true;
   applyLocationToState();
@@ -14327,7 +14646,14 @@ window.addEventListener("popstate", () => {
   historySyncPaused = false;
 });
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "hidden") saveStateSafely();
+  if (document.visibilityState === "hidden") {
+    saveStateSafely();
+  } else {
+    scheduleAutoSyncRetry("tab-visible", 1200);
+  }
+});
+window.addEventListener("online", () => {
+  scheduleAutoSyncRetry("browser-online", 500);
 });
 lastPersistedContentHash = "";
 window.setInterval(() => saveStateSafely({ localOnly: true, assumeChanged: false }), 30000);

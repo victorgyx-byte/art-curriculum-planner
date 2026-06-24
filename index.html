@@ -89,6 +89,19 @@
         </div>
       </header>
 
+      <section id="planner-save-health" class="planner-save-health hidden" aria-live="polite">
+        <div class="planner-save-health-copy">
+          <p class="eyebrow">Save Health</p>
+          <strong id="planner-save-health-title">Checking save status</strong>
+          <span id="planner-save-health-detail">Weave is checking whether this 2YIP is ready to edit.</span>
+        </div>
+        <div class="planner-save-health-actions">
+          <button id="planner-retry-sync" class="ghost-button" type="button">Retry sync</button>
+          <button id="planner-copy-diagnostics" class="ghost-button" type="button">Copy diagnostics</button>
+          <button id="planner-go-workspace-diagnostics" class="ghost-button" type="button">Workspace diagnostics</button>
+        </div>
+      </section>
+
       <section id="workspace-screen" class="workspace-home screen-panel" aria-label="Workspace home">
         <div class="workspace-home-heading">
           <div>
@@ -119,6 +132,8 @@
             </div>
             <div class="plan-card-actions">
               <button id="refresh-pilot-diagnostics" class="ghost-button" type="button">Refresh</button>
+              <button id="retry-pending-sync" class="ghost-button" type="button">Retry sync</button>
+              <button id="clear-local-draft-cache" class="ghost-button danger-button" type="button">Clear local draft cache</button>
               <button id="copy-pilot-diagnostics" class="ghost-button" type="button">Copy diagnostics</button>
             </div>
           </div>
