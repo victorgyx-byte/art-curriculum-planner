@@ -6315,6 +6315,41 @@ function removeUnitFromTimeline(unitId) {
   render();
 }
 
+async function deleteUnit(unitId) {
+  if (!canEditActivePlan()) {
+    renderCloudStatus("Read-only. Take over editing before deleting a unit.", cloud.user ? "Sign out" : "Sign in");
+    return;
+  }
+  const unitIndex = state.units.findIndex((candidate) => candidate.id === unitId);
+  if (unitIndex < 0) return;
+  const unit = state.units[unitIndex];
+  const lessonCount = unit.lessons?.length || 0;
+  const linkedTaskCount = (state.assessmentTasks || []).filter((task) => task.unitId === unitId).length;
+  const confirmed = window.confirm(
+    `Delete "${unit.title || "Untitled Unit"}"?\n\nThis will remove ${lessonCount} ${lessonCount === 1 ? "lesson" : "lessons"} and ${linkedTaskCount} linked assessment ${linkedTaskCount === 1 ? "task" : "tasks"}.\n\nA recovery snapshot will be created first.`,
+  );
+  if (!confirmed) return;
+  try {
+    await createPlanSnapshot("before-delete-unit", state);
+  } catch (error) {
+    console.warn("Could not create unit delete snapshot", error);
+  }
+  const fallbackUnit = state.units[unitIndex + 1] || state.units[unitIndex - 1] || null;
+  state.units = state.units.filter((candidate) => candidate.id !== unitId);
+  state.assessmentTasks = normalizeAssessmentTasks((state.assessmentTasks || []).filter((task) => task.unitId !== unitId));
+  if (state.selectedUnitId === unitId) {
+    state.selectedUnitId = fallbackUnit?.id || state.units[0]?.id || "";
+    state.selectedLessonId = fallbackUnit?.lessons?.[0]?.id || state.units[0]?.lessons?.[0]?.id || "";
+  }
+  const selectedTaskExists = state.assessmentTasks.some((task) => task.id === state.selectedAssessmentTaskId);
+  const editingTaskExists = state.assessmentTasks.some((task) => task.id === state.editingAssessmentTaskId);
+  if (!selectedTaskExists) state.selectedAssessmentTaskId = "";
+  if (!editingTaskExists) state.editingAssessmentTaskId = "";
+  syncAssessmentTaskPlacements();
+  saveState();
+  render();
+}
+
 function timelineYearForStart(start) {
   return start > YEAR_WEEK_COUNT ? 2 : 1;
 }
@@ -6440,8 +6475,10 @@ function renderUnitList() {
           <span class="unit-list-title">${escapeHtml(unit.title || "Untitled Unit")}</span>
           <span class="unit-list-meta">${unit.inTimeline === false ? "Not in 2YIP" : unitLessonDurationLabel(unit)}</span>
         </div>
+        <button class="unit-list-delete" type="button" ${canEditActivePlan() ? "" : "disabled"} aria-label="Delete ${escapeAttr(unit.title || "unit")}">Delete</button>
       `;
       item.addEventListener("click", (event) => {
+        if (event.target.closest(".unit-list-delete")) return;
         state.selectedUnitId = unit.id;
         if (state.currentScreen === "timeline" || state.currentScreen === "assessment") {
           render();
@@ -6459,8 +6496,13 @@ function renderUnitList() {
       });
       item.addEventListener("keydown", (event) => {
         if (event.key !== "Enter" && event.key !== " ") return;
+        if (event.target.closest(".unit-list-delete")) return;
         event.preventDefault();
         item.click();
+      });
+      item.querySelector(".unit-list-delete")?.addEventListener("click", (event) => {
+        event.stopPropagation();
+        deleteUnit(unit.id);
       });
       item.addEventListener("dragstart", (event) => {
         if (state.currentScreen !== "timeline") return;
